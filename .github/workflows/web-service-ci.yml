@@ -93,13 +93,13 @@ jobs:
           java-version: '25'
           cache: maven
 
-      - name: Compile application
+      - name: Run tests and generate coverage report
         run: |
           if [ -f ./mvnw ]; then
-          chmod +x ./mvnw
-          ./mvnw -B -DskipTests package
+            chmod +x ./mvnw
+            ./mvnw -B verify
           else
-          mvn -B -DskipTests package
+            mvn -B verify
           fi
 
       - name: SonarCloud analysis
