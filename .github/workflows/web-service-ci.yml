@@ -93,19 +93,25 @@ jobs:
           java-version: '25'
           cache: maven
 
-      - name: Compile application
+      - name: Run tests and generate coverage report
         run: |
           if [ -f ./mvnw ]; then
-          chmod +x ./mvnw
-          ./mvnw -B -DskipTests package
+            chmod +x ./mvnw
+            ./mvnw -B verify
           else
-          mvn -B -DskipTests package
+            mvn -B verify
           fi
 
       - name: SonarCloud analysis
-        uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
+        run: |
+          mvn_cmd=mvn
+          if [ -f ./mvnw ]; then
+            chmod +x ./mvnw
+            mvn_cmd=./mvnw
+          fi
+          "$mvn_cmd" -B org.sonarsource.scanner.maven:sonar-maven-plugin:5.5.0.6356:sonar \
+            -Dsonar.organization=resolum \
+            -Dsonar.projectKey=resolum_alivia-web-services \
             -Dsonar.qualitygate.wait=true
