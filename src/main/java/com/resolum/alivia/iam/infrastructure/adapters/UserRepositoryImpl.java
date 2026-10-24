@@ -1,4 +1,67 @@
 package com.resolum.alivia.iam.infrastructure.adapters;
 
-public class UserRepositoryImpl {
+import com.resolum.alivia.iam.domain.exceptions.EmailAlreadyRegisteredException;
+import com.resolum.alivia.iam.domain.model.aggregates.User;
+import com.resolum.alivia.iam.domain.repositories.UserRepository;
+import com.resolum.alivia.iam.infrastructure.persistence.jpa.repositories.UserPersistenceRepository;
+import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+/**
+ * JPA implementation of the {@link UserRepository} port.
+ */
+@Repository
+public class UserRepositoryImpl implements UserRepository {
+
+    private final UserPersistenceRepository persistenceRepository;
+
+    /**
+     * Creates the adapter.
+     *
+     * @param persistenceRepository the Spring Data repository
+     */
+    public UserRepositoryImpl(UserPersistenceRepository persistenceRepository) {
+        this.persistenceRepository = persistenceRepository;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean existsByEmail(EmailAddress email) {
+        return persistenceRepository.existsByEmail(email.email());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Optional<User> findByEmail(EmailAddress email) {
+        return persistenceRepository.findByEmail(email.email());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Optional<User> findByIdForUpdate(Long accountId) {
+        return persistenceRepository.findWithLockById(accountId);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @throws EmailAlreadyRegisteredException when the email unique constraint is violated
+     */
+    @Override
+    public User save(User user) {
+        try {
+            return persistenceRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException exception) {
+            throw new EmailAlreadyRegisteredException();
+        }
+    }
 }

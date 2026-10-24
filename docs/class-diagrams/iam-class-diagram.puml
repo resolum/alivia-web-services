@@ -1,0 +1,284 @@
+@startuml
+title Class Diagram - Identity And Access Management: Domain Layer
+
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #455A64
+
+' =====================================================
+' SHARED KERNEL
+' =====================================================
+
+package "Shared" #ECEFF1 {
+
+package "Domain" #F5F5F5 {
+package "Model" #FFF8E1 {
+
+  package "Aggregates" #FFE0B2 {
+    abstract class AuditableAbstractAggregateRoot {
+      - id: Long
+      - createdAt: LocalDateTime
+      - updatedAt: LocalDateTime
+      + addDomainEvent(event: Object): void
+    }
+  }
+
+  package "Value Objects" #E8EAF6 {
+    class EmailAddress <<value object>> {
+      - emailAddress: String
+      + EmailAddress(emailAddress: String)
+      + value(): String
+    }
+  }
+}
+}
+}
+
+' =====================================================
+' IDENTITY AND ACCESS MANAGEMENT
+' =====================================================
+
+package "Identity and Access Management" #E3F2FD {
+
+package "Domain" #E8F5E9 {
+package "Model" #FFFDE7 {
+
+  package "Aggregates" #FFECB3 {
+    class User <<aggregate root>> {
+      - email: EmailAddress
+      - password: PasswordHash
+      - accessRole: AccessRole
+      - status: UserStatus
+      - emailVerified: Boolean
+      - failedAccessAttempts: Integer
+
+      + User(
+          email: EmailAddress,
+          password: PasswordHash,
+          accessRole: AccessRole
+        )
+
+      + verifyEmail(): void
+      + changePassword(password: PasswordHash): void
+      + assignAccessRole(accessRole: AccessRole): void
+      + registerFailedAccess(): void
+      + resetFailedAccessAttempts(): void
+      + activate(): void
+      + block(): void
+      + deactivate(): void
+      + canSignIn(): Boolean
+    }
+  }
+
+  package "Value Objects" #EDE7F6 {
+    class PasswordHash <<value object>> {
+      - value: String
+      + PasswordHash(value: String)
+      + value(): String
+    }
+
+    class EmailVerificationToken <<value object>> {
+      - value: String
+      - expiresAt: LocalDateTime
+      + isExpired(): Boolean
+    }
+
+    class PasswordRecoveryCode <<value object>> {
+      - value: String
+      - expiresAt: LocalDateTime
+      + isExpired(): Boolean
+      + matches(code: String): Boolean
+    }
+
+    class PasswordRecoveryToken <<value object>> {
+      - value: String
+      - expiresAt: LocalDateTime
+      + isExpired(): Boolean
+    }
+
+    enum AccessRole {
+      ADMINISTRATOR
+      CAREGIVER
+      TECHNICIAN
+      SUBSCRIPTION_MANAGER
+    }
+
+    enum UserStatus {
+      PENDING_VERIFICATION
+      ACTIVE
+      BLOCKED
+      INACTIVE
+    }
+
+    enum RecoveryChannel {
+      MOBILE_CODE
+      WEB_LINK
+    }
+  }
+
+  package "Commands" #E1F5FE {
+    record SignUpCommand {
+      email: String
+      password: String
+    }
+
+    record VerifyEmailCommand {
+      verificationToken: String
+    }
+
+    record SignInCommand {
+      email: String
+      password: String
+    }
+
+    record RequestPasswordRecoveryCommand {
+      email: String
+      channel: RecoveryChannel
+    }
+
+    record ValidateRecoveryCodeCommand {
+      email: String
+      recoveryCode: String
+    }
+
+    record ResetPasswordWithCodeCommand {
+      email: String
+      recoveryCode: String
+      newPassword: String
+    }
+
+    record ResetPasswordWithTokenCommand {
+      recoveryToken: String
+      newPassword: String
+    }
+
+    record ChangePasswordCommand {
+      userId: Long
+      currentPassword: String
+      newPassword: String
+    }
+
+    record CreateEmployeeAccessCommand {
+      employeeId: Long
+      institutionalEmail: String
+      accessRole: AccessRole
+    }
+
+    record SetInitialPasswordCommand {
+      activationToken: String
+      password: String
+    }
+
+    record AssignAccessRoleCommand {
+      userId: Long
+      accessRole: AccessRole
+    }
+
+    record ChangeUserStatusCommand {
+      userId: Long
+      status: UserStatus
+    }
+  }
+
+  package "Queries" #E0F2F1 {
+    record GetUserByIdQuery {
+      userId: Long
+    }
+
+    record GetUserByEmailQuery {
+      email: String
+    }
+
+    record GetAllUsersQuery
+  }
+}
+
+package "Services" #FCE4EC {
+  interface UserCommandService {
+    + handle(command: SignUpCommand): User
+    + handle(command: VerifyEmailCommand): void
+    + handle(command: SignInCommand): User
+    + handle(command: RequestPasswordRecoveryCommand): void
+    + handle(command: ValidateRecoveryCodeCommand): Boolean
+    + handle(command: ResetPasswordWithCodeCommand): void
+    + handle(command: ResetPasswordWithTokenCommand): void
+    + handle(command: ChangePasswordCommand): void
+    + handle(command: CreateEmployeeAccessCommand): User
+    + handle(command: SetInitialPasswordCommand): void
+    + handle(command: AssignAccessRoleCommand): void
+    + handle(command: ChangeUserStatusCommand): void
+  }
+
+  interface UserQueryService {
+    + handle(query: GetUserByIdQuery): Optional<User>
+    + handle(query: GetUserByEmailQuery): Optional<User>
+    + handle(query: GetAllUsersQuery): List<User>
+  }
+}
+}
+}
+
+' =====================================================
+' AGGREGATE RELATIONSHIPS
+' =====================================================
+
+User --|> AuditableAbstractAggregateRoot : inherits
+
+User *-- EmailAddress : email
+User *-- PasswordHash : password
+User --> AccessRole : authorized as
+User --> UserStatus : has status
+
+' =====================================================
+' COMMAND DEPENDENCIES
+' =====================================================
+
+RequestPasswordRecoveryCommand --> RecoveryChannel
+CreateEmployeeAccessCommand --> AccessRole
+AssignAccessRoleCommand --> AccessRole
+ChangeUserStatusCommand --> UserStatus
+
+' =====================================================
+' COMMAND SERVICE DEPENDENCIES
+' =====================================================
+
+UserCommandService ..> User
+
+UserCommandService ..> SignUpCommand
+UserCommandService ..> VerifyEmailCommand
+UserCommandService ..> SignInCommand
+UserCommandService ..> RequestPasswordRecoveryCommand
+UserCommandService ..> ValidateRecoveryCodeCommand
+UserCommandService ..> ResetPasswordWithCodeCommand
+UserCommandService ..> ResetPasswordWithTokenCommand
+UserCommandService ..> ChangePasswordCommand
+UserCommandService ..> CreateEmployeeAccessCommand
+UserCommandService ..> SetInitialPasswordCommand
+UserCommandService ..> AssignAccessRoleCommand
+UserCommandService ..> ChangeUserStatusCommand
+
+' =====================================================
+' QUERY SERVICE DEPENDENCIES
+' =====================================================
+
+UserQueryService ..> User
+
+UserQueryService ..> GetUserByIdQuery
+UserQueryService ..> GetUserByEmailQuery
+UserQueryService ..> GetAllUsersQuery
+
+legend right
+|= Color |= Layer |
+|<#ECEFF1>| Shared |
+|<#E3F2FD>| IAM Bounded Context |
+|<#E8F5E9>| Domain |
+|<#FFFDE7>| Model |
+|<#FFECB3>| Aggregates |
+|<#EDE7F6>| Value Objects |
+|<#E1F5FE>| Commands |
+|<#E0F2F1>| Queries |
+|<#FCE4EC>| Domain Services |
+endlegend
+
+@enduml
