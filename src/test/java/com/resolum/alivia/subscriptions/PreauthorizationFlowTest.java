@@ -5,6 +5,7 @@ import com.resolum.alivia.subscriptions.application.internal.commandservices.Pre
 import com.resolum.alivia.subscriptions.application.internal.queryservices.PreauthorizationQueryServiceImpl;
 import com.resolum.alivia.subscriptions.application.outboundservices.PaymentAuthorizationGateway;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupUnauthorized;
+import com.resolum.alivia.subscriptions.domain.exceptions.PlanNotFound;
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationConflict;
 import com.resolum.alivia.subscriptions.domain.model.aggregates.Payment;
 import com.resolum.alivia.subscriptions.domain.model.aggregates.Subscription;
@@ -85,6 +86,43 @@ class PreauthorizationFlowTest {
         verify(stripe).create("cus_7", "pm_7", 9900L, "PEN", key);
     }
 
+    @Test void rejectedProviderStateCancelsPendingContract() {
+        var row = subscription();
+        UUID key = UUID.randomUUID();
+        when(plans.findById(1L)).thenReturn(Optional.of(row.getPlan()));
+        when(customers.findById(7L)).thenReturn(Optional.of(new UserStripeCustomer(new UserId(7L), "cus_7")));
+        when(subscriptions.saveAndFlush(any(Subscription.class))).thenReturn(row);
+        when(stripe.create("cus_7", "pm_7", 9900L, "PEN", key)).thenReturn(
+                new StripeAuthorization(new StripePaymentIntentId("pi_7"), null, PaymentStatus.PAYMENT_REJECTED, null));
+        when(records.saveAndFlush(any(Payment.class))).thenAnswer(invocation -> {
+            Payment saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 52L);
+            return saved;
+        });
+
+        var result = new PreauthorizationCommandServiceImpl(plans, subscriptions, customers, stripe, records).handle(command(key));
+
+        assertEquals(PaymentStatus.PAYMENT_REJECTED, result.status());
+        assertEquals(SubscriptionStatus.CANCELED, row.getStatus());
+        verify(subscriptions).save(row);
+    }
+
+    @Test void failedLocalPaymentSaveReleasesProviderAuthorization() {
+        var row = subscription();
+        UUID key = UUID.randomUUID();
+        when(plans.findById(1L)).thenReturn(Optional.of(row.getPlan()));
+        when(customers.findById(7L)).thenReturn(Optional.of(new UserStripeCustomer(new UserId(7L), "cus_7")));
+        when(subscriptions.saveAndFlush(any(Subscription.class))).thenReturn(row);
+        when(stripe.create("cus_7", "pm_7", 9900L, "PEN", key)).thenReturn(
+                new StripeAuthorization(new StripePaymentIntentId("pi_7"), null, PaymentStatus.PREAUTHORIZED, null));
+        var storageFailure = new IllegalStateException("storage unavailable");
+        when(records.saveAndFlush(any(Payment.class))).thenThrow(storageFailure);
+
+        assertSame(storageFailure, assertThrows(IllegalStateException.class,
+                () -> new PreauthorizationCommandServiceImpl(plans, subscriptions, customers, stripe, records).handle(command(key))));
+        verify(stripe).cancel(new StripePaymentIntentId("pi_7"));
+    }
+
     @Test void retryReadsSamePaymentAndRefreshesProviderState() {
         var row = subscription();
         var payment = payment(row, PaymentStatus.AWAITING_CONFIRMATION);
@@ -121,6 +159,28 @@ class PreauthorizationFlowTest {
         assertThrows(PreauthorizationConflict.class,
                 () -> new PreauthorizationCommandServiceImpl(plans, subscriptions, customers, stripe, records)
                         .handle(command(UUID.randomUUID())));
+        verifyNoInteractions(stripe);
+    }
+
+    @Test void missingPlanAndMissingCustomerNeverRequestCardHold() {
+        var service = new PreauthorizationCommandServiceImpl(plans, subscriptions, customers, stripe, records);
+        assertThrows(PlanNotFound.class, () -> service.handle(command(UUID.randomUUID())));
+        var plan = PlanCatalogDefaults.base();
+        ReflectionTestUtils.setField(plan, "id", 1L);
+        when(plans.findById(1L)).thenReturn(Optional.of(plan));
+        assertThrows(IllegalArgumentException.class, () -> service.handle(command(UUID.randomUUID())));
+        verifyNoInteractions(stripe);
+        verify(subscriptions, never()).saveAndFlush(any());
+    }
+
+    @Test void invalidPaymentReferenceAndMissingIdempotencyKeyStopBeforeProvider() {
+        var service = new PreauthorizationCommandServiceImpl(plans, subscriptions, customers, stripe, records);
+        var invalidMethod = new CreatePreauthorizationCommand("7", "home-7", 1L, 1,
+                List.of(new ActuatorQuantity(ActuatorType.LIGHT, 1)), "card_number", UUID.randomUUID());
+        var missingKey = new CreatePreauthorizationCommand("7", "home-7", 1L, 1,
+                List.of(new ActuatorQuantity(ActuatorType.LIGHT, 1)), "pm_7", null);
+        assertThrows(IllegalArgumentException.class, () -> service.handle(invalidMethod));
+        assertThrows(IllegalArgumentException.class, () -> service.handle(missingKey));
         verifyNoInteractions(stripe);
     }
 

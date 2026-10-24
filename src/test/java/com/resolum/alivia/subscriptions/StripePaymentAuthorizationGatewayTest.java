@@ -6,6 +6,7 @@ import com.resolum.alivia.subscriptions.domain.model.valueobjects.StripePaymentI
 import com.resolum.alivia.subscriptions.infrastructure.stripe.service.StripePaymentAuthorizationGateway;
 import com.stripe.StripeClient;
 import com.stripe.exception.ApiException;
+import com.stripe.exception.CardException;
 import com.stripe.model.PaymentIntent;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.PaymentIntentCreateParams;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.MockedConstruction;
 
 import java.util.UUID;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -61,6 +63,35 @@ class StripePaymentAuthorizationGatewayTest {
             gateway.cancel(new StripePaymentIntentId("pi_test"));
         }
         verify(service).cancel("pi_test");
+    }
+
+    @Test void mapsProviderStatesAndCaptureDeadline() throws Exception {
+        var service = mock(PaymentIntentService.class);
+        var intent = mock(PaymentIntent.class, RETURNS_DEEP_STUBS);
+        when(intent.getId()).thenReturn("pi_test");
+        when(service.retrieve(eq("pi_test"), any(PaymentIntentRetrieveParams.class))).thenReturn(intent);
+        long deadline = Instant.parse("2026-10-30T12:00:00Z").getEpochSecond();
+        when(intent.getLatestChargeObject().getPaymentMethodDetails().getCard().getCaptureBefore())
+                .thenReturn(deadline);
+        try (MockedConstruction<StripeClient> ignored = mockConstruction(StripeClient.class,
+                (client, context) -> when(client.paymentIntents()).thenReturn(service))) {
+            when(intent.getStatus()).thenReturn("requires_capture", "requires_payment_method", "succeeded", "processing");
+            assertEquals(Instant.ofEpochSecond(deadline), gateway.retrieve(new StripePaymentIntentId("pi_test")).captureBefore());
+            assertEquals(PaymentStatus.PAYMENT_REJECTED, gateway.retrieve(new StripePaymentIntentId("pi_test")).state());
+            assertEquals(PaymentStatus.SUCCEEDED, gateway.retrieve(new StripePaymentIntentId("pi_test")).state());
+            assertEquals(PaymentStatus.AWAITING_CONFIRMATION, gateway.retrieve(new StripePaymentIntentId("pi_test")).state());
+        }
+    }
+
+    @Test void cardDeclineIsDistinguishedFromProviderOutage() throws Exception {
+        var service = mock(PaymentIntentService.class);
+        when(service.create(any(PaymentIntentCreateParams.class), any(RequestOptions.class)))
+                .thenThrow(mock(CardException.class));
+        try (MockedConstruction<StripeClient> ignored = mockConstruction(StripeClient.class,
+                (client, context) -> when(client.paymentIntents()).thenReturn(service))) {
+            assertThrows(com.resolum.alivia.subscriptions.domain.exceptions.PaymentRejected.class,
+                    () -> gateway.create("cus", "pm", 100L, "PEN", UUID.randomUUID()));
+        }
     }
 
     @Test void missingConfigurationAndProviderOutageAreReported() throws Exception {
