@@ -29,11 +29,12 @@ public interface UserPersistenceRepository extends JpaRepository<User, Long> {
     Optional<User> findByEmail(String email);
 
     /**
-     * Finds a user by identifier and locks the row for writing.
+     * Finds a user by the hash of its pending email verification token and locks the
+     * row for writing.
      *
-     * @param accountId the user identifier
-     * @return the matching user, or empty when none exists
+     * @param emailVerificationTokenHash the SHA-256 hash of the plain-text token
+     * @return the matching user, or empty when no pending token matches
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    Optional<User> findWithLockById(Long accountId);
+    Optional<User> findByEmailVerificationTokenHash(String emailVerificationTokenHash);
 }

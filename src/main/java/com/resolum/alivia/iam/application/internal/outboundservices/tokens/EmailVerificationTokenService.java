@@ -27,6 +27,14 @@ public interface EmailVerificationTokenService {
     String buildVerificationLink(String rawToken);
 
     /**
+     * Calculates the SHA-256 hash of a plain-text token.
+     *
+     * @param rawToken the plain-text token
+     * @return the hash encoded as lowercase hexadecimal
+     */
+    String hash(String rawToken);
+
+    /**
      * Compares a plain-text token with an expected SHA-256 hash in constant time.
      *
      * @param rawToken     the plain-text token

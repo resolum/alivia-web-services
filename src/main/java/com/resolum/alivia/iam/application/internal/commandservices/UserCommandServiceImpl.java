@@ -1,9 +1,11 @@
 package com.resolum.alivia.iam.application.internal.commandservices;
 
 import com.resolum.alivia.iam.application.internal.outboundservices.acl.ExternalProfilesService;
+import com.resolum.alivia.iam.application.internal.outboundservices.acl.ProfileData;
 import com.resolum.alivia.iam.application.internal.outboundservices.hashing.HashingService;
 import com.resolum.alivia.iam.application.internal.outboundservices.notifications.VerificationEmailService;
 import com.resolum.alivia.iam.application.internal.outboundservices.tokens.EmailVerificationTokenService;
+import com.resolum.alivia.iam.domain.exceptions.AccountNotPendingVerificationException;
 import com.resolum.alivia.iam.domain.exceptions.EmailAlreadyRegisteredException;
 import com.resolum.alivia.iam.domain.exceptions.InvalidVerificationTokenException;
 import com.resolum.alivia.iam.domain.exceptions.RegistrationUnavailableException;
@@ -82,13 +84,17 @@ public class UserCommandServiceImpl implements UserCommandService {
         if (command == null) {
             throw new IllegalArgumentException("Sign-up command is required.");
         }
-        PasswordPolicy.validate(command.password());
+        log.debug("Handling sign-up command");
+        validatePassword(command.password());
         if (!command.termsAccepted()) {
+            log.warn("Sign-up rejected: terms were not accepted");
             throw new SignUpValidationException(
                     "acceptedTerms", SignUpValidationException.TERMS_NOT_ACCEPTED);
         }
+        validateProfileData(command);
         var email = toEmailAddress(command.email());
         if (userRepository.existsByEmail(email)) {
+            log.warn("Sign-up rejected: email is already registered");
             throw new EmailAlreadyRegisteredException();
         }
         var password = new PasswordHash(hashingService.encode(command.password()));
@@ -99,7 +105,7 @@ public class UserCommandServiceImpl implements UserCommandService {
         var savedUser = userRepository.save(user);
         createProfile(savedUser, command);
         sendVerificationEmail(savedUser, generatedToken.rawToken());
-        log.info("Registered user with id {}", savedUser.getId());
+        log.info("Registered account id {} with status {}", savedUser.getId(), savedUser.getStatus());
         return savedUser;
     }
 
@@ -114,38 +120,76 @@ public class UserCommandServiceImpl implements UserCommandService {
     @Override
     @Transactional
     public User handle(VerifyEmailCommand command) {
-        if (command == null || command.accountId() == null || command.verificationToken() == null
+        if (command == null || command.verificationToken() == null
                 || command.verificationToken().isBlank()) {
+            log.warn("Email verification rejected: token is missing");
             throw new InvalidVerificationTokenException();
         }
-        var user = userRepository.findByIdForUpdate(command.accountId())
-                .orElseThrow(InvalidVerificationTokenException::new);
+        log.debug("Handling email verification command");
+        var tokenHash = emailVerificationTokenService.hash(command.verificationToken());
+        var user = userRepository.findByEmailVerificationTokenHash(tokenHash)
+                .orElseThrow(() -> {
+                    log.warn("Email verification rejected: token not found or already used");
+                    return new InvalidVerificationTokenException();
+                });
         var pendingToken = user.getPendingEmailVerificationToken();
         if (pendingToken == null
                 || !emailVerificationTokenService.matches(command.verificationToken(), pendingToken.value())) {
+            log.warn("Email verification rejected: token does not match account id {}", user.getId());
             throw new InvalidVerificationTokenException();
         }
         if (pendingToken.isExpiredAt(LocalDateTime.now(clock))) {
+            log.warn("Email verification rejected: token expired for account id {}", user.getId());
             throw new VerificationTokenExpiredException();
         }
-        user.verifyEmail();
+        try {
+            user.verifyEmail();
+        } catch (AccountNotPendingVerificationException exception) {
+            log.warn("Email verification rejected: account id {} is not pending verification",
+                    user.getId());
+            throw exception;
+        }
         var savedUser = userRepository.save(user);
-        log.info("Verified email for user id {}", savedUser.getId());
+        log.info("Verified email for account id {}", savedUser.getId());
         return savedUser;
+    }
+
+    private void validatePassword(String password) {
+        try {
+            PasswordPolicy.validate(password);
+        } catch (SignUpValidationException exception) {
+            log.warn("Sign-up rejected: password does not meet the policy");
+            throw exception;
+        }
+    }
+
+    private void validateProfileData(SignUpCommand command) {
+        if (command.fullName() == null || command.fullName().isBlank()) {
+            log.warn("Sign-up rejected: full name is missing");
+            throw new SignUpValidationException("fullName", SignUpValidationException.REQUIRED);
+        }
+        if (command.phoneNumber() == null || command.phoneNumber().isBlank()) {
+            log.warn("Sign-up rejected: phone number is missing");
+            throw new SignUpValidationException("phoneNumber", SignUpValidationException.REQUIRED);
+        }
     }
 
     private EmailAddress toEmailAddress(String email) {
         try {
             return new EmailAddress(email);
         } catch (IllegalArgumentException exception) {
+            log.warn("Sign-up rejected: email address is invalid");
             throw new SignUpValidationException("email", SignUpValidationException.INVALID_EMAIL);
         }
     }
 
     private void createProfile(User user, SignUpCommand command) {
+        var profileData = new ProfileData(command.fullName(), command.phoneNumber());
         try {
-            externalProfilesService.createProfile(user.getId(), command.fullName(), command.phoneNumber());
+            externalProfilesService.createProfile(user.getId(), profileData);
         } catch (RuntimeException exception) {
+            log.error("Profile creation failed for account id {}: {}",
+                    user.getId(), exception.getClass().getSimpleName());
             throw new RegistrationUnavailableException(exception);
         }
     }
@@ -156,6 +200,8 @@ public class UserCommandServiceImpl implements UserCommandService {
             verificationEmailService.sendVerificationEmail(
                     user.getEmail().email(), rawToken, verificationLink);
         } catch (RuntimeException exception) {
+            log.error("Verification email delivery failed for account id {}: {}",
+                    user.getId(), exception.getClass().getSimpleName());
             throw new RegistrationUnavailableException(exception);
         }
     }

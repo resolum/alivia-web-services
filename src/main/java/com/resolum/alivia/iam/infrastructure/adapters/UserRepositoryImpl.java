@@ -11,7 +11,7 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
 /**
- * JPA implementation of the {@link UserRepository} port.
+ * Implementation of {@link UserRepository} that uses PostgreSQL for data storage.
  */
 @Repository
 public class UserRepositoryImpl implements UserRepository {
@@ -47,8 +47,8 @@ public class UserRepositoryImpl implements UserRepository {
      * {@inheritDoc}
      */
     @Override
-    public Optional<User> findByIdForUpdate(Long accountId) {
-        return persistenceRepository.findWithLockById(accountId);
+    public Optional<User> findByEmailVerificationTokenHash(String tokenHash) {
+        return persistenceRepository.findByEmailVerificationTokenHash(tokenHash);
     }
 
     /**

@@ -27,14 +27,15 @@ public interface UserRepository {
     Optional<User> findByEmail(EmailAddress email);
 
     /**
-     * Finds a user by identifier and locks the row for writing.
+     * Finds a user by the hash of its pending email verification token and locks the
+     * row for writing.
      *
-     * <p>The lock serializes concurrent email verifications for the same account.</p>
+     * <p>The lock serializes concurrent email verifications for the same token.</p>
      *
-     * @param accountId the user identifier
-     * @return the matching user, or empty when none exists
+     * @param tokenHash the SHA-256 hash of the plain-text verification token
+     * @return the matching user, or empty when no pending token matches
      */
-    Optional<User> findByIdForUpdate(Long accountId);
+    Optional<User> findByEmailVerificationTokenHash(String tokenHash);
 
     /**
      * Persists a user.

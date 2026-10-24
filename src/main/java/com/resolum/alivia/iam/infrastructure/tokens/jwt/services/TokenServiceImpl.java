@@ -62,7 +62,7 @@ public class TokenServiceImpl implements BearerTokenService {
     public GeneratedToken generate() {
         var rawToken = generateRawToken();
         var expiresAt = LocalDateTime.now(clock).plusHours(expirationHours);
-        return new GeneratedToken(rawToken, new EmailVerificationToken(hash(rawToken), expiresAt));
+        return new GeneratedToken(rawToken, new EmailVerificationToken(sha256(rawToken), expiresAt));
     }
 
     /**
@@ -80,12 +80,23 @@ public class TokenServiceImpl implements BearerTokenService {
      * {@inheritDoc}
      */
     @Override
+    public String hash(String rawToken) {
+        if (rawToken == null || rawToken.isBlank()) {
+            throw new IllegalArgumentException("Verification token is required.");
+        }
+        return sha256(rawToken);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     public boolean matches(String rawToken, String expectedHash) {
         if (rawToken == null || expectedHash == null) {
             return false;
         }
         return MessageDigest.isEqual(
-                hash(rawToken).getBytes(StandardCharsets.US_ASCII),
+                sha256(rawToken).getBytes(StandardCharsets.US_ASCII),
                 expectedHash.getBytes(StandardCharsets.US_ASCII));
     }
 
@@ -95,7 +106,7 @@ public class TokenServiceImpl implements BearerTokenService {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    private static String hash(String rawToken) {
+    private static String sha256(String rawToken) {
         try {
             var digest = MessageDigest.getInstance(HASH_ALGORITHM);
             return HexFormat.of().formatHex(digest.digest(rawToken.getBytes(StandardCharsets.UTF_8)));

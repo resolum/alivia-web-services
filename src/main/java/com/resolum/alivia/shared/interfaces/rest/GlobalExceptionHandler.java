@@ -1,36 +1,55 @@
 package com.resolum.alivia.shared.interfaces.rest;
 
-import com.resolum.alivia.subscriptions.domain.exceptions.PlanNotFound;
-import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupUnavailable;
-import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupUnauthorized;
-import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupNotFound;
+import com.resolum.alivia.iam.domain.exceptions.AccountNotPendingVerificationException;
+import com.resolum.alivia.iam.domain.exceptions.EmailAlreadyRegisteredException;
+import com.resolum.alivia.iam.domain.exceptions.InvalidVerificationTokenException;
+import com.resolum.alivia.iam.domain.exceptions.RegistrationUnavailableException;
+import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
+import com.resolum.alivia.iam.domain.exceptions.VerificationTokenExpiredException;
 import com.resolum.alivia.subscriptions.domain.exceptions.InvalidStripeWebhookSignature;
-import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
-import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
+import com.resolum.alivia.subscriptions.domain.exceptions.PaymentRejected;
+import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupNotFound;
+import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupUnauthorized;
+import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupUnavailable;
+import com.resolum.alivia.subscriptions.domain.exceptions.PlanNotFound;
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationConflict;
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
-import com.resolum.alivia.subscriptions.domain.exceptions.PaymentRejected;
+import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
+import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final String ERRORS_PROPERTY = "errors";
+    private static final String CODE_PROPERTY = "code";
+
     @ExceptionHandler(PreauthorizationConflict.class)
     public ProblemDetail handlePreauthorizationConflict(PreauthorizationConflict exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
     }
+
     @ExceptionHandler(PreauthorizationUnavailable.class)
     public ProblemDetail handlePreauthorizationUnavailable(PreauthorizationUnavailable exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
     }
+
     @ExceptionHandler(PaymentRejected.class)
     public ProblemDetail handlePaymentRejected(PaymentRejected exception) {
         var problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
         problem.setProperty("status", "PAYMENT_REJECTED");
         return problem;
     }
+
     @ExceptionHandler(StripeWebhookProcessingFailed.class)
     public ProblemDetail handleStripeWebhookProcessingFailed(StripeWebhookProcessingFailed exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage());
@@ -55,6 +74,7 @@ public class GlobalExceptionHandler {
     public ProblemDetail handlePaymentSetupUnauthorized(PaymentSetupUnauthorized exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, exception.getMessage());
     }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleInvalidArgument(IllegalArgumentException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
@@ -68,5 +88,88 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(PaymentSetupUnavailable.class)
     public ProblemDetail handlePaymentSetupUnavailable(PaymentSetupUnavailable exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
+    }
+
+    @ExceptionHandler(EmailAlreadyRegisteredException.class)
+    public ProblemDetail handleEmailAlreadyRegistered(EmailAlreadyRegisteredException exception) {
+        return problem(HttpStatus.CONFLICT, "email_already_registered",
+                "The email address is already registered.",
+                List.of(new ApiFieldError("email", "email_already_registered")));
+    }
+
+    @ExceptionHandler(SignUpValidationException.class)
+    public ProblemDetail handleSignUpValidation(SignUpValidationException exception) {
+        var errors = exception.violations().stream()
+                .map(violation -> new ApiFieldError(violation.field(), violation.code()))
+                .toList();
+        return problem(HttpStatus.BAD_REQUEST, "validation_failed",
+                "The request contains invalid fields.", errors);
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ProblemDetail handleMethodArgumentNotValid(MethodArgumentNotValidException exception) {
+        Map<String, String> errorsByField = new LinkedHashMap<>();
+        for (FieldError fieldError : exception.getBindingResult().getFieldErrors()) {
+            errorsByField.putIfAbsent(fieldError.getField(), validationCode(fieldError));
+        }
+        var errors = errorsByField.entrySet().stream()
+                .map(entry -> new ApiFieldError(entry.getKey(), entry.getValue()))
+                .toList();
+        return problem(HttpStatus.BAD_REQUEST, "validation_failed",
+                "The request contains invalid fields.", errors);
+    }
+
+    @ExceptionHandler(InvalidVerificationTokenException.class)
+    public ProblemDetail handleInvalidVerificationToken(InvalidVerificationTokenException exception) {
+        return invalidVerificationTokenProblem();
+    }
+
+    // PENDING(contract): the error table has no code for blocked or already active accounts.
+    @ExceptionHandler(AccountNotPendingVerificationException.class)
+    public ProblemDetail handleAccountNotPendingVerification(
+            AccountNotPendingVerificationException exception) {
+        return invalidVerificationTokenProblem();
+    }
+
+    @ExceptionHandler(VerificationTokenExpiredException.class)
+    public ProblemDetail handleVerificationTokenExpired(VerificationTokenExpiredException exception) {
+        return problem(HttpStatus.BAD_REQUEST, "verification_token_expired",
+                "The verification token has expired.", List.of());
+    }
+
+    @ExceptionHandler(RegistrationUnavailableException.class)
+    public ProblemDetail handleRegistrationUnavailable(RegistrationUnavailableException exception) {
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, "registration_unavailable",
+                "Registration is temporarily unavailable.", List.of());
+    }
+
+    private static ProblemDetail invalidVerificationTokenProblem() {
+        return problem(HttpStatus.BAD_REQUEST, "verification_token_invalid",
+                "The verification token is invalid or has already been used.", List.of());
+    }
+
+    private static ProblemDetail problem(HttpStatus status, String code, String detail,
+                                         List<ApiFieldError> errors) {
+        var problem = ProblemDetail.forStatusAndDetail(status, detail);
+        problem.setProperty(CODE_PROPERTY, code);
+        problem.setProperty(ERRORS_PROPERTY, errors);
+        return problem;
+    }
+
+    private static String validationCode(FieldError fieldError) {
+        String code = fieldError.getCode();
+        if ("AssertTrue".equals(code)) {
+            return "terms_not_accepted";
+        }
+        if ("Size".equals(code) || "Length".equals(code)) {
+            return "too_long";
+        }
+        if ("NotBlank".equals(code) || "NotNull".equals(code) || "NotEmpty".equals(code)) {
+            return "required";
+        }
+        return "invalid";
+    }
+
+    public record ApiFieldError(String field, String code) {
     }
 }
