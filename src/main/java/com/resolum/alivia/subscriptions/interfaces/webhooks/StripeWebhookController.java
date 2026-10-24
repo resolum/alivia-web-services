@@ -1,7 +1,7 @@
 package com.resolum.alivia.subscriptions.interfaces.webhooks;
 
 import com.resolum.alivia.subscriptions.domain.model.commands.ReceiveStripeWebhookCommand;
-import com.resolum.alivia.subscriptions.domain.services.StripeWebhookEventHandler;
+import com.resolum.alivia.subscriptions.application.internal.eventhandlers.StripeWebhookEventHandler;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @Tag(name = "Webhooks de Stripe", description = "Recepción firmada de eventos de Stripe")
 public class StripeWebhookController {
+
     private final StripeWebhookEventHandler eventHandler;
 
     public StripeWebhookController(StripeWebhookEventHandler eventHandler) {
