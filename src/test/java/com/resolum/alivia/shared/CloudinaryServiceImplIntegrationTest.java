@@ -129,12 +129,13 @@ class CloudinaryServiceImplIntegrationTest {
     @Test
     void uploadedFileIsPubliclyReachable() throws Exception {
         var result = upload("it-public.png");
+        var request = HttpRequest.newBuilder(URI.create(result.get("url"))).GET().build();
 
-        HttpResponse<Void> response = HttpClient.newHttpClient().send(
-                HttpRequest.newBuilder(URI.create(result.get("url"))).GET().build(),
-                HttpResponse.BodyHandlers.discarding());
+        try (var client = HttpClient.newHttpClient()) {
+            HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding());
 
-        assertEquals(200, response.statusCode());
+            assertEquals(200, response.statusCode());
+        }
     }
 
     @Test
@@ -151,6 +152,7 @@ class CloudinaryServiceImplIntegrationTest {
         assertTrue(result.get("publicId").startsWith("profiles/file_"));
     }
 
+    @SuppressWarnings("java:S2925") // el sufijo del servicio es currentTimeMillis(): hay que separar las subidas
     @Test
     void uploadingSameFileNameTwiceGeneratesDifferentPublicIds() throws InterruptedException {
         var first = upload("it-repetido.png");
@@ -166,15 +168,19 @@ class CloudinaryServiceImplIntegrationTest {
     @Test
     void deleteRemovesTheFileFromCloudinary() throws Exception {
         var publicId = upload("it-delete.png").get("publicId");
-        assertEquals(publicId, cloudinary.api().resource(publicId, ObjectUtils.emptyMap()).get("public_id"));
+        var api = cloudinary.api();
+        var options = ObjectUtils.emptyMap();
+        assertEquals(publicId, api.resource(publicId, options).get("public_id"));
 
         storage.delete(publicId);
 
-        assertThrows(NotFound.class, () -> cloudinary.api().resource(publicId, ObjectUtils.emptyMap()));
+        assertThrows(NotFound.class, () -> api.resource(publicId, options));
     }
 
     @Test
     void deleteOfUnknownPublicIdDoesNotThrow() {
-        assertDoesNotThrow(() -> storage.delete("profiles/no-existe-" + System.currentTimeMillis()));
+        var unknownPublicId = "profiles/no-existe-" + System.currentTimeMillis();
+
+        assertDoesNotThrow(() -> storage.delete(unknownPublicId));
     }
 }
