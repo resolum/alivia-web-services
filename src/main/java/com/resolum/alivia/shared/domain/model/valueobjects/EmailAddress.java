@@ -1,4 +1,8 @@
 package com.resolum.alivia.shared.domain.model.valueobjects;
 
-public record EmailAddress() {
+import jakarta.persistence.Embeddable;
+import jakarta.validation.constraints.Email;
+
+@Embeddable
+public record EmailAddress(@Email(regexp = "invalid email address") String email) {
 }
