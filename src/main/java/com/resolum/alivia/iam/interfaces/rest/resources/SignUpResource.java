@@ -49,6 +49,18 @@ public record SignUpResource(
                 requiredMode = Schema.RequiredMode.REQUIRED)
         @NotNull
         @AssertTrue(message = "terms_not_accepted")
-        Boolean acceptedTerms
+        Boolean acceptedTerms,
+
+        @Schema(description = "Rol de acceso del usuario (ADMINISTRATOR, CAREGIVER/FAMILIAR, TECHNICIAN/EMPLOYEE, ASSISTED_PERSON)", example = "CAREGIVER")
+        @com.fasterxml.jackson.annotation.JsonAlias("accessRole")
+        String role,
+
+        @Schema(description = "Identificador del negocio (para empleados o familiares asociados)", example = "1")
+        @com.fasterxml.jackson.annotation.JsonAlias("business")
+        Long businessId,
+
+        @Schema(description = "Identificador del familiar (para persona asistida)", example = "1")
+        @com.fasterxml.jackson.annotation.JsonAlias("familiar")
+        Long familiarId
 ) {
 }

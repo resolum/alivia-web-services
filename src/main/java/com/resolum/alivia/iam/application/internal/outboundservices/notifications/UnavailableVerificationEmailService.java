@@ -1,17 +1,22 @@
 package com.resolum.alivia.iam.application.internal.outboundservices.notifications;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 /**
- * Provisional implementation of {@link VerificationEmailService} for non-development
- * profiles.
+ * Fail-closed implementation of {@link VerificationEmailService} for production when no
+ * real provider has been configured.
  *
- * <p>PENDING(email-provider): replace with the communications context facade or an SMTP
- * adapter. Until then, registration reports that the service is unavailable.</p>
+ * <p>It is the {@code prod} default ({@code alivia.iam.email-verification.provider=unavailable})
+ * so a deployment never logs verification links. Registration reports that the service is
+ * unavailable until {@code IAM_EMAIL_PROVIDER=smtp} and the {@code spring.mail.*} settings
+ * are supplied.</p>
  */
 @Service
-@Profile("!dev")
+@Profile("prod")
+@ConditionalOnProperty(prefix = "alivia.iam.email-verification", name = "provider",
+        havingValue = "unavailable", matchIfMissing = true)
 public class UnavailableVerificationEmailService implements VerificationEmailService {
 
     /**

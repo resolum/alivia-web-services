@@ -30,9 +30,12 @@ import java.time.LocalDateTime;
 /**
  * Implementation of {@link UserCommandService}.
  *
- * <p>Each command runs in a single transaction. Registration is all-or-nothing: a
- * failure in the Profiles context or in the verification email provider rolls the
- * account back and surfaces as {@link RegistrationUnavailableException}.</p>
+ * <p>
+ * Each command runs in a single transaction. Registration is all-or-nothing: a
+ * failure in the Profiles context or in the verification email provider rolls
+ * the
+ * account back and surfaces as {@link RegistrationUnavailableException}.
+ * </p>
  */
 @Slf4j
 @Service
@@ -48,19 +51,19 @@ public class UserCommandServiceImpl implements UserCommandService {
     /**
      * Creates the command service.
      *
-     * @param userRepository               the user persistence port
-     * @param hashingService               the password hashing port
+     * @param userRepository                the user persistence port
+     * @param hashingService                the password hashing port
      * @param emailVerificationTokenService the verification token port
-     * @param externalProfilesService      the Profiles anti-corruption port
-     * @param verificationEmailService     the verification email port
-     * @param clock                        the clock used for timestamps
+     * @param externalProfilesService       the Profiles anti-corruption port
+     * @param verificationEmailService      the verification email port
+     * @param clock                         the clock used for timestamps
      */
     public UserCommandServiceImpl(UserRepository userRepository,
-                                  HashingService hashingService,
-                                  EmailVerificationTokenService emailVerificationTokenService,
-                                  ExternalProfilesService externalProfilesService,
-                                  VerificationEmailService verificationEmailService,
-                                  Clock clock) {
+            HashingService hashingService,
+            EmailVerificationTokenService emailVerificationTokenService,
+            ExternalProfilesService externalProfilesService,
+            VerificationEmailService verificationEmailService,
+            Clock clock) {
         this.userRepository = userRepository;
         this.hashingService = hashingService;
         this.emailVerificationTokenService = emailVerificationTokenService;
@@ -74,9 +77,12 @@ public class UserCommandServiceImpl implements UserCommandService {
      *
      * @param command the sign-up command
      * @return the registered user
-     * @throws SignUpValidationException        when the password or the terms acceptance is invalid
-     * @throws EmailAlreadyRegisteredException  when the email address already exists
-     * @throws RegistrationUnavailableException when the profile or the email provider fails
+     * @throws SignUpValidationException        when the password or the terms
+     *                                          acceptance is invalid
+     * @throws EmailAlreadyRegisteredException  when the email address already
+     *                                          exists
+     * @throws RegistrationUnavailableException when the profile or the email
+     *                                          provider fails
      */
     @Override
     @Transactional
@@ -99,13 +105,14 @@ public class UserCommandServiceImpl implements UserCommandService {
         }
         var password = new PasswordHash(hashingService.encode(command.password()));
         var generatedToken = emailVerificationTokenService.generate();
-        // PENDING(confirm): iam.md has no distinct role for the primary family member.
-        var user = new User(email, password, AccessRole.CAREGIVER, LocalDateTime.now(clock));
+        AccessRole role = command.role() != null ? command.role() : AccessRole.CAREGIVER;
+        var user = new User(email, password, role, LocalDateTime.now(clock));
         user.requestEmailVerification(generatedToken.token());
         var savedUser = userRepository.save(user);
         createProfile(savedUser, command);
         sendVerificationEmail(savedUser, generatedToken.rawToken());
-        log.info("Registered account id {} with status {}", savedUser.getId(), savedUser.getStatus());
+        log.info("Registered account id {} with role {} and status {}",
+                savedUser.getId(), savedUser.getAccessRole(), savedUser.getStatus());
         return savedUser;
     }
 
@@ -114,8 +121,9 @@ public class UserCommandServiceImpl implements UserCommandService {
      *
      * @param command the verify-email command
      * @return the verified user
-     * @throws InvalidVerificationTokenException  when the account or the pending token does not match
-     * @throws VerificationTokenExpiredException  when the pending token has expired
+     * @throws InvalidVerificationTokenException when the account or the pending
+     *                                           token does not match
+     * @throws VerificationTokenExpiredException when the pending token has expired
      */
     @Override
     @Transactional
@@ -184,12 +192,17 @@ public class UserCommandServiceImpl implements UserCommandService {
     }
 
     private void createProfile(User user, SignUpCommand command) {
-        var profileData = new ProfileData(command.fullName(), command.phoneNumber());
+        var profileData = new ProfileData(
+                command.fullName(),
+                command.phoneNumber(),
+                command.businessId(),
+                command.familiarId());
         try {
             externalProfilesService.createProfile(user.getId(), profileData);
         } catch (RuntimeException exception) {
             log.error("Profile creation failed for account id {}: {}",
                     user.getId(), exception.getClass().getSimpleName());
+            log.debug("Profile creation failure details", exception);
             throw new RegistrationUnavailableException(exception);
         }
     }
@@ -202,6 +215,7 @@ public class UserCommandServiceImpl implements UserCommandService {
         } catch (RuntimeException exception) {
             log.error("Verification email delivery failed for account id {}: {}",
                     user.getId(), exception.getClass().getSimpleName());
+            log.debug("Verification email delivery failure details", exception);
             throw new RegistrationUnavailableException(exception);
         }
     }

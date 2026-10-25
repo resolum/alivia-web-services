@@ -102,6 +102,7 @@ package "Model" #FFFDE7 {
       CAREGIVER
       TECHNICIAN
       SUBSCRIPTION_MANAGER
+      ASSISTED_PERSON
     }
 
     enum UserStatus {
@@ -121,6 +122,12 @@ package "Model" #FFFDE7 {
     record SignUpCommand {
       email: String
       password: String
+      fullName: String
+      phoneNumber: String
+      termsAccepted: Boolean
+      role: AccessRole
+      businessId: Long
+      familiarId: Long
     }
 
     record VerifyEmailCommand {
@@ -214,6 +221,18 @@ package "Services" #FCE4EC {
     + handle(query: GetUserByIdQuery): Optional<User>
     + handle(query: GetUserByEmailQuery): Optional<User>
     + handle(query: GetAllUsersQuery): List<User>
+  }
+}
+
+package "Interfaces" #E1BEE7 {
+  package "ACL" #D1C4E9 {
+    interface IamContextFacade {
+      + existsUserByEmail(email: String): boolean
+      + signUpUser(email: String, password: String, fullName: String, phoneNumber: String, role: String, businessId: Long, familiarId: Long): Long
+      + registerUser(email: String, password: String, fullName: String, phoneNumber: String, role: String): Long
+      + registerCompanyUser(email: String, password: String, fullName: String, phoneNumber: String, role: String, businessId: Long): Long
+      + registerAssistedPerson(email: String, password: String, fullName: String, phoneNumber: String, familiarId: Long): Long
+    }
   }
 }
 }

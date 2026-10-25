@@ -50,242 +50,275 @@ import static org.mockito.Mockito.when;
 
 class UserCommandServiceTest {
 
-    private static final Clock CLOCK =
-            Clock.fixed(Instant.parse("2026-10-24T12:00:00Z"), ZoneOffset.UTC);
-    private static final LocalDateTime NOW = LocalDateTime.now(CLOCK);
-    private static final String EMAIL = "maria.lopez@example.com";
-    private static final String PASSWORD = "Strong1!";
-    private static final String RAW_TOKEN = "raw-token";
-    private static final String TOKEN_HASH = "token-hash";
-    private static final String VERIFICATION_LINK =
-            "http://localhost:5173/verify-email?token=" + RAW_TOKEN;
+        private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-10-24T12:00:00Z"), ZoneOffset.UTC);
+        private static final LocalDateTime NOW = LocalDateTime.now(CLOCK);
+        private static final String EMAIL = "maria.lopez@example.com";
+        private static final String PASSWORD = "Strong1!";
+        private static final String RAW_TOKEN = "raw-token";
+        private static final String TOKEN_HASH = "token-hash";
+        private static final String VERIFICATION_LINK = "http://localhost:5173/verify-email?token=" + RAW_TOKEN;
 
-    private final UserRepository userRepository = mock(UserRepository.class);
-    private final HashingService hashingService = mock(HashingService.class);
-    private final EmailVerificationTokenService tokenService =
-            mock(EmailVerificationTokenService.class);
-    private final ExternalProfilesService profilesService = mock(ExternalProfilesService.class);
-    private final VerificationEmailService emailService = mock(VerificationEmailService.class);
-    private final UserCommandServiceImpl service = new UserCommandServiceImpl(
-            userRepository, hashingService, tokenService, profilesService, emailService, CLOCK);
+        private final UserRepository userRepository = mock(UserRepository.class);
+        private final HashingService hashingService = mock(HashingService.class);
+        private final EmailVerificationTokenService tokenService = mock(EmailVerificationTokenService.class);
+        private final ExternalProfilesService profilesService = mock(ExternalProfilesService.class);
+        private final VerificationEmailService emailService = mock(VerificationEmailService.class);
+        private final UserCommandServiceImpl service = new UserCommandServiceImpl(
+                        userRepository, hashingService, tokenService, profilesService, emailService, CLOCK);
 
-    @Test
-    void registersAccountAndSendsVerificationEmail() {
-        stubSuccessfulRegistration();
+        @Test
+        void registersAccountAndSendsVerificationEmail() {
+                stubSuccessfulRegistration();
 
-        var result = service.handle(signUpCommand());
+                var result = service.handle(signUpCommand());
 
-        assertEquals(Long.valueOf(42L), result.getId());
-        assertEquals(EMAIL, result.getEmail().email());
-        assertEquals("bcrypt-hash", result.getPassword().value());
-        assertEquals(AccessRole.CAREGIVER, result.getAccessRole());
-        assertEquals(UserStatus.PENDING_VERIFICATION, result.getStatus());
-        assertFalse(result.getEmailVerified());
-        assertEquals(Integer.valueOf(0), result.getFailedAccessAttempts());
-        assertNotNull(result.getTermsAcceptedAt());
-        assertNotNull(result.getPendingEmailVerificationToken());
-        assertEquals(TOKEN_HASH, result.getPendingEmailVerificationToken().value());
-        assertEquals(NOW.plusHours(24), result.getPendingEmailVerificationToken().expiresAt());
-        verify(hashingService).encode(PASSWORD);
-        verify(profilesService).createProfile(42L, new ProfileData("Maria Lopez", "+51987654321"));
-        verify(emailService).sendVerificationEmail(EMAIL, RAW_TOKEN, VERIFICATION_LINK);
-        verify(userRepository).save(any(User.class));
-    }
+                assertEquals(Long.valueOf(42L), result.getId());
+                assertEquals(EMAIL, result.getEmail().email());
+                assertEquals("bcrypt-hash", result.getPassword().value());
+                assertEquals(AccessRole.CAREGIVER, result.getAccessRole());
+                assertEquals(UserStatus.PENDING_VERIFICATION, result.getStatus());
+                assertFalse(result.getEmailVerified());
+                assertEquals(Integer.valueOf(0), result.getFailedAccessAttempts());
+                assertNotNull(result.getTermsAcceptedAt());
+                assertNotNull(result.getPendingEmailVerificationToken());
+                assertEquals(TOKEN_HASH, result.getPendingEmailVerificationToken().value());
+                assertEquals(NOW.plusHours(24), result.getPendingEmailVerificationToken().expiresAt());
+                verify(hashingService).encode(PASSWORD);
+                verify(profilesService).createProfile(42L, new ProfileData("Maria Lopez", "+51987654321"));
+                verify(emailService).sendVerificationEmail(EMAIL, RAW_TOKEN, VERIFICATION_LINK);
+                verify(userRepository).save(any(User.class));
+        }
 
-    @Test
-    void rejectsEmailAlreadyRegistered() {
-        when(userRepository.existsByEmail(any(EmailAddress.class))).thenReturn(true);
+        @Test
+        void rejectsEmailAlreadyRegistered() {
+                when(userRepository.existsByEmail(any(EmailAddress.class))).thenReturn(true);
 
-        assertThrows(EmailAlreadyRegisteredException.class, () -> service.handle(signUpCommand()));
+                assertThrows(EmailAlreadyRegisteredException.class, () -> service.handle(signUpCommand()));
 
-        verify(userRepository, never()).save(any(User.class));
-        verifyNoInteractions(hashingService, tokenService, profilesService, emailService);
-    }
+                verify(userRepository, never()).save(any(User.class));
+                verifyNoInteractions(hashingService, tokenService, profilesService, emailService);
+        }
 
-    @Test
-    void rejectsWeakPassword() {
-        var command = new SignUpCommand(EMAIL, "short", "Maria Lopez", "+51987654321", true);
+        @Test
+        void rejectsWeakPassword() {
+                var command = new SignUpCommand(EMAIL, "short", "Maria Lopez", "+51987654321", true);
 
-        var exception = assertThrows(SignUpValidationException.class, () -> service.handle(command));
+                var exception = assertThrows(SignUpValidationException.class, () -> service.handle(command));
 
-        assertEquals("password", exception.violations().getFirst().field());
-        assertEquals("password_weak", exception.violations().getFirst().code());
-        verifyNoInteractions(userRepository, hashingService, tokenService,
-                profilesService, emailService);
-    }
+                assertEquals("password", exception.violations().getFirst().field());
+                assertEquals("password_weak", exception.violations().getFirst().code());
+                verifyNoInteractions(userRepository, hashingService, tokenService,
+                                profilesService, emailService);
+        }
 
-    @Test
-    void rejectsUnacceptedTerms() {
-        var command = new SignUpCommand(EMAIL, PASSWORD, "Maria Lopez", "+51987654321", false);
+        @Test
+        void rejectsUnacceptedTerms() {
+                var command = new SignUpCommand(EMAIL, PASSWORD, "Maria Lopez", "+51987654321", false);
 
-        var exception = assertThrows(SignUpValidationException.class, () -> service.handle(command));
+                var exception = assertThrows(SignUpValidationException.class, () -> service.handle(command));
 
-        assertEquals("acceptedTerms", exception.violations().getFirst().field());
-        assertEquals("terms_not_accepted", exception.violations().getFirst().code());
-        verifyNoInteractions(userRepository, hashingService, tokenService,
-                profilesService, emailService);
-    }
+                assertEquals("acceptedTerms", exception.violations().getFirst().field());
+                assertEquals("terms_not_accepted", exception.violations().getFirst().code());
+                verifyNoInteractions(userRepository, hashingService, tokenService,
+                                profilesService, emailService);
+        }
 
-    @Test
-    void rejectsMissingProfileData() {
-        var missingFullName = new SignUpCommand(EMAIL, PASSWORD, " ", "+51987654321", true);
-        var missingPhone = new SignUpCommand(EMAIL, PASSWORD, "Maria Lopez", "", true);
+        @Test
+        void rejectsMissingProfileData() {
+                var missingFullName = new SignUpCommand(EMAIL, PASSWORD, " ", "+51987654321", true);
+                var missingPhone = new SignUpCommand(EMAIL, PASSWORD, "Maria Lopez", "", true);
 
-        var fullNameError = assertThrows(SignUpValidationException.class,
-                () -> service.handle(missingFullName));
-        var phoneError = assertThrows(SignUpValidationException.class,
-                () -> service.handle(missingPhone));
+                var fullNameError = assertThrows(SignUpValidationException.class,
+                                () -> service.handle(missingFullName));
+                var phoneError = assertThrows(SignUpValidationException.class,
+                                () -> service.handle(missingPhone));
 
-        assertEquals("fullName", fullNameError.violations().getFirst().field());
-        assertEquals("required", fullNameError.violations().getFirst().code());
-        assertEquals("phoneNumber", phoneError.violations().getFirst().field());
-        assertEquals("required", phoneError.violations().getFirst().code());
-        verifyNoInteractions(userRepository, hashingService, tokenService,
-                profilesService, emailService);
-    }
+                assertEquals("fullName", fullNameError.violations().getFirst().field());
+                assertEquals("required", fullNameError.violations().getFirst().code());
+                assertEquals("phoneNumber", phoneError.violations().getFirst().field());
+                assertEquals("required", phoneError.violations().getFirst().code());
+                verifyNoInteractions(userRepository, hashingService, tokenService,
+                                profilesService, emailService);
+        }
 
-    @Test
-    void registrationFailsWhenEmailProviderFails() {
-        stubSuccessfulRegistration();
-        doThrow(new IllegalStateException("mail provider down"))
-                .when(emailService).sendVerificationEmail(anyString(), anyString(), anyString());
+        @Test
+        void registrationFailsWhenEmailProviderFails() {
+                stubSuccessfulRegistration();
+                doThrow(new IllegalStateException("mail provider down"))
+                                .when(emailService).sendVerificationEmail(anyString(), anyString(), anyString());
 
-        var exception = assertThrows(RegistrationUnavailableException.class,
-                () -> service.handle(signUpCommand()));
+                var exception = assertThrows(RegistrationUnavailableException.class,
+                                () -> service.handle(signUpCommand()));
 
-        assertInstanceOf(IllegalStateException.class, exception.getCause());
-        verify(userRepository).save(any(User.class));
-    }
+                assertInstanceOf(IllegalStateException.class, exception.getCause());
+                verify(userRepository).save(any(User.class));
+        }
 
-    @Test
-    void registrationFailsWhenProfilesServiceFails() {
-        stubSuccessfulRegistration();
-        doThrow(new IllegalStateException("profiles down"))
-                .when(profilesService).createProfile(anyLong(), any(ProfileData.class));
+        @Test
+        void registrationFailsWhenProfilesServiceFails() {
+                stubSuccessfulRegistration();
+                doThrow(new IllegalStateException("profiles down"))
+                                .when(profilesService).createProfile(anyLong(), any(ProfileData.class));
 
-        var exception = assertThrows(RegistrationUnavailableException.class,
-                () -> service.handle(signUpCommand()));
+                var exception = assertThrows(RegistrationUnavailableException.class,
+                                () -> service.handle(signUpCommand()));
 
-        assertInstanceOf(IllegalStateException.class, exception.getCause());
-        verify(userRepository).save(any(User.class));
-        verifyNoInteractions(emailService);
-    }
+                assertInstanceOf(IllegalStateException.class, exception.getCause());
+                verify(userRepository).save(any(User.class));
+                verifyNoInteractions(emailService);
+        }
 
-    @Test
-    void verifiesEmailAndConsumesToken() {
-        var user = pendingUser(NOW.plusHours(1));
-        when(tokenService.hash(RAW_TOKEN)).thenReturn(TOKEN_HASH);
-        when(userRepository.findByEmailVerificationTokenHash(TOKEN_HASH))
-                .thenReturn(Optional.of(user));
-        when(tokenService.matches(RAW_TOKEN, TOKEN_HASH)).thenReturn(true);
-        when(userRepository.save(user)).thenAnswer(invocation -> {
-            assignId(invocation.getArgument(0), 42L);
-            return invocation.getArgument(0);
-        });
+        @Test
+        void verifiesEmailAndConsumesToken() {
+                var user = pendingUser(NOW.plusHours(1));
+                when(tokenService.hash(RAW_TOKEN)).thenReturn(TOKEN_HASH);
+                when(userRepository.findByEmailVerificationTokenHash(TOKEN_HASH))
+                                .thenReturn(Optional.of(user));
+                when(tokenService.matches(RAW_TOKEN, TOKEN_HASH)).thenReturn(true);
+                when(userRepository.save(user)).thenAnswer(invocation -> {
+                        assignId(invocation.getArgument(0), 42L);
+                        return invocation.getArgument(0);
+                });
 
-        var result = service.handle(new VerifyEmailCommand(RAW_TOKEN));
+                var result = service.handle(new VerifyEmailCommand(RAW_TOKEN));
 
-        assertEquals(UserStatus.ACTIVE, result.getStatus());
-        assertTrue(result.getEmailVerified());
-        assertNull(result.getPendingEmailVerificationToken());
-        verify(userRepository).save(user);
-    }
+                assertEquals(UserStatus.ACTIVE, result.getStatus());
+                assertTrue(result.getEmailVerified());
+                assertNull(result.getPendingEmailVerificationToken());
+                verify(userRepository).save(user);
+        }
 
-    @Test
-    void rejectsIncorrectToken() {
-        when(tokenService.hash("invented")).thenReturn("unknown-hash");
-        when(userRepository.findByEmailVerificationTokenHash("unknown-hash"))
-                .thenReturn(Optional.empty());
+        @Test
+        void rejectsIncorrectToken() {
+                when(tokenService.hash("invented")).thenReturn("unknown-hash");
+                when(userRepository.findByEmailVerificationTokenHash("unknown-hash"))
+                                .thenReturn(Optional.empty());
 
-        assertThrows(InvalidVerificationTokenException.class,
-                () -> service.handle(new VerifyEmailCommand("invented")));
+                assertThrows(InvalidVerificationTokenException.class,
+                                () -> service.handle(new VerifyEmailCommand("invented")));
 
-        verify(userRepository, never()).save(any(User.class));
-    }
+                verify(userRepository, never()).save(any(User.class));
+        }
 
-    @Test
-    void rejectsBlankTokenWithoutQueryingPersistence() {
-        assertThrows(InvalidVerificationTokenException.class,
-                () -> service.handle(new VerifyEmailCommand("   ")));
+        @Test
+        void rejectsBlankTokenWithoutQueryingPersistence() {
+                assertThrows(InvalidVerificationTokenException.class,
+                                () -> service.handle(new VerifyEmailCommand("   ")));
 
-        verifyNoInteractions(userRepository, tokenService);
-    }
+                verifyNoInteractions(userRepository, tokenService);
+        }
 
-    @Test
-    void rejectsExpiredTokenAndKeepsAccountPending() {
-        var user = pendingUser(NOW.minusSeconds(1));
-        when(tokenService.hash(RAW_TOKEN)).thenReturn(TOKEN_HASH);
-        when(userRepository.findByEmailVerificationTokenHash(TOKEN_HASH))
-                .thenReturn(Optional.of(user));
-        when(tokenService.matches(RAW_TOKEN, TOKEN_HASH)).thenReturn(true);
+        @Test
+        void rejectsExpiredTokenAndKeepsAccountPending() {
+                var user = pendingUser(NOW.minusSeconds(1));
+                when(tokenService.hash(RAW_TOKEN)).thenReturn(TOKEN_HASH);
+                when(userRepository.findByEmailVerificationTokenHash(TOKEN_HASH))
+                                .thenReturn(Optional.of(user));
+                when(tokenService.matches(RAW_TOKEN, TOKEN_HASH)).thenReturn(true);
 
-        assertThrows(VerificationTokenExpiredException.class,
-                () -> service.handle(new VerifyEmailCommand(RAW_TOKEN)));
+                assertThrows(VerificationTokenExpiredException.class,
+                                () -> service.handle(new VerifyEmailCommand(RAW_TOKEN)));
 
-        assertEquals(UserStatus.PENDING_VERIFICATION, user.getStatus());
-        assertNotNull(user.getPendingEmailVerificationToken());
-        verify(userRepository, never()).save(any(User.class));
-    }
+                assertEquals(UserStatus.PENDING_VERIFICATION, user.getStatus());
+                assertNotNull(user.getPendingEmailVerificationToken());
+                verify(userRepository, never()).save(any(User.class));
+        }
 
-    @Test
-    void rejectsReusedToken() {
-        var user = pendingUser(NOW.plusHours(1));
-        when(tokenService.hash(RAW_TOKEN)).thenReturn(TOKEN_HASH);
-        when(userRepository.findByEmailVerificationTokenHash(TOKEN_HASH))
-                .thenReturn(Optional.of(user), Optional.empty());
-        when(tokenService.matches(RAW_TOKEN, TOKEN_HASH)).thenReturn(true);
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        @Test
+        void rejectsReusedToken() {
+                var user = pendingUser(NOW.plusHours(1));
+                when(tokenService.hash(RAW_TOKEN)).thenReturn(TOKEN_HASH);
+                when(userRepository.findByEmailVerificationTokenHash(TOKEN_HASH))
+                                .thenReturn(Optional.of(user), Optional.empty());
+                when(tokenService.matches(RAW_TOKEN, TOKEN_HASH)).thenReturn(true);
+                when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        service.handle(new VerifyEmailCommand(RAW_TOKEN));
+                service.handle(new VerifyEmailCommand(RAW_TOKEN));
 
-        assertThrows(InvalidVerificationTokenException.class,
-                () -> service.handle(new VerifyEmailCommand(RAW_TOKEN)));
-        assertEquals(UserStatus.ACTIVE, user.getStatus());
-        verify(userRepository, times(1)).save(any(User.class));
-    }
+                assertThrows(InvalidVerificationTokenException.class,
+                                () -> service.handle(new VerifyEmailCommand(RAW_TOKEN)));
+                assertEquals(UserStatus.ACTIVE, user.getStatus());
+                verify(userRepository, times(1)).save(any(User.class));
+        }
 
-    @Test
-    void rejectsVerificationForBlockedAccountWithPendingToken() {
-        var user = pendingUser(NOW.plusHours(1));
-        ReflectionTestUtils.setField(user, "status", UserStatus.BLOCKED);
-        when(tokenService.hash(RAW_TOKEN)).thenReturn(TOKEN_HASH);
-        when(userRepository.findByEmailVerificationTokenHash(TOKEN_HASH))
-                .thenReturn(Optional.of(user));
-        when(tokenService.matches(RAW_TOKEN, TOKEN_HASH)).thenReturn(true);
+        @Test
+        void rejectsVerificationForBlockedAccountWithPendingToken() {
+                var user = pendingUser(NOW.plusHours(1));
+                ReflectionTestUtils.setField(user, "status", UserStatus.BLOCKED);
+                when(tokenService.hash(RAW_TOKEN)).thenReturn(TOKEN_HASH);
+                when(userRepository.findByEmailVerificationTokenHash(TOKEN_HASH))
+                                .thenReturn(Optional.of(user));
+                when(tokenService.matches(RAW_TOKEN, TOKEN_HASH)).thenReturn(true);
 
-        assertThrows(AccountNotPendingVerificationException.class,
-                () -> service.handle(new VerifyEmailCommand(RAW_TOKEN)));
+                assertThrows(AccountNotPendingVerificationException.class,
+                                () -> service.handle(new VerifyEmailCommand(RAW_TOKEN)));
 
-        assertEquals(UserStatus.BLOCKED, user.getStatus());
-        assertNotNull(user.getPendingEmailVerificationToken());
-        verify(userRepository, never()).save(any(User.class));
-    }
+                assertEquals(UserStatus.BLOCKED, user.getStatus());
+                assertNotNull(user.getPendingEmailVerificationToken());
+                verify(userRepository, never()).save(any(User.class));
+        }
 
-    private void stubSuccessfulRegistration() {
-        when(userRepository.existsByEmail(any(EmailAddress.class))).thenReturn(false);
-        when(hashingService.encode(PASSWORD)).thenReturn("bcrypt-hash");
-        when(tokenService.generate()).thenReturn(new EmailVerificationTokenService.GeneratedToken(
-                RAW_TOKEN, new EmailVerificationToken(TOKEN_HASH, NOW.plusHours(24))));
-        when(tokenService.buildVerificationLink(RAW_TOKEN)).thenReturn(VERIFICATION_LINK);
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
-            assignId(invocation.getArgument(0), 42L);
-            return invocation.getArgument(0);
-        });
-    }
+        @Test
+        void registersAdministratorWithSignUpCommand() {
+                stubSuccessfulRegistration();
 
-    private static SignUpCommand signUpCommand() {
-        return new SignUpCommand("  Maria.Lopez@Example.COM ", PASSWORD,
-                "Maria Lopez", "+51987654321", true);
-    }
+                var cmd = new SignUpCommand(EMAIL, PASSWORD, "Admin User", "+51987654321", true,
+                                AccessRole.ADMINISTRATOR, null, null);
+                var result = service.handle(cmd);
 
-    private static User pendingUser(LocalDateTime expiresAt) {
-        var user = new User(new EmailAddress(EMAIL), new PasswordHash("bcrypt-hash"),
-                AccessRole.CAREGIVER, NOW);
-        user.requestEmailVerification(new EmailVerificationToken(TOKEN_HASH, expiresAt));
-        return user;
-    }
+                assertEquals(AccessRole.ADMINISTRATOR, result.getAccessRole());
+                verify(profilesService).createProfile(42L, new ProfileData("Admin User", "+51987654321", null, null));
+        }
 
-    private static void assignId(User user, long id) {
-        ReflectionTestUtils.setField(user, "id", id);
-    }
+        @Test
+        void registersEmployeeWithBusinessId() {
+                stubSuccessfulRegistration();
+
+                var cmd = new SignUpCommand(EMAIL, PASSWORD, "Emp User", "+51987654321", true,
+                                AccessRole.TECHNICIAN, 100L, null);
+                var result = service.handle(cmd);
+
+                assertEquals(AccessRole.TECHNICIAN, result.getAccessRole());
+                verify(profilesService).createProfile(42L, new ProfileData("Emp User", "+51987654321", 100L, null));
+        }
+
+        @Test
+        void registersAssistedPersonWithFamiliarId() {
+                stubSuccessfulRegistration();
+
+                var cmd = new SignUpCommand(EMAIL, PASSWORD, "Assisted", "+51987654321", true,
+                                AccessRole.ASSISTED_PERSON, null, 200L);
+                var result = service.handle(cmd);
+
+                assertEquals(AccessRole.ASSISTED_PERSON, result.getAccessRole());
+                verify(profilesService).createProfile(42L, new ProfileData("Assisted", "+51987654321", null, 200L));
+        }
+
+        private void stubSuccessfulRegistration() {
+                when(userRepository.existsByEmail(any(EmailAddress.class))).thenReturn(false);
+                when(hashingService.encode(PASSWORD)).thenReturn("bcrypt-hash");
+                when(tokenService.generate()).thenReturn(new EmailVerificationTokenService.GeneratedToken(
+                                RAW_TOKEN, new EmailVerificationToken(TOKEN_HASH, NOW.plusHours(24))));
+                when(tokenService.buildVerificationLink(RAW_TOKEN)).thenReturn(VERIFICATION_LINK);
+                when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+                        assignId(invocation.getArgument(0), 42L);
+                        return invocation.getArgument(0);
+                });
+        }
+
+        private static SignUpCommand signUpCommand() {
+                return new SignUpCommand("  Maria.Lopez@Example.COM ", PASSWORD,
+                                "Maria Lopez", "+51987654321", true);
+        }
+
+        private static User pendingUser(LocalDateTime expiresAt) {
+                var user = new User(new EmailAddress(EMAIL), new PasswordHash("bcrypt-hash"),
+                                AccessRole.CAREGIVER, NOW);
+                user.requestEmailVerification(new EmailVerificationToken(TOKEN_HASH, expiresAt));
+                return user;
+        }
+
+        private static void assignId(User user, long id) {
+                ReflectionTestUtils.setField(user, "id", id);
+        }
 }

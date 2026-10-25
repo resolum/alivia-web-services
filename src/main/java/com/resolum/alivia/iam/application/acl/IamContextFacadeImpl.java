@@ -1,6 +1,9 @@
 package com.resolum.alivia.iam.application.acl;
 
+import com.resolum.alivia.iam.domain.model.commands.SignUpCommand;
+import com.resolum.alivia.iam.domain.model.valueobjects.AccessRole;
 import com.resolum.alivia.iam.domain.repositories.UserRepository;
+import com.resolum.alivia.iam.domain.services.UserCommandService;
 import com.resolum.alivia.iam.interfaces.acl.IamContextFacade;
 import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import lombok.extern.slf4j.Slf4j;
@@ -10,22 +13,25 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Implementation of the IAM anti-corruption layer facade.
  *
- * <p>Delegates to the domain repository and returns primitive types only, so external
- * bounded contexts do not depend on IAM internals.</p>
+ * <p>Delegates to domain services and returns primitive types only, so external
+ * bounded contexts (e.g. Company/Business, Nursing, Profiles) do not depend on IAM internals.</p>
  */
 @Slf4j
 @Service
 public class IamContextFacadeImpl implements IamContextFacade {
 
     private final UserRepository userRepository;
+    private final UserCommandService userCommandService;
 
     /**
      * Creates the facade.
      *
-     * @param userRepository the user persistence port
+     * @param userRepository     the user persistence port
+     * @param userCommandService the user command service
      */
-    public IamContextFacadeImpl(UserRepository userRepository) {
+    public IamContextFacadeImpl(UserRepository userRepository, UserCommandService userCommandService) {
         this.userRepository = userRepository;
+        this.userCommandService = userCommandService;
     }
 
     /**
@@ -47,5 +53,79 @@ public class IamContextFacadeImpl implements IamContextFacade {
             log.warn("User existence check rejected: email address is invalid");
             return false;
         }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Transactional
+    public Long signUpUser(String email, String password, String fullName, String phoneNumber,
+                           String roleStr, Long businessId, Long familiarId) {
+        log.info("Signing up user via IAM ACL facade with role: {}", roleStr);
+        AccessRole role = parseRole(roleStr);
+        var command = new SignUpCommand(
+                email,
+                password,
+                fullName,
+                phoneNumber,
+                true,
+                role,
+                businessId,
+                familiarId
+        );
+        var user = userCommandService.handle(command);
+        log.info("User signed up via IAM ACL facade with account ID: {}", user.getId());
+        return user.getId();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Transactional
+    public Long registerUser(String email, String password, String fullName, String phoneNumber, String role) {
+        return signUpUser(email, password, fullName, phoneNumber, role, null, null);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Transactional
+    public Long registerCompanyUser(String email, String password, String fullName, String phoneNumber,
+                                   String role, Long businessId) {
+        return signUpUser(email, password, fullName, phoneNumber, role, businessId, null);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Transactional
+    public Long registerAssistedPerson(String email, String password, String fullName, String phoneNumber,
+                                      Long familiarId) {
+        return signUpUser(email, password, fullName, phoneNumber, "ASSISTED_PERSON", null, familiarId);
+    }
+
+    private static AccessRole parseRole(String roleStr) {
+        if (roleStr == null || roleStr.isBlank()) {
+            return AccessRole.CAREGIVER;
+        }
+        String normalized = roleStr.trim().toUpperCase();
+        return switch (normalized) {
+            case "ADMIN", "ADMINISTRATOR", "ADMINISTRADOR" -> AccessRole.ADMINISTRATOR;
+            case "CAREGIVER", "CUIDADOR", "FAMILIAR", "FAMILY_MEMBER" -> AccessRole.CAREGIVER;
+            case "EMPLOYEE", "EMPLEADO", "TECHNICIAN", "TECNICO" -> AccessRole.TECHNICIAN;
+            case "SUBSCRIPTION_MANAGER", "GESTOR_SUSCRIPCIONES" -> AccessRole.SUBSCRIPTION_MANAGER;
+            case "ASSISTED_PERSON", "PERSONA_ASISTIDA", "PACIENTE" -> AccessRole.ASSISTED_PERSON;
+            default -> {
+                try {
+                    yield AccessRole.valueOf(normalized);
+                } catch (IllegalArgumentException e) {
+                    yield AccessRole.CAREGIVER;
+                }
+            }
+        };
     }
 }
