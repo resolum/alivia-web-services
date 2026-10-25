@@ -6,6 +6,7 @@ import com.resolum.alivia.communications.interfaces.acl.CommunicationsContextFac
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -16,6 +17,12 @@ import java.util.Map;
  */
 @Service
 public class CommunicationsContextFacadeImpl implements CommunicationsContextFacade {
+
+    private static final Map<String, String> SUBJECTS = Map.of(
+            "verify-email", "Verifica tu cuenta de Alivia",
+            "reset-password", "Restablece tu contraseña de Alivia",
+            "set-password", "Crea tu contraseña de Alivia",
+            "welcome", "Te damos la bienvenida a Alivia");
 
     private final EmailTemplateRenderer templateRenderer;
     private final EmailSender emailSender;
@@ -36,41 +43,15 @@ public class CommunicationsContextFacadeImpl implements CommunicationsContextFac
      * {@inheritDoc}
      */
     @Override
-    public void sendVerificationEmail(String email, String verificationLink) {
-        send(email, "Verifica tu cuenta de Alivia", "verify-email",
-                "link", requireText(verificationLink, "Verification link"));
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void sendPasswordResetEmail(String email, String resetLink) {
-        send(email, "Restablece tu contraseña de Alivia", "reset-password",
-                "link", requireText(resetLink, "Reset link"));
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void sendSetPasswordEmail(String email, String setPasswordLink) {
-        send(email, "Crea tu contraseña de Alivia", "set-password",
-                "link", requireText(setPasswordLink, "Set password link"));
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void sendWelcomeEmail(String email, String fullName) {
-        send(email, "Te damos la bienvenida a Alivia", "welcome",
-                "name", requireText(fullName, "Full name"));
-    }
-
-    private void send(String email, String subject, String template, String variable, String value) {
+    public void sendEmail(String email, String template, Map<String, String> variables) {
         var recipient = requireText(email, "Recipient email");
-        var html = templateRenderer.renderHtml(template, Map.of(variable, value));
+        var subject = SUBJECTS.get(requireText(template, "Template"));
+        if (subject == null) {
+            throw new IllegalArgumentException("Unknown email template: " + template);
+        }
+        var values = new HashMap<String, String>();
+        variables.forEach((name, value) -> values.put(name, requireText(value, name)));
+        var html = templateRenderer.renderHtml(template.trim(), values);
         emailSender.send(recipient, subject, templateRenderer.toPlainText(html), html);
     }
 

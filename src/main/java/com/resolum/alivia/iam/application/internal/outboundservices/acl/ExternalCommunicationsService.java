@@ -3,6 +3,8 @@ package com.resolum.alivia.iam.application.internal.outboundservices.acl;
 import com.resolum.alivia.communications.interfaces.acl.CommunicationsContextFacade;
 import org.springframework.stereotype.Service;
 
+import java.util.Map;
+
 /**
  * Outbound service that asks the Communications bounded context to notify IAM users.
  *
@@ -31,6 +33,6 @@ public class ExternalCommunicationsService {
      * @throws IllegalStateException when the email cannot be delivered
      */
     public void sendVerificationEmail(String email, String verificationLink) {
-        communicationsContextFacade.sendVerificationEmail(email, verificationLink);
+        communicationsContextFacade.sendEmail(email, "verify-email", Map.of("link", verificationLink));
     }
 }

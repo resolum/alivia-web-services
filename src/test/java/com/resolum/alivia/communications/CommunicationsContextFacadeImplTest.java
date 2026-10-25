@@ -27,7 +27,7 @@ class CommunicationsContextFacadeImplTest {
 
     @Test
     void sendsTheVerificationEmailWithTheLinkInBothBodies() {
-        facade.sendVerificationEmail(EMAIL, LINK);
+        facade.sendEmail(EMAIL, "verify-email", Map.of("link", LINK));
 
         var bodies = sentBodies("Verifica tu cuenta de Alivia");
         assertTrue(bodies.get("text").contains(LINK));
@@ -37,7 +37,7 @@ class CommunicationsContextFacadeImplTest {
 
     @Test
     void derivesThePlainTextFromTheHtmlKeepingLineBreaks() {
-        facade.sendVerificationEmail(EMAIL, LINK);
+        facade.sendEmail(EMAIL, "verify-email", Map.of("link", LINK));
 
         var text = sentBodies("Verifica tu cuenta de Alivia").get("text");
         assertTrue(text.startsWith("Alivia\n\nConfirma tu correo\n\nGracias por registrarte"));
@@ -47,21 +47,21 @@ class CommunicationsContextFacadeImplTest {
 
     @Test
     void sendsThePasswordResetEmail() {
-        facade.sendPasswordResetEmail(EMAIL, LINK);
+        facade.sendEmail(EMAIL, "reset-password", Map.of("link", LINK));
 
         assertTrue(sentBodies("Restablece tu contraseña de Alivia").get("text").contains(LINK));
     }
 
     @Test
     void sendsTheSetPasswordEmail() {
-        facade.sendSetPasswordEmail(EMAIL, LINK);
+        facade.sendEmail(EMAIL, "set-password", Map.of("link", LINK));
 
         assertTrue(sentBodies("Crea tu contraseña de Alivia").get("text").contains(LINK));
     }
 
     @Test
     void sendsTheWelcomeEmailWithTheNameEscaped() {
-        facade.sendWelcomeEmail(EMAIL, "María <b>López</b>");
+        facade.sendEmail(EMAIL, "welcome", Map.of("name", "María <b>López</b>"));
 
         var bodies = sentBodies("Te damos la bienvenida a Alivia");
         assertTrue(bodies.get("text").contains("María <b>López</b>"));
@@ -69,9 +69,10 @@ class CommunicationsContextFacadeImplTest {
     }
 
     @Test
-    void rejectsMissingRecipientOrLink() {
-        assertThrows(IllegalArgumentException.class, () -> facade.sendVerificationEmail(" ", LINK));
-        assertThrows(IllegalArgumentException.class, () -> facade.sendVerificationEmail(EMAIL, null));
+    void rejectsMissingRecipientOrLinkOrUnknownTemplate() {
+        assertThrows(IllegalArgumentException.class, () -> facade.sendEmail(" ", "verify-email", Map.of("link", LINK)));
+        assertThrows(IllegalArgumentException.class, () -> facade.sendEmail(EMAIL, "verify-email", Map.of("link", " ")));
+        assertThrows(IllegalArgumentException.class, () -> facade.sendEmail(EMAIL, "unknown", Map.of()));
         verifyNoInteractions(emailSender);
     }
 
