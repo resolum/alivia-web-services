@@ -2,9 +2,13 @@ package com.resolum.alivia.profiles.domain.model.valueobjects;
 
 import com.resolum.alivia.shared.domain.model.valueobjects.WeeklyPeriod;
 
-import java.time.LocalDateTime;
+import jakarta.persistence.Embeddable;
+
+import java.time.DayOfWeek;
+import java.time.LocalTime;
 import java.util.List;
 
+@Embeddable
 public record BusinessHours(List<WeeklyPeriod> periods) {
     public BusinessHours(List<WeeklyPeriod> periods) {
         if (periods == null || periods.isEmpty()) {
@@ -13,10 +17,15 @@ public record BusinessHours(List<WeeklyPeriod> periods) {
         this.periods = periods;
     }
 
-    public boolean isOpenAt(LocalDateTime dateTime) {
+    public boolean isOpenAt(DayOfWeek day, LocalTime time) {
+        if (day == null || time == null) {
+            return false; // o lanzar IllegalArgumentException / Objects.requireNonNull según tu regla de
+                          // dominio
+        }
+
         return periods.stream()
-                .filter(period -> period.dayOfWeek() == dateTime.getDayOfWeek())
-                .anyMatch(period -> dateTime.toLocalTime().isAfter(period.openingTime())
-                        && dateTime.toLocalTime().isBefore(period.closingTime()));
+                .filter(period -> period.days().contains(day))
+                .anyMatch(period -> period.range().contains(time));
     }
+
 }

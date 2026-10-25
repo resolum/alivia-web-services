@@ -1,9 +1,12 @@
 package com.resolum.alivia.profiles.domain.model.valueobjects;
 
-public record Dni(String number) {
+import jakarta.persistence.Embeddable;
+
+@Embeddable
+public record Dni(String dni) {
     public Dni {
-        if (number == null || number.isBlank()) {
-            throw new IllegalArgumentException("Number cannot be null or blank");
+        if (dni == null || dni.isBlank() || !dni.matches("\\d{8}")) {
+            throw new IllegalArgumentException("Dni must be 8 digits.");
         }
     }
 }
