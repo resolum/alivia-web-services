@@ -4,7 +4,7 @@ import com.resolum.alivia.iam.application.internal.commandservices.UserCommandSe
 import com.resolum.alivia.iam.application.internal.outboundservices.acl.ExternalProfilesService;
 import com.resolum.alivia.iam.domain.model.valueobjects.ProfileData;
 import com.resolum.alivia.iam.application.internal.outboundservices.hashing.HashingService;
-import com.resolum.alivia.iam.application.internal.outboundservices.notifications.VerificationEmailService;
+import com.resolum.alivia.iam.application.internal.outboundservices.acl.ExternalCommunicationsService;
 import com.resolum.alivia.iam.application.internal.outboundservices.tokens.EmailVerificationTokenService;
 import com.resolum.alivia.iam.application.internal.outboundservices.tokens.TokenService;
 import com.resolum.alivia.iam.domain.exceptions.AccountAlreadyVerifiedException;
@@ -72,7 +72,7 @@ class UserCommandServiceTest {
         private final HashingService hashingService = mock(HashingService.class);
         private final EmailVerificationTokenService tokenService = mock(EmailVerificationTokenService.class);
         private final ExternalProfilesService profilesService = mock(ExternalProfilesService.class);
-        private final VerificationEmailService emailService = mock(VerificationEmailService.class);
+        private final ExternalCommunicationsService emailService = mock(ExternalCommunicationsService.class);
         private final TokenService sessionTokenService = mock(TokenService.class);
         private final UserCommandServiceImpl service = new UserCommandServiceImpl(
                         userRepository, hashingService, tokenService, profilesService, emailService,
@@ -196,7 +196,7 @@ class UserCommandServiceTest {
                 assertEquals(NOW.plusHours(24), result.getPendingEmailVerificationToken().expiresAt());
                 verify(hashingService).encode(PASSWORD);
                 verify(profilesService).createProfile(42L, new ProfileData("Maria Lopez", "+51987654321"));
-                verify(emailService).sendVerificationEmail(EMAIL, RAW_TOKEN, VERIFICATION_LINK);
+                verify(emailService).sendVerificationEmail(EMAIL, VERIFICATION_LINK);
                 verify(userRepository).save(any(User.class));
         }
 
@@ -256,7 +256,7 @@ class UserCommandServiceTest {
         void registrationFailsWhenEmailProviderFails() {
                 stubSuccessfulRegistration();
                 doThrow(new IllegalStateException("mail provider down"))
-                                .when(emailService).sendVerificationEmail(anyString(), anyString(), anyString());
+                                .when(emailService).sendVerificationEmail(anyString(), anyString());
 
                 var exception = assertThrows(RegistrationUnavailableException.class,
                                 () -> service.handle(signUpCommand()));
@@ -468,7 +468,7 @@ class UserCommandServiceTest {
                 service.handle(new ResendVerificationCommand(EMAIL));
 
                 assertEquals(TOKEN_HASH, user.getPendingEmailVerificationToken().value());
-                verify(emailService).sendVerificationEmail(EMAIL, RAW_TOKEN, VERIFICATION_LINK);
+                verify(emailService).sendVerificationEmail(EMAIL, VERIFICATION_LINK);
                 assertEquals(60L, user.secondsUntilVerificationResend(NOW, java.time.Duration.ofSeconds(60)));
         }
 

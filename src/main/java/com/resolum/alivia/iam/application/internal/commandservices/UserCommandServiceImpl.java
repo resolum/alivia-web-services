@@ -3,7 +3,7 @@ package com.resolum.alivia.iam.application.internal.commandservices;
 import com.resolum.alivia.iam.application.internal.outboundservices.acl.ExternalProfilesService;
 import com.resolum.alivia.iam.domain.model.valueobjects.ProfileData;
 import com.resolum.alivia.iam.application.internal.outboundservices.hashing.HashingService;
-import com.resolum.alivia.iam.application.internal.outboundservices.notifications.VerificationEmailService;
+import com.resolum.alivia.iam.application.internal.outboundservices.acl.ExternalCommunicationsService;
 import com.resolum.alivia.iam.application.internal.outboundservices.tokens.EmailVerificationTokenService;
 import com.resolum.alivia.iam.application.internal.outboundservices.tokens.TokenService;
 import com.resolum.alivia.iam.domain.exceptions.AccountAlreadyVerifiedException;
@@ -33,7 +33,6 @@ import com.resolum.alivia.iam.domain.services.PasswordPolicy;
 import com.resolum.alivia.iam.domain.services.UserCommandService;
 import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -61,7 +60,7 @@ public class UserCommandServiceImpl implements UserCommandService {
     private final HashingService hashingService;
     private final EmailVerificationTokenService emailVerificationTokenService;
     private final ExternalProfilesService externalProfilesService;
-    private final VerificationEmailService verificationEmailService;
+    private final ExternalCommunicationsService externalCommunicationsService;
     private final TokenService tokenService;
     private final Clock clock;
     private final Duration resendCooldown;
@@ -73,7 +72,7 @@ public class UserCommandServiceImpl implements UserCommandService {
      * @param hashingService                the password hashing port
      * @param emailVerificationTokenService the verification token port
      * @param externalProfilesService       the Profiles anti-corruption port
-     * @param verificationEmailService      the verification email port
+     * @param externalCommunicationsService the Communications anti-corruption port
      * @param tokenService                  the session token port
      * @param clock                         the clock used for timestamps
      * @param resendCooldownSeconds         the minimum seconds between two verification emails
@@ -82,7 +81,7 @@ public class UserCommandServiceImpl implements UserCommandService {
             HashingService hashingService,
             EmailVerificationTokenService emailVerificationTokenService,
             ExternalProfilesService externalProfilesService,
-            @Qualifier("verificationEmailService") VerificationEmailService verificationEmailService,
+            ExternalCommunicationsService externalCommunicationsService,
             TokenService tokenService,
             Clock clock,
             @Value("${alivia.iam.email-verification.resend-cooldown-seconds:60}") long resendCooldownSeconds) {
@@ -90,7 +89,7 @@ public class UserCommandServiceImpl implements UserCommandService {
         this.hashingService = hashingService;
         this.emailVerificationTokenService = emailVerificationTokenService;
         this.externalProfilesService = externalProfilesService;
-        this.verificationEmailService = verificationEmailService;
+        this.externalCommunicationsService = externalCommunicationsService;
         this.tokenService = tokenService;
         this.clock = clock;
         this.resendCooldown = Duration.ofSeconds(resendCooldownSeconds);
@@ -376,8 +375,8 @@ public class UserCommandServiceImpl implements UserCommandService {
     private void sendVerificationEmail(User user, String rawToken) {
         try {
             var verificationLink = emailVerificationTokenService.buildVerificationLink(rawToken);
-            verificationEmailService.sendVerificationEmail(
-                    user.getEmail().email(), rawToken, verificationLink);
+            externalCommunicationsService.sendVerificationEmail(
+                    user.getEmail().email(), verificationLink);
         } catch (RuntimeException exception) {
             log.error("Verification email delivery failed for account id {}: {}",
                     user.getId(), exception.getClass().getSimpleName());
