@@ -7,9 +7,20 @@ import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import com.resolum.alivia.shared.domain.model.valueobjects.PhoneNumber;
 import com.resolum.alivia.shared.domain.model.valueobjects.Photo;
 
+import jakarta.persistence.Embedded;
+import jakarta.persistence.Entity;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Getter
+@Setter
 public class StaffProfile extends Profile {
+    @Embedded
     private PersonName personName;
+    @Embedded
     private Dni dni;
+    @Embedded
     private BirthDate birthDate;
 
     public StaffProfile(EmailAddress emailAddress, Photo photo, PhoneNumber phoneNumber, PersonName personName, Dni dni,
