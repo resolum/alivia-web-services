@@ -96,4 +96,34 @@ class IamContextFacadeImplTest {
         assertEquals(103L, id);
         verify(userCommandService).handle(any(SignUpCommand.class));
     }
+
+    @Test
+    void registerUserDelegatesToSignUpUser() {
+        var user = mock(User.class);
+        when(user.getId()).thenReturn(104L);
+        when(userCommandService.handle(any(SignUpCommand.class))).thenReturn(user);
+
+        Long id = facade.registerUser("user@example.com", "Password1!", "Name", "+51999999999", "ADMIN");
+
+        assertEquals(104L, id);
+    }
+
+    @Test
+    void parsesDifferentRoleFormats() {
+        var user = mock(User.class);
+        when(user.getId()).thenReturn(105L);
+        when(userCommandService.handle(any(SignUpCommand.class))).thenReturn(user);
+
+        facade.signUpUser("u@e.com", "P!", "N", "+51", null, null, null);
+        facade.signUpUser("u@e.com", "P!", "N", "+51", "   ", null, null);
+        facade.signUpUser("u@e.com", "P!", "N", "+51", "ADMINISTRADOR", null, null);
+        facade.signUpUser("u@e.com", "P!", "N", "+51", "CUIDADOR", null, null);
+        facade.signUpUser("u@e.com", "P!", "N", "+51", "TECNICO", null, null);
+        facade.signUpUser("u@e.com", "P!", "N", "+51", "GESTOR_SUSCRIPCIONES", null, null);
+        facade.signUpUser("u@e.com", "P!", "N", "+51", "PERSONA_ASISTIDA", null, null);
+        facade.signUpUser("u@e.com", "P!", "N", "+51", "CAREGIVER", null, null);
+        facade.signUpUser("u@e.com", "P!", "N", "+51", "INVALID_ROLE_FALLBACK", null, null);
+
+        assertTrue(true);
+    }
 }

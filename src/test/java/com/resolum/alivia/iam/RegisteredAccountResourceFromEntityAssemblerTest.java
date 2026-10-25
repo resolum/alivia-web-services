@@ -37,6 +37,24 @@ class RegisteredAccountResourceFromEntityAssemblerTest {
                         .toResourceFromEntity(userWith("ab@c.d")).maskedEmail());
     }
 
+    @Test
+    void masksEdgeCaseEmails() {
+        var userAtStart = mock(User.class);
+        when(userAtStart.getId()).thenReturn(1L);
+        var emailAddress = mock(EmailAddress.class);
+        when(emailAddress.email()).thenReturn("@domain.com");
+        when(userAtStart.getEmail()).thenReturn(emailAddress);
+        when(userAtStart.getStatus()).thenReturn(UserStatus.PENDING_VERIFICATION);
+
+        assertEquals("***", RegisteredAccountResourceFromEntityAssembler.toResourceFromEntity(userAtStart).maskedEmail());
+
+        when(emailAddress.email()).thenReturn("");
+        assertEquals("***", RegisteredAccountResourceFromEntityAssembler.toResourceFromEntity(userAtStart).maskedEmail());
+
+        when(emailAddress.email()).thenReturn(null);
+        assertEquals("***", RegisteredAccountResourceFromEntityAssembler.toResourceFromEntity(userAtStart).maskedEmail());
+    }
+
     private static User userWith(String email) {
         var user = mock(User.class);
         when(user.getId()).thenReturn(9L);

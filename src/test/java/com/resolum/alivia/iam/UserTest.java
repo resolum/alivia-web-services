@@ -106,6 +106,12 @@ class UserTest {
         assertThrows(IllegalArgumentException.class, () -> user.requestEmailVerification(null));
     }
 
+    @Test
+    void noArgConstructorCreatesInstanceForJpa() {
+        var user = new User() {};
+        assertNotNull(user);
+    }
+
     private static User newUser() {
         return new User(new EmailAddress("Maria.Lopez@Example.COM"),
                 new PasswordHash("bcrypt-hash"), AccessRole.CAREGIVER, NOW);

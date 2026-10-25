@@ -294,6 +294,42 @@ class UserCommandServiceTest {
                 verify(profilesService).createProfile(42L, new ProfileData("Assisted", "+51987654321", null, 200L));
         }
 
+        @Test
+        void rejectsNullCommands() {
+                assertThrows(IllegalArgumentException.class, () -> service.handle((SignUpCommand) null));
+                assertThrows(InvalidVerificationTokenException.class, () -> service.handle((VerifyEmailCommand) null));
+                assertThrows(InvalidVerificationTokenException.class, () -> service.handle(new VerifyEmailCommand(null)));
+        }
+
+        @Test
+        void rejectsMissingProfileFieldsAndInvalidEmail() {
+                assertThrows(SignUpValidationException.class, () -> service.handle(
+                                new SignUpCommand(EMAIL, PASSWORD, null, "+51987654321", true)));
+                assertThrows(SignUpValidationException.class, () -> service.handle(
+                                new SignUpCommand(EMAIL, PASSWORD, "  ", "+51987654321", true)));
+                assertThrows(SignUpValidationException.class, () -> service.handle(
+                                new SignUpCommand(EMAIL, PASSWORD, "Name", null, true)));
+                assertThrows(SignUpValidationException.class, () -> service.handle(
+                                new SignUpCommand(EMAIL, PASSWORD, "Name", "  ", true)));
+                assertThrows(SignUpValidationException.class, () -> service.handle(
+                                new SignUpCommand("invalid-email", PASSWORD, "Name", "+51987654321", true)));
+        }
+
+        @Test
+        void rejectsVerificationWhenPendingTokenIsNullOrDoesNotMatch() {
+                var userWithoutToken = new User(new EmailAddress(EMAIL), new PasswordHash("bcrypt-hash"), AccessRole.CAREGIVER, NOW);
+                when(tokenService.hash(RAW_TOKEN)).thenReturn(TOKEN_HASH);
+                when(userRepository.findByEmailVerificationTokenHash(TOKEN_HASH)).thenReturn(Optional.of(userWithoutToken));
+
+                assertThrows(InvalidVerificationTokenException.class, () -> service.handle(new VerifyEmailCommand(RAW_TOKEN)));
+
+                var userWithToken = pendingUser(NOW.plusHours(1));
+                when(userRepository.findByEmailVerificationTokenHash(TOKEN_HASH)).thenReturn(Optional.of(userWithToken));
+                when(tokenService.matches(RAW_TOKEN, TOKEN_HASH)).thenReturn(false);
+
+                assertThrows(InvalidVerificationTokenException.class, () -> service.handle(new VerifyEmailCommand(RAW_TOKEN)));
+        }
+
         private void stubSuccessfulRegistration() {
                 when(userRepository.existsByEmail(any(EmailAddress.class))).thenReturn(false);
                 when(hashingService.encode(PASSWORD)).thenReturn("bcrypt-hash");
