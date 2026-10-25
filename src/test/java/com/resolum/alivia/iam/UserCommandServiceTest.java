@@ -2,7 +2,7 @@ package com.resolum.alivia.iam;
 
 import com.resolum.alivia.iam.application.internal.commandservices.UserCommandServiceImpl;
 import com.resolum.alivia.iam.application.internal.outboundservices.acl.ExternalProfilesService;
-import com.resolum.alivia.iam.application.internal.outboundservices.acl.ProfileData;
+import com.resolum.alivia.iam.domain.model.valueobjects.ProfileData;
 import com.resolum.alivia.iam.application.internal.outboundservices.hashing.HashingService;
 import com.resolum.alivia.iam.application.internal.outboundservices.notifications.VerificationEmailService;
 import com.resolum.alivia.iam.application.internal.outboundservices.tokens.EmailVerificationTokenService;

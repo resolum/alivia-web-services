@@ -1,6 +1,7 @@
 package com.resolum.alivia.iam.domain.model.commands;
 
 import com.resolum.alivia.iam.domain.model.valueobjects.AccessRole;
+import com.resolum.alivia.iam.domain.model.valueobjects.ProfileData;
 
 /**
  * Command that requests the registration of a new account with a specific access role.
@@ -43,5 +44,9 @@ public record SignUpCommand(
             AccessRole role
     ) {
         this(email, password, fullName, phoneNumber, termsAccepted, role, null, null);
+    }
+
+    public ProfileData toProfileData() {
+        return new ProfileData(fullName, phoneNumber, businessId, familiarId);
     }
 }

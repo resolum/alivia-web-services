@@ -1,7 +1,7 @@
 package com.resolum.alivia.iam.application.internal.commandservices;
 
 import com.resolum.alivia.iam.application.internal.outboundservices.acl.ExternalProfilesService;
-import com.resolum.alivia.iam.application.internal.outboundservices.acl.ProfileData;
+import com.resolum.alivia.iam.domain.model.valueobjects.ProfileData;
 import com.resolum.alivia.iam.application.internal.outboundservices.hashing.HashingService;
 import com.resolum.alivia.iam.application.internal.outboundservices.notifications.VerificationEmailService;
 import com.resolum.alivia.iam.application.internal.outboundservices.tokens.EmailVerificationTokenService;
@@ -193,13 +193,8 @@ public class UserCommandServiceImpl implements UserCommandService {
     }
 
     private void createProfile(User user, SignUpCommand command) {
-        var profileData = new ProfileData(
-                command.fullName(),
-                command.phoneNumber(),
-                command.businessId(),
-                command.familiarId());
         try {
-            externalProfilesService.createProfile(user.getId(), profileData);
+            externalProfilesService.createProfile(user.getId(), command.toProfileData());
         } catch (RuntimeException exception) {
             log.error("Profile creation failed for account id {}: {}",
                     user.getId(), exception.getClass().getSimpleName());

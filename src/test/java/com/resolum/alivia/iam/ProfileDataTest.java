@@ -1,6 +1,6 @@
 package com.resolum.alivia.iam;
 
-import com.resolum.alivia.iam.application.internal.outboundservices.acl.ProfileData;
+import com.resolum.alivia.iam.domain.model.valueobjects.ProfileData;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

@@ -1,5 +1,6 @@
 package com.resolum.alivia.iam.application.internal.outboundservices.acl;
 
+import com.resolum.alivia.iam.domain.model.valueobjects.ProfileData;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 

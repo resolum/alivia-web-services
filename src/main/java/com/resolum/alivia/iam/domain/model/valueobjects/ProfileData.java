@@ -1,15 +1,7 @@
-package com.resolum.alivia.iam.application.internal.outboundservices.acl;
+package com.resolum.alivia.iam.domain.model.valueobjects;
 
 /**
- * Profile data that IAM forwards to the Profiles bounded context when an
- * account is
- * registered.
- *
- * <p>
- * It is an anti-corruption boundary object: it carries only the data Profiles
- * needs
- * and keeps the IAM aggregate out of the Profiles contract.
- * </p>
+ * Profile data value object that IAM forwards to the Profiles bounded context.
  *
  * @param fullName    the user's full name
  * @param phoneNumber the user's phone number
@@ -19,7 +11,7 @@ package com.resolum.alivia.iam.application.internal.outboundservices.acl;
 public record ProfileData(String fullName, String phoneNumber, Long businessId, Long familiarId) {
 
     /**
-     * Backward-compatible constructor for profile data with only name and phone.
+     * Convenience constructor for profile data with only name and phone.
      *
      * @param fullName    the user's full name
      * @param phoneNumber the user's phone number

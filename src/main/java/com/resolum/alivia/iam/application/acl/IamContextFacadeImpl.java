@@ -109,23 +109,10 @@ public class IamContextFacadeImpl implements IamContextFacade {
     }
 
     private static AccessRole parseRole(String roleStr) {
-        if (roleStr == null || roleStr.isBlank()) {
+        try {
+            return com.resolum.alivia.iam.domain.services.RoleParser.parse(roleStr);
+        } catch (IllegalArgumentException e) {
             return AccessRole.CAREGIVER;
         }
-        String normalized = roleStr.trim().toUpperCase();
-        return switch (normalized) {
-            case "ADMIN", "ADMINISTRATOR", "ADMINISTRADOR" -> AccessRole.ADMINISTRATOR;
-            case "CAREGIVER", "CUIDADOR", "FAMILIAR", "FAMILY_MEMBER" -> AccessRole.CAREGIVER;
-            case "EMPLOYEE", "EMPLEADO", "TECHNICIAN", "TECNICO" -> AccessRole.TECHNICIAN;
-            case "SUBSCRIPTION_MANAGER", "GESTOR_SUSCRIPCIONES" -> AccessRole.SUBSCRIPTION_MANAGER;
-            case "ASSISTED_PERSON", "PERSONA_ASISTIDA", "PACIENTE" -> AccessRole.ASSISTED_PERSON;
-            default -> {
-                try {
-                    yield AccessRole.valueOf(normalized);
-                } catch (IllegalArgumentException e) {
-                    yield AccessRole.CAREGIVER;
-                }
-            }
-        };
     }
 }
