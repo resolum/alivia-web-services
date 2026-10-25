@@ -18,6 +18,6 @@ public final class VerifiedAccountResourceFromEntityAssembler {
      * @return the verified-account resource
      */
     public static VerifiedAccountResource toResourceFromEntity(User user) {
-        return new VerifiedAccountResource(user.getId(), user.getStatus().name());
+        return new VerifiedAccountResource(user.getAccountId(), user.getStatus().name());
     }
 }

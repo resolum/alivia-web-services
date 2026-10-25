@@ -1,12 +1,22 @@
 package com.resolum.alivia.iam;
 
+import com.resolum.alivia.iam.domain.model.aggregates.User;
+import com.resolum.alivia.iam.domain.model.valueobjects.AccessRole;
+import com.resolum.alivia.iam.domain.model.valueobjects.PasswordHash;
 import com.resolum.alivia.iam.infrastructure.tokens.jwt.services.TokenServiceImpl;
+import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Date;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -17,13 +27,47 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TokenServiceImplTest {
 
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-10-24T12:00:00Z"), ZoneOffset.UTC);
-    private final TokenServiceImpl service = new TokenServiceImpl(CLOCK, 24, "https://alivia.app/verify");
+    private static final String SECRET = "test-secret-with-at-least-32-bytes!!";
+    private final TokenServiceImpl service = new TokenServiceImpl(CLOCK, 24, "https://alivia.app/verify", SECRET, 15, 7);
 
     @Test
     void rejectsInvalidConstructorArguments() {
-        assertThrows(IllegalArgumentException.class, () -> new TokenServiceImpl(CLOCK, -1, "https://alivia.app/verify"));
-        assertThrows(IllegalArgumentException.class, () -> new TokenServiceImpl(CLOCK, 24, null));
-        assertThrows(IllegalArgumentException.class, () -> new TokenServiceImpl(CLOCK, 24, "   "));
+        assertThrows(IllegalArgumentException.class, () -> new TokenServiceImpl(CLOCK, -1, "https://alivia.app/verify", SECRET, 15, 7));
+        assertThrows(IllegalArgumentException.class, () -> new TokenServiceImpl(CLOCK, 24, null, SECRET, 15, 7));
+        assertThrows(IllegalArgumentException.class, () -> new TokenServiceImpl(CLOCK, 24, "   ", SECRET, 15, 7));
+        assertThrows(IllegalArgumentException.class, () -> new TokenServiceImpl(CLOCK, 24, "https://alivia.app/verify", "short", 15, 7));
+        assertThrows(IllegalArgumentException.class, () -> new TokenServiceImpl(CLOCK, 24, "https://alivia.app/verify", SECRET, 0, 7));
+        assertThrows(IllegalArgumentException.class, () -> new TokenServiceImpl(CLOCK, 24, "https://alivia.app/verify", SECRET, 15, 0));
+    }
+
+    @Test
+    void signsAccessTokenWithIdentityRoleAndPermissions() {
+        var user = new User(new EmailAddress("maria.lopez@example.com"), new PasswordHash("bcrypt-hash"),
+                AccessRole.CAREGIVER, LocalDateTime.now(CLOCK));
+        ReflectionTestUtils.setField(user, "id", 42L);
+
+        var claims = Jwts.parser()
+                .verifyWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8)))
+                .clock(() -> Date.from(CLOCK.instant()))
+                .build()
+                .parseSignedClaims(service.generateAccessToken(user))
+                .getPayload();
+
+        assertEquals("42", claims.getSubject());
+        assertEquals("maria.lopez@example.com", claims.get("email"));
+        assertEquals("CAREGIVER", claims.get("role"));
+        assertEquals(List.of("ROLE_CAREGIVER"), claims.get("permissions"));
+        assertEquals(CLOCK.instant().plusSeconds(900), claims.getExpiration().toInstant());
+        assertEquals(900L, service.getAccessTokenExpirationSeconds());
+    }
+
+    @Test
+    void generatesHashedRefreshToken() {
+        var generated = service.generateRefreshToken();
+
+        assertFalse(generated.rawToken().isBlank());
+        assertEquals(service.hashRefreshToken(generated.rawToken()), generated.hash());
+        assertEquals(LocalDateTime.now(CLOCK).plusDays(7), generated.expiresAt());
     }
 
     @Test

@@ -1,10 +1,16 @@
 package com.resolum.alivia.shared.interfaces.rest;
 
+import com.resolum.alivia.iam.domain.exceptions.AccountAlreadyVerifiedException;
+import com.resolum.alivia.iam.domain.exceptions.AccountNotActiveException;
+import com.resolum.alivia.iam.domain.exceptions.AccountNotFoundException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotPendingVerificationException;
 import com.resolum.alivia.iam.domain.exceptions.EmailAlreadyRegisteredException;
+import com.resolum.alivia.iam.domain.exceptions.InvalidCredentialsException;
+import com.resolum.alivia.iam.domain.exceptions.InvalidRefreshTokenException;
 import com.resolum.alivia.iam.domain.exceptions.InvalidVerificationTokenException;
 import com.resolum.alivia.iam.domain.exceptions.RegistrationUnavailableException;
 import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
+import com.resolum.alivia.iam.domain.exceptions.VerificationResendTooSoonException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationTokenExpiredException;
 import com.resolum.alivia.subscriptions.domain.exceptions.InvalidStripeWebhookSignature;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentRejected;
@@ -16,8 +22,10 @@ import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationConfli
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -135,6 +143,47 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleVerificationTokenExpired(VerificationTokenExpiredException exception) {
         return problem(HttpStatus.BAD_REQUEST, "verification_token_expired",
                 "The verification token has expired.", List.of());
+    }
+
+    @ExceptionHandler(AccountAlreadyVerifiedException.class)
+    public ProblemDetail handleAccountAlreadyVerified(AccountAlreadyVerifiedException exception) {
+        return problem(HttpStatus.CONFLICT, "account_already_verified",
+                "The account has already been verified.", List.of());
+    }
+
+    @ExceptionHandler(AccountNotFoundException.class)
+    public ProblemDetail handleAccountNotFound(AccountNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, "account_not_found",
+                "The account does not exist.", List.of());
+    }
+
+    @ExceptionHandler(VerificationResendTooSoonException.class)
+    public ResponseEntity<ProblemDetail> handleVerificationResendTooSoon(
+            VerificationResendTooSoonException exception) {
+        var problem = problem(HttpStatus.TOO_MANY_REQUESTS, "verification_resend_too_soon",
+                "Wait before requesting another verification email.", List.of());
+        problem.setProperty("retryAfterSeconds", exception.retryAfterSeconds());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(exception.retryAfterSeconds()))
+                .body(problem);
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ProblemDetail handleInvalidCredentials(InvalidCredentialsException exception) {
+        return problem(HttpStatus.UNAUTHORIZED, "invalid_credentials",
+                "The email or password is incorrect.", List.of());
+    }
+
+    @ExceptionHandler(AccountNotActiveException.class)
+    public ProblemDetail handleAccountNotActive(AccountNotActiveException exception) {
+        return problem(HttpStatus.FORBIDDEN, "account_not_active",
+                "The account is not active.", List.of());
+    }
+
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    public ProblemDetail handleInvalidRefreshToken(InvalidRefreshTokenException exception) {
+        return problem(HttpStatus.UNAUTHORIZED, "refresh_token_invalid",
+                "The refresh token is invalid or has expired.", List.of());
     }
 
     @ExceptionHandler(RegistrationUnavailableException.class)

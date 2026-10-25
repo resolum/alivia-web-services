@@ -19,6 +19,14 @@ public interface UserRepository {
     boolean existsByEmail(EmailAddress email);
 
     /**
+     * Finds a user by its internal identifier.
+     *
+     * @param id the internal identifier
+     * @return the matching user, or empty when none exists
+     */
+    Optional<User> findById(Long id);
+
+    /**
      * Finds a user by email address.
      *
      * @param email the email address
@@ -36,6 +44,24 @@ public interface UserRepository {
      * @return the matching user, or empty when no pending token matches
      */
     Optional<User> findByEmailVerificationTokenHash(String tokenHash);
+
+    /**
+     * Finds a user by the hash of its refresh token and locks the row for writing.
+     *
+     * <p>The lock serializes concurrent renewals of the same token.</p>
+     *
+     * @param tokenHash the SHA-256 hash of the plain-text refresh token
+     * @return the matching user, or empty when no session matches
+     */
+    Optional<User> findByRefreshTokenHash(String tokenHash);
+
+    /**
+     * Finds a user by its public account identifier.
+     *
+     * @param accountId the public account identifier
+     * @return the matching user, or empty when none exists
+     */
+    Optional<User> findByAccountId(String accountId);
 
     /**
      * Persists a user.
