@@ -20,7 +20,7 @@ import java.nio.charset.StandardCharsets;
  * The recipient address and the verification token are never logged.</p>
  */
 @Slf4j
-@Service
+@Service("verificationEmailService")
 @ConditionalOnProperty(prefix = "alivia.iam.email-verification", name = "provider",
         havingValue = "smtp")
 public class SmtpVerificationEmailService implements VerificationEmailService {

@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service;
  * unavailable until {@code IAM_EMAIL_PROVIDER=smtp} and the {@code spring.mail.*} settings
  * are supplied.</p>
  */
-@Service
+@Service("verificationEmailService")
 @Profile("prod")
 @ConditionalOnProperty(prefix = "alivia.iam.email-verification", name = "provider",
         havingValue = "unavailable", matchIfMissing = true)

@@ -21,6 +21,7 @@ import com.resolum.alivia.iam.domain.services.PasswordPolicy;
 import com.resolum.alivia.iam.domain.services.UserCommandService;
 import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,7 +63,7 @@ public class UserCommandServiceImpl implements UserCommandService {
             HashingService hashingService,
             EmailVerificationTokenService emailVerificationTokenService,
             ExternalProfilesService externalProfilesService,
-            VerificationEmailService verificationEmailService,
+            @Qualifier("verificationEmailService") VerificationEmailService verificationEmailService,
             Clock clock) {
         this.userRepository = userRepository;
         this.hashingService = hashingService;

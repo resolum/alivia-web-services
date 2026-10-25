@@ -2,6 +2,7 @@ package com.resolum.alivia.iam.application.internal.outboundservices.notificatio
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
@@ -13,7 +14,8 @@ import org.springframework.stereotype.Service;
  * {@code prod} profile. It never logs the recipient address.</p>
  */
 @Slf4j
-@Service
+@Primary
+@Service("verificationEmailService")
 @Profile("!prod")
 @ConditionalOnProperty(prefix = "alivia.iam.email-verification", name = "provider",
         havingValue = "log", matchIfMissing = true)
