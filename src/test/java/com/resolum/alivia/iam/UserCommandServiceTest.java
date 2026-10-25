@@ -406,10 +406,26 @@ class UserCommandServiceTest {
         }
 
         @Test
+        void registersCaregiverWhenRoleIsMissing() {
+                stubSuccessfulRegistration();
+
+                var result = service.handle(new SignUpCommand(EMAIL, PASSWORD, "Maria Lopez", "+51987654321", true,
+                                (AccessRole) null));
+
+                assertEquals(AccessRole.CAREGIVER, result.getAccessRole());
+        }
+
+        @Test
         void rejectsNullCommands() {
                 assertThrows(IllegalArgumentException.class, () -> service.handle((SignUpCommand) null));
                 assertThrows(InvalidVerificationTokenException.class, () -> service.handle((VerifyEmailCommand) null));
                 assertThrows(InvalidVerificationTokenException.class, () -> service.handle(new VerifyEmailCommand(null)));
+                assertThrows(InvalidCredentialsException.class, () -> service.handle(new SignInCommand(EMAIL, null)));
+                assertThrows(InvalidRefreshTokenException.class, () -> service.handle((RefreshSessionCommand) null));
+                assertThrows(InvalidRefreshTokenException.class, () -> service.handle(new RefreshSessionCommand(null)));
+                service.handle((SignOutCommand) null);
+                service.handle(new SignOutCommand("  "));
+                verify(userRepository, never()).findByRefreshTokenHash(any());
         }
 
         @Test

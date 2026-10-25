@@ -2,6 +2,7 @@ package com.resolum.alivia.iam.infrastructure.authorization.sfs.configuration;
 
 import com.resolum.alivia.iam.infrastructure.authorization.sfs.pipeline.BearerAuthorizationRequestFilter;
 import com.resolum.alivia.iam.infrastructure.authorization.sfs.pipeline.UnauthorizedRequestHandlerEntryPoint;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -25,17 +26,21 @@ public class WebSecurityConfiguration {
 
     private final BearerAuthorizationRequestFilter bearerFilter;
     private final UnauthorizedRequestHandlerEntryPoint unauthorizedEntryPoint;
+    private final List<String> allowedOrigins;
 
     /**
      * Creates the configuration.
      *
      * @param bearerFilter           the bearer token filter
      * @param unauthorizedEntryPoint the 401 handler
+     * @param allowedOrigins         the origin patterns allowed by CORS
      */
     public WebSecurityConfiguration(BearerAuthorizationRequestFilter bearerFilter,
-                                    UnauthorizedRequestHandlerEntryPoint unauthorizedEntryPoint) {
+                                    UnauthorizedRequestHandlerEntryPoint unauthorizedEntryPoint,
+                                    @Value("${alivia.cors.allowed-origins}") List<String> allowedOrigins) {
         this.bearerFilter = bearerFilter;
         this.unauthorizedEntryPoint = unauthorizedEntryPoint;
+        this.allowedOrigins = allowedOrigins;
     }
 
     /**
@@ -50,15 +55,15 @@ public class WebSecurityConfiguration {
         return http
                 .cors(configurer -> configurer.configurationSource(request -> {
                     var cors = new CorsConfiguration();
-                    // No cookies are used, so credentials stay disabled and any origin is safe.
-                    cors.setAllowedOriginPatterns(List.of("*"));
+                    cors.setAllowedOriginPatterns(allowedOrigins);
                     cors.setAllowedMethods(List.of("GET", "PATCH", "POST", "PUT", "DELETE", "OPTIONS"));
                     cors.setAllowedHeaders(List.of("*"));
                     cors.setExposedHeaders(List.of("Authorization"));
                     cors.setMaxAge(3600L);
                     return cors;
                 }))
-                .csrf(AbstractHttpConfigurer::disable)
+                // Stateless bearer tokens and no session cookies, so there is no CSRF vector.
+                .csrf(AbstractHttpConfigurer::disable) // NOSONAR
                 .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(unauthorizedEntryPoint))
                 .sessionManagement(sessions -> sessions.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth

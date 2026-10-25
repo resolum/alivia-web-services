@@ -36,6 +36,7 @@ class TokenServiceImplTest {
         assertThrows(IllegalArgumentException.class, () -> new TokenServiceImpl(CLOCK, 24, null, SECRET, 15, 7));
         assertThrows(IllegalArgumentException.class, () -> new TokenServiceImpl(CLOCK, 24, "   ", SECRET, 15, 7));
         assertThrows(IllegalArgumentException.class, () -> new TokenServiceImpl(CLOCK, 24, "https://alivia.app/verify", "short", 15, 7));
+        assertThrows(IllegalArgumentException.class, () -> new TokenServiceImpl(CLOCK, 24, "https://alivia.app/verify", null, 15, 7));
         assertThrows(IllegalArgumentException.class, () -> new TokenServiceImpl(CLOCK, 24, "https://alivia.app/verify", SECRET, 0, 7));
         assertThrows(IllegalArgumentException.class, () -> new TokenServiceImpl(CLOCK, 24, "https://alivia.app/verify", SECRET, 15, 0));
     }
@@ -59,6 +60,17 @@ class TokenServiceImplTest {
         assertEquals(List.of("ROLE_CAREGIVER"), claims.get("permissions"));
         assertEquals(CLOCK.instant().plusSeconds(900), claims.getExpiration().toInstant());
         assertEquals(900L, service.getAccessTokenExpirationSeconds());
+    }
+
+    @Test
+    void readsUserIdFromOwnAccessTokenAndRejectsForeignOnes() {
+        var user = new User(new EmailAddress("maria.lopez@example.com"), new PasswordHash("bcrypt-hash"),
+                AccessRole.CAREGIVER, LocalDateTime.now(CLOCK));
+        ReflectionTestUtils.setField(user, "id", 42L);
+        var foreign = new TokenServiceImpl(CLOCK, 24, "https://alivia.app/verify", "another-secret-with-at-least-32-bytes", 15, 7);
+
+        assertEquals("42", service.getUserIdFromAccessToken(service.generateAccessToken(user)));
+        assertThrows(RuntimeException.class, () -> service.getUserIdFromAccessToken(foreign.generateAccessToken(user)));
     }
 
     @Test

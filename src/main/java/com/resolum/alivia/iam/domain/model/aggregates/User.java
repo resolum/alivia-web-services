@@ -17,6 +17,7 @@ import jakarta.persistence.UniqueConstraint;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 /**
@@ -141,7 +142,8 @@ public class User extends AuditableAbstractAggregateRoot<User> {
         if (emailVerificationRequestedAt == null) {
             return 0;
         }
-        var wait = Duration.between(now, emailVerificationRequestedAt.plus(cooldown));
+        var wait = Duration.between(now.atOffset(ZoneOffset.UTC),
+                emailVerificationRequestedAt.plus(cooldown).atOffset(ZoneOffset.UTC));
         return wait.isPositive() ? wait.plusNanos(999_999_999).toSeconds() : 0;
     }
 

@@ -11,6 +11,7 @@ import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -117,6 +118,33 @@ class UserTest {
         var user = newUser();
 
         assertThrows(IllegalArgumentException.class, () -> user.requestEmailVerification(null, NOW));
+        var token = new EmailVerificationToken("hash", NOW.plusHours(1));
+        assertThrows(IllegalArgumentException.class, () -> user.requestEmailVerification(token, null));
+    }
+
+    @Test
+    void resendCooldownIsZeroWithoutPreviousRequestAndRoundsUp() {
+        var user = newUser();
+        var cooldown = Duration.ofSeconds(60);
+
+        assertEquals(0L, user.secondsUntilVerificationResend(NOW, cooldown));
+        user.requestEmailVerification(new EmailVerificationToken("hash", NOW.plusHours(1)), NOW);
+        assertEquals(60L, user.secondsUntilVerificationResend(NOW, cooldown));
+        assertEquals(1L, user.secondsUntilVerificationResend(NOW.plusSeconds(59).plusNanos(1), cooldown));
+        assertEquals(0L, user.secondsUntilVerificationResend(NOW.plusSeconds(60), cooldown));
+    }
+
+    @Test
+    void sessionRequiresHashAndExpiration() {
+        var user = newUser();
+
+        assertTrue(user.isRefreshTokenExpiredAt(NOW));
+        assertThrows(IllegalArgumentException.class, () -> user.startSession(null, NOW));
+        assertThrows(IllegalArgumentException.class, () -> user.startSession("hash", null));
+        user.startSession("hash", NOW.plusDays(1));
+        assertFalse(user.isRefreshTokenExpiredAt(NOW));
+        user.endSession();
+        assertTrue(user.isRefreshTokenExpiredAt(NOW));
     }
 
     @Test
