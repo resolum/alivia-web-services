@@ -12,13 +12,11 @@ import com.resolum.alivia.iam.domain.exceptions.RegistrationUnavailableException
 import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationResendTooSoonException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationTokenExpiredException;
+import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationDraftNotFound;
 import com.resolum.alivia.subscriptions.domain.exceptions.InvalidStripeWebhookSignature;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentRejected;
-import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupNotFound;
-import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupUnauthorized;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.PlanNotFound;
-import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationConflict;
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
@@ -41,9 +39,9 @@ public class GlobalExceptionHandler {
     private static final String ERRORS_PROPERTY = "errors";
     private static final String CODE_PROPERTY = "code";
 
-    @ExceptionHandler(PreauthorizationConflict.class)
-    public ProblemDetail handlePreauthorizationConflict(PreauthorizationConflict exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+    @ExceptionHandler(ConfigurationDraftNotFound.class)
+    public ProblemDetail handleConfigurationDraftNotFound(ConfigurationDraftNotFound exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
     }
 
     @ExceptionHandler(PreauthorizationUnavailable.class)
@@ -71,16 +69,6 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(StripeWebhookUnavailable.class)
     public ProblemDetail handleStripeWebhookUnavailable(StripeWebhookUnavailable exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
-    }
-
-    @ExceptionHandler(PaymentSetupNotFound.class)
-    public ProblemDetail handlePaymentSetupNotFound(PaymentSetupNotFound exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
-    }
-
-    @ExceptionHandler(PaymentSetupUnauthorized.class)
-    public ProblemDetail handlePaymentSetupUnauthorized(PaymentSetupUnauthorized exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, exception.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
