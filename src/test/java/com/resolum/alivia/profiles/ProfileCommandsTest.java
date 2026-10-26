@@ -259,4 +259,12 @@ class ProfileCommandsTest {
         assertThrows(IllegalArgumentException.class, () -> new UpdateStaffProfileCommand(2L, "fn", "ln", birthDate, "p", "u", null));
         assertThrows(IllegalArgumentException.class, () -> new UpdateStaffProfileCommand(2L, "fn", "ln", birthDate, "p", "u", " "));
     }
+
+    @Test
+    void profileCommandValidatorPrivateConstructor() throws Exception {
+        var constructor = ProfileCommandValidator.class.getDeclaredConstructor();
+        constructor.setAccessible(true);
+        var instance = constructor.newInstance();
+        assertNotNull(instance);
+    }
 }
