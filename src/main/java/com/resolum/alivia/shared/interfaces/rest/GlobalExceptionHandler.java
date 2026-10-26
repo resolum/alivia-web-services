@@ -12,6 +12,7 @@ import com.resolum.alivia.iam.domain.exceptions.RegistrationUnavailableException
 import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationResendTooSoonException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationTokenExpiredException;
+import com.resolum.alivia.shared.infrastructure.web.CorrelationIdFilter;
 import com.resolum.alivia.subscriptions.domain.exceptions.InvalidStripeWebhookSignature;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentRejected;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupNotFound;
@@ -23,6 +24,7 @@ import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavai
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -46,6 +48,7 @@ public class GlobalExceptionHandler {
 
     private static final String ERRORS_PROPERTY = "errors";
     private static final String CODE_PROPERTY = "code";
+    private static final String CORRELATION_ID_PROPERTY = "correlationId";
 
     @ExceptionHandler(PreauthorizationConflict.class)
     public ProblemDetail handlePreauthorizationConflict(PreauthorizationConflict exception) {
@@ -220,9 +223,13 @@ public class GlobalExceptionHandler {
             return ResponseEntity.status(errorResponse.getStatusCode()).body(errorResponse.getBody());
         }
         log.error("Unhandled exception", exception);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(problem(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error",
-                        "An unexpected error occurred.", List.of()));
+        var problem = problem(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error",
+                "An unexpected error occurred.", List.of());
+        var correlationId = MDC.get(CorrelationIdFilter.MDC_KEY);
+        if (correlationId != null) {
+            problem.setProperty(CORRELATION_ID_PROPERTY, correlationId);
+        }
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problem);
     }
 
     private static ProblemDetail invalidVerificationTokenProblem() {
