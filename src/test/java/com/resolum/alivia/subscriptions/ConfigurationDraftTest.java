@@ -12,7 +12,9 @@ import java.util.List;
 import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigurationDraftTest {
     @Test
@@ -62,5 +64,65 @@ class ConfigurationDraftTest {
         assertEquals("pi_draft", draft.getStripePaymentIntentId());
         assertEquals(PaymentStatus.PREAUTHORIZED, draft.getPaymentStatus());
         assertEquals(deadline, draft.getCaptureBefore());
+    }
+
+    @Test
+    void validatesPlanBillingCycleAndRoomCount() {
+        assertThrows(IllegalArgumentException.class, () -> new ConfigurationDraft(null, "MONTHLY"));
+        assertThrows(IllegalArgumentException.class, () -> new ConfigurationDraft(PlanCode.CUSTOM, "WEEKLY"));
+
+        var custom = new ConfigurationDraft(PlanCode.CUSTOM, "MONTHLY");
+        assertThrows(IllegalArgumentException.class, () -> custom.replaceRooms(null));
+        assertThrows(IllegalArgumentException.class, () -> custom.replaceRooms(List.of()));
+        assertThrows(IllegalArgumentException.class, () -> custom.replaceRooms(List.of(
+                new ConfiguredRoom("a", "A", 1, 0, 0, 0, 1), new ConfiguredRoom("b", "B", 0, 0, 0, 0, 1),
+                new ConfiguredRoom("c", "C", 0, 0, 0, 0, 1), new ConfiguredRoom("d", "D", 0, 0, 0, 0, 1))));
+
+        var minimum = new ConfigurationDraft(PlanCode.MINIMUM, "MONTHLY");
+        assertThrows(IllegalArgumentException.class, () -> minimum.replaceRooms(List.of(
+                new ConfiguredRoom("a", "A", 1, 0, 0, 0, 1), new ConfiguredRoom("b", "B", 0, 0, 0, 0, 1))));
+    }
+
+    @Test
+    void validatesRoomIdentityAndQuantities() {
+        assertThrows(IllegalArgumentException.class, () -> new ConfiguredRoom(" ", "Dormitorio", 0, 0, 0, 0, 1));
+        assertThrows(IllegalArgumentException.class, () -> new ConfiguredRoom("main", null, 0, 0, 0, 0, 1));
+        assertThrows(IllegalArgumentException.class, () -> new ConfiguredRoom("main", "Dormitorio", -1, 0, 0, 0, 1));
+        var room = new ConfiguredRoom(" main ", " Dormitorio ", 1, 1, 1, 1, 1);
+        assertEquals("main", room.getKey());
+        assertEquals("Dormitorio", room.getName());
+        assertEquals(4, room.actuatorCount());
+    }
+
+    @Test
+    void guardsTheStripeLinksOfTheDraft() {
+        var draft = new ConfigurationDraft(PlanCode.MINIMUM, "MONTHLY");
+        assertThrows(IllegalStateException.class, () -> draft.recordPaymentSetup("seti_1"));
+        assertThrows(IllegalArgumentException.class, () -> draft.linkStripeCustomer(" "));
+        draft.linkStripeCustomer("cus_1");
+        draft.linkStripeCustomer("cus_1");
+        assertThrows(IllegalStateException.class, () -> draft.linkStripeCustomer("cus_2"));
+        assertThrows(IllegalStateException.class, () -> draft.recordPaymentSetup(" "));
+        assertThrows(IllegalArgumentException.class, () -> draft.recordPreauthorization(null));
+    }
+
+    @Test
+    void releasesHoldsSevenDaysAfterAuthorizationOrBeforeStripeExpires() {
+        var draft = new ConfigurationDraft(PlanCode.MINIMUM, "MONTHLY");
+        var now = Instant.now();
+        assertFalse(draft.preauthorizationReleaseDue(now));
+
+        draft.recordPreauthorization(new StripeAuthorization(
+                new StripePaymentIntentId("pi_1"), null, PaymentStatus.PREAUTHORIZED, null));
+        assertFalse(draft.preauthorizationReleaseDue(now));
+        assertTrue(draft.preauthorizationReleaseDue(now.plusSeconds(8 * 24 * 3600L)));
+
+        draft.recordPreauthorization(new StripeAuthorization(
+                new StripePaymentIntentId("pi_1"), null, PaymentStatus.PREAUTHORIZED, now.plusSeconds(3600)));
+        assertTrue(draft.preauthorizationReleaseDue(now));
+
+        draft.markPreauthorizationCanceled();
+        assertEquals(PaymentStatus.CANCELED, draft.getPaymentStatus());
+        assertFalse(draft.preauthorizationReleaseDue(now.plusSeconds(8 * 24 * 3600L)));
     }
 }
