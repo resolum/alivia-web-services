@@ -1,8 +1,13 @@
 package com.resolum.alivia.nursing.application.internal.outboundservices.acl;
 
 import com.resolum.alivia.iam.interfaces.acl.IamContextFacade;
+import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Outbound service acting as an Anti-Corruption Layer (ACL) adapter
@@ -33,7 +38,7 @@ public class ExternalIamService {
      */
     public Long signUpAssistedPerson(String email, String password, String fullName, String phoneNumber,
                                      Long familiarId) {
-        log.info("Requesting IAM sign-up for assisted person with email: {} and familiar ID: {}", email, familiarId);
+        log.info("Requesting IAM sign-up for assisted person with familiar ID: {}", familiarId);
         Long accountId = iamContextFacade.registerAssistedPerson(email, password, fullName, phoneNumber, familiarId);
         log.info("IAM sign-up completed for assisted person with account ID: {}", accountId);
         return accountId;
@@ -46,6 +51,23 @@ public class ExternalIamService {
      * @return true if user exists, false otherwise
      */
     public boolean existsUserByEmail(String email) {
+        log.debug("Checking in IAM whether a user exists by email");
         return iamContextFacade.existsUserByEmail(email);
+    }
+
+    /**
+     * Reads the email addresses of the given users from IAM in a single batch.
+     *
+     * @param userIds the users
+     * @return the email address by user; unknown users are absent
+     */
+    public Map<UserId, String> fetchEmails(Set<UserId> userIds) {
+        if (userIds.isEmpty()) {
+            return Map.of();
+        }
+        log.debug("Fetching emails from IAM for {} users", userIds.size());
+        var ids = userIds.stream().map(UserId::userId).collect(Collectors.toSet());
+        return iamContextFacade.fetchEmailsByUserIds(ids).entrySet().stream()
+                .collect(Collectors.toMap(entry -> new UserId(entry.getKey()), Map.Entry::getValue));
     }
 }

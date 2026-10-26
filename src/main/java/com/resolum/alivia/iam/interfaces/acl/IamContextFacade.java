@@ -1,5 +1,8 @@
 package com.resolum.alivia.iam.interfaces.acl;
 
+import java.util.Map;
+import java.util.Set;
+
 /**
  * Facade for other bounded contexts (e.g. Company/Business, Nursing, Profiles) that need to interact with IAM.
  *
@@ -16,6 +19,14 @@ public interface IamContextFacade {
      *         the email is missing or invalid
      */
     boolean existsUserByEmail(String email);
+
+    /**
+     * Reads the email addresses of the given users in a single batch.
+     *
+     * @param userIds the internal user identifiers
+     * @return the email address by user identifier; unknown users are absent
+     */
+    Map<Long, String> fetchEmailsByUserIds(Set<Long> userIds);
 
     /**
      * Registers a new user account with a given role and optional contextual identifiers.

@@ -8,6 +8,10 @@ import com.resolum.alivia.iam.domain.services.UserCommandService;
 import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -125,5 +129,23 @@ class IamContextFacadeImplTest {
         facade.signUpUser("u@e.com", "P!", "N", "+51", "INVALID_ROLE_FALLBACK", null, null);
 
         assertTrue(true);
+    }
+
+    @Test
+    void fetchesEmailsByUserIdsInOneBatch() {
+        var user = mock(User.class);
+        when(user.getId()).thenReturn(7L);
+        when(user.getEmail()).thenReturn(new EmailAddress("ana.torres@example.com"));
+        when(userRepository.findAllByIds(Set.of(7L, 99L))).thenReturn(List.of(user));
+
+        assertEquals(Map.of(7L, "ana.torres@example.com"), facade.fetchEmailsByUserIds(Set.of(7L, 99L)));
+    }
+
+    @Test
+    void fetchEmailsSkipsPersistenceForNoUsers() {
+        assertEquals(Map.of(), facade.fetchEmailsByUserIds(Set.of()));
+        assertEquals(Map.of(), facade.fetchEmailsByUserIds(null));
+
+        verifyNoInteractions(userRepository);
     }
 }

@@ -1,5 +1,6 @@
 package com.resolum.alivia.iam.application.acl;
 
+import com.resolum.alivia.iam.domain.model.aggregates.User;
 import com.resolum.alivia.iam.domain.model.commands.SignUpCommand;
 import com.resolum.alivia.iam.domain.model.valueobjects.AccessRole;
 import com.resolum.alivia.iam.domain.repositories.UserRepository;
@@ -9,6 +10,10 @@ import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Implementation of the IAM anti-corruption layer facade.
@@ -53,6 +58,19 @@ public class IamContextFacadeImpl implements IamContextFacade {
             log.warn("User existence check rejected: email address is invalid");
             return false;
         }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, String> fetchEmailsByUserIds(Set<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        return userRepository.findAllByIds(userIds).stream()
+                .collect(Collectors.toMap(User::getId, user -> user.getEmail().email()));
     }
 
     /**
