@@ -1,5 +1,6 @@
 package com.resolum.alivia.shared;
 
+import com.resolum.alivia.shared.infrastructure.web.CorrelationIdFilter;
 import com.resolum.alivia.shared.interfaces.rest.GlobalExceptionHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -21,6 +22,7 @@ class GlobalExceptionHandlerTest {
 
     private final MockMvc mvc = MockMvcBuilders.standaloneSetup(new ProbeController())
             .setControllerAdvice(new GlobalExceptionHandler())
+            .addFilters(new CorrelationIdFilter())
             .build();
 
     @Test
@@ -49,10 +51,11 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void unexpectedFailureReturns500WithoutStackTrace() throws Exception {
-        mvc.perform(get("/probe/failure"))
+        mvc.perform(get("/probe/failure").header(CorrelationIdFilter.HEADER, "corr-500"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.code").value("internal_error"))
                 .andExpect(jsonPath("$.detail").value("An unexpected error occurred."))
+                .andExpect(jsonPath("$.correlationId").value("corr-500"))
                 .andExpect(jsonPath("$.trace").doesNotExist())
                 .andExpect(jsonPath("$.stackTrace").doesNotExist());
     }
