@@ -22,19 +22,25 @@ import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationConfli
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -190,6 +196,33 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleRegistrationUnavailable(RegistrationUnavailableException exception) {
         return problem(HttpStatus.SERVICE_UNAVAILABLE, "registration_unavailable",
                 "Registration is temporarily unavailable.", List.of());
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ProblemDetail handleAccessDenied() {
+        return problem(HttpStatus.FORBIDDEN, "access_denied",
+                "The authenticated user is not allowed to perform this action.", List.of());
+    }
+
+    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
+    public ProblemDetail handleInvalidRequest() {
+        return problem(HttpStatus.BAD_REQUEST, "invalid_request",
+                "The request body or parameters are invalid.", List.of());
+    }
+
+    /**
+     * Safety net for unexpected failures. Framework exceptions that already carry their own
+     * status (404, 405, 415...) are passed through so this handler does not turn them into 500.
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ProblemDetail> handleUnexpected(Exception exception) {
+        if (exception instanceof ErrorResponse errorResponse) {
+            return ResponseEntity.status(errorResponse.getStatusCode()).body(errorResponse.getBody());
+        }
+        log.error("Unhandled exception", exception);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(problem(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error",
+                        "An unexpected error occurred.", List.of()));
     }
 
     private static ProblemDetail invalidVerificationTokenProblem() {
