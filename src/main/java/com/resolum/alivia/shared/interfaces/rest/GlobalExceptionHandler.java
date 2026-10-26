@@ -10,6 +10,7 @@ import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessin
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationConflict;
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentRejected;
+import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationDraftNotFound;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -17,6 +18,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(ConfigurationDraftNotFound.class)
+    public ProblemDetail handleConfigurationDraftNotFound(ConfigurationDraftNotFound exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
     @ExceptionHandler(PreauthorizationConflict.class)
     public ProblemDetail handlePreauthorizationConflict(PreauthorizationConflict exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());

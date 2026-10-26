@@ -48,6 +48,27 @@ public class StripeServiceImpl implements StripeService {
     }
 
     @Override
+    public String createCheckoutCustomer(String configurationDraftId) {
+        requireKeys();
+        if (configurationDraftId == null || configurationDraftId.isBlank()) {
+            throw new IllegalArgumentException("Se requiere el borrador de configuración.");
+        }
+        var params = CustomerCreateParams.builder()
+                .setDescription("Contratación Alivia en curso")
+                .putMetadata("alivia_configuration_draft_id", configurationDraftId)
+                .putMetadata("alivia_customer_stage", "onboarding")
+                .build();
+        var options = RequestOptions.builder()
+                .setIdempotencyKey("alivia-configuration-customer-" + configurationDraftId)
+                .build();
+        try {
+            return new StripeClient(secretKey).customers().create(params, options).getId();
+        } catch (StripeException exception) {
+            throw new PaymentSetupUnavailable("No fue posible preparar el cliente de Stripe para la contratación.");
+        }
+    }
+
+    @Override
     public PaymentSetup createPaymentSetup(String customerId, UUID idempotencyKey) {
         requireKeys();
         if (customerId == null || customerId.isBlank()) {
@@ -57,6 +78,8 @@ public class StripeServiceImpl implements StripeService {
                 .setCustomer(customerId)
                 .setUsage(SetupIntentCreateParams.Usage.OFF_SESSION)
                 .addPaymentMethodType("card")
+                .setDescription("Registro de tarjeta para contratación Alivia")
+                .putMetadata("alivia_operation", "payment_method_setup")
                 .build();
         var requestOptions = RequestOptions.builder()
                 .setIdempotencyKey("payment-setup-" + customerId + "-" + idempotencyKey)
