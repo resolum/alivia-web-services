@@ -1,5 +1,7 @@
 package com.resolum.alivia.shared.interfaces.rest;
 
+import com.resolum.alivia.hcm.domain.exceptions.EmployeeNotFound;
+import com.resolum.alivia.hcm.domain.exceptions.EmployeeNotInBusiness;
 import com.resolum.alivia.iam.domain.exceptions.AccountAlreadyVerifiedException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotActiveException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotFoundException;
@@ -22,6 +24,7 @@ import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationConfli
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
+import com.resolum.alivia.profiles.domain.exceptions.StaffProfileNotFoundException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -40,6 +43,16 @@ public class GlobalExceptionHandler {
 
     private static final String ERRORS_PROPERTY = "errors";
     private static final String CODE_PROPERTY = "code";
+
+    @ExceptionHandler({EmployeeNotFound.class, StaffProfileNotFoundException.class})
+    public ProblemDetail handleHcmNotFound(RuntimeException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(EmployeeNotInBusiness.class)
+    public ProblemDetail handleEmployeeNotInBusiness(EmployeeNotInBusiness exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, exception.getMessage());
+    }
 
     @ExceptionHandler(PreauthorizationConflict.class)
     public ProblemDetail handlePreauthorizationConflict(PreauthorizationConflict exception) {
