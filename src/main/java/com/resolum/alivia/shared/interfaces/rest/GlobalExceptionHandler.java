@@ -12,50 +12,44 @@ import com.resolum.alivia.iam.domain.exceptions.RegistrationUnavailableException
 import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationResendTooSoonException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationTokenExpiredException;
-import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationDraftNotFound;
 import com.resolum.alivia.subscriptions.domain.exceptions.InvalidStripeWebhookSignature;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentRejected;
+import com.resolum.alivia.subscriptions.domain.exceptions..PaymentSetupNotFound;
+import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupUnauthorized;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.PlanNotFound;
+import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationConflict;
+import com.resolum.alivia.subscriptions.domain.exceptions.PlanNotFound;
+import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupUnavailable;
+import com.resolum.alivia.subscriptions.domain.exceptions.InvalidStripeWebhookSignature;
+import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
+import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
 import org.springframework.http.HttpHeaders;
+import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationDraftNotFound;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
-import org.springframework.http.ResponseEntity;
-import org.springframework.validation.FieldError;
-import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-
 @RestControllerAdvice
 public class GlobalExceptionHandler {
-
-    private static final String ERRORS_PROPERTY = "errors";
-    private static final String CODE_PROPERTY = "code";
-
     @ExceptionHandler(ConfigurationDraftNotFound.class)
     public ProblemDetail handleConfigurationDraftNotFound(ConfigurationDraftNotFound exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
     }
-
     @ExceptionHandler(PreauthorizationUnavailable.class)
     public ProblemDetail handlePreauthorizationUnavailable(PreauthorizationUnavailable exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
     }
-
     @ExceptionHandler(PaymentRejected.class)
     public ProblemDetail handlePaymentRejected(PaymentRejected exception) {
         var problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
         problem.setProperty("status", "PAYMENT_REJECTED");
         return problem;
     }
-
     @ExceptionHandler(StripeWebhookProcessingFailed.class)
     public ProblemDetail handleStripeWebhookProcessingFailed(StripeWebhookProcessingFailed exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage());
@@ -71,6 +65,15 @@ public class GlobalExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
     }
 
+    @ExceptionHandler(PaymentSetupNotFound.class)
+    public ProblemDetail handlePaymentSetupNotFound(PaymentSetupNotFound exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(PaymentSetupUnauthorized.class)
+    public ProblemDetail handlePaymentSetupUnauthorized(PaymentSetupUnauthorized exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, exception.getMessage());
+    }
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleInvalidArgument(IllegalArgumentException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
