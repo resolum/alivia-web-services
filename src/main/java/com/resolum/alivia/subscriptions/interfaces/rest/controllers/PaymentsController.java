@@ -32,7 +32,6 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 public class PaymentsController {
     private final PaymentSetupCommandService commandService;
     private final PaymentSetupQueryService queryService;
-
     public PaymentsController(PaymentSetupCommandService commandService, PaymentSetupQueryService queryService) {
         this.commandService = commandService;
         this.queryService = queryService;
