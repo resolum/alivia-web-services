@@ -21,6 +21,16 @@ class ProfileQueriesTest {
     }
 
     @Test
+    void existsProfileByIdQueryValidates() {
+        var query = new ExistsProfileByIdQuery(99L);
+        assertEquals(99L, query.profileId());
+
+        assertThrows(IllegalArgumentException.class, () -> new ExistsProfileByIdQuery(null));
+        assertThrows(IllegalArgumentException.class, () -> new ExistsProfileByIdQuery(0L));
+        assertThrows(IllegalArgumentException.class, () -> new ExistsProfileByIdQuery(-5L));
+    }
+
+    @Test
     void getPersonProfileByIdQueryValidates() {
         var query = new GetPersonProfileByIdQuery(2L);
         assertEquals(2L, query.profileId());

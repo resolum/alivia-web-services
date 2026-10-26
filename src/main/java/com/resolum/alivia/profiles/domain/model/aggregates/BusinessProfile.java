@@ -3,6 +3,9 @@ package com.resolum.alivia.profiles.domain.model.aggregates;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import com.resolum.alivia.profiles.domain.model.valueobjects.BusinessHours;
 import com.resolum.alivia.profiles.domain.model.valueobjects.BusinessName;
 import com.resolum.alivia.profiles.domain.model.valueobjects.LegalName;
@@ -41,7 +44,8 @@ public class BusinessProfile extends Profile {
     @AttributeOverride(name = "phoneNumber", column = @Column(name = "business_phone"))
     private PhoneNumber businessPhone;
 
-    @Embedded
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "business_hours")
     private BusinessHours businessHours;
 
     private String slogan;

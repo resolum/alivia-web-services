@@ -2,6 +2,7 @@ package com.resolum.alivia.profiles;
 
 import com.resolum.alivia.profiles.application.internal.queryservices.BusinessProfileQueryServiceImpl;
 import com.resolum.alivia.profiles.application.internal.queryservices.PersonProfileQueryServiceImpl;
+import com.resolum.alivia.profiles.application.internal.queryservices.ProfileQueryServiceImpl;
 import com.resolum.alivia.profiles.application.internal.queryservices.StaffProfileQueryServiceImpl;
 import com.resolum.alivia.profiles.domain.model.aggregates.BusinessProfile;
 import com.resolum.alivia.profiles.domain.model.aggregates.PersonProfile;
@@ -9,6 +10,7 @@ import com.resolum.alivia.profiles.domain.model.aggregates.StaffProfile;
 import com.resolum.alivia.profiles.domain.model.queries.*;
 import com.resolum.alivia.profiles.infrastructure.persistence.jpa.repositories.BusinessProfileRepository;
 import com.resolum.alivia.profiles.infrastructure.persistence.jpa.repositories.PersonProfileRepository;
+import com.resolum.alivia.profiles.infrastructure.persistence.jpa.repositories.ProfilePersistenceRepository;
 import com.resolum.alivia.profiles.infrastructure.persistence.jpa.repositories.StaffProfileRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,20 +27,36 @@ class ProfileQueryServicesTest {
     private BusinessProfileRepository businessRepo;
     private PersonProfileRepository personRepo;
     private StaffProfileRepository staffRepo;
+    private ProfilePersistenceRepository profilePersistenceRepo;
 
     private BusinessProfileQueryServiceImpl businessService;
     private PersonProfileQueryServiceImpl personService;
     private StaffProfileQueryServiceImpl staffService;
+    private ProfileQueryServiceImpl profileService;
 
     @BeforeEach
     void setUp() {
         businessRepo = mock(BusinessProfileRepository.class);
         personRepo = mock(PersonProfileRepository.class);
         staffRepo = mock(StaffProfileRepository.class);
+        profilePersistenceRepo = mock(ProfilePersistenceRepository.class);
 
         businessService = new BusinessProfileQueryServiceImpl(businessRepo);
         personService = new PersonProfileQueryServiceImpl(personRepo);
         staffService = new StaffProfileQueryServiceImpl(staffRepo);
+        profileService = new ProfileQueryServiceImpl(profilePersistenceRepo);
+    }
+
+    // --- ProfileQueryService ---
+
+    @Test
+    void profileQueryServiceChecksExistence() {
+        when(profilePersistenceRepo.existsById(100L)).thenReturn(true);
+        when(profilePersistenceRepo.existsById(200L)).thenReturn(false);
+
+        assertTrue(profileService.handle(new ExistsProfileByIdQuery(100L)));
+        assertFalse(profileService.handle(new ExistsProfileByIdQuery(200L)));
+        assertFalse(profileService.handle(null));
     }
 
     // --- BusinessProfileQueryService ---
