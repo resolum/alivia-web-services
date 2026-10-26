@@ -1,5 +1,6 @@
 package com.resolum.alivia.iam;
 
+import com.resolum.alivia.iam.domain.exceptions.AccountNotActiveException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotPendingVerificationException;
 import com.resolum.alivia.iam.domain.model.aggregates.User;
 import com.resolum.alivia.iam.domain.model.valueobjects.AccessRole;
@@ -10,10 +11,12 @@ import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -43,8 +46,8 @@ class UserTest {
         var first = new EmailVerificationToken("hash-1", NOW.plusHours(1));
         var second = new EmailVerificationToken("hash-2", NOW.plusHours(2));
 
-        user.requestEmailVerification(first);
-        user.requestEmailVerification(second);
+        user.requestEmailVerification(first, NOW);
+        user.requestEmailVerification(second, NOW);
 
         assertNotNull(user.getPendingEmailVerificationToken());
         assertEquals("hash-2", user.getPendingEmailVerificationToken().value());
@@ -54,7 +57,7 @@ class UserTest {
     @Test
     void verifyEmailActivatesAccountAndConsumesToken() {
         var user = newUser();
-        user.requestEmailVerification(new EmailVerificationToken("hash", NOW.plusHours(1)));
+        user.requestEmailVerification(new EmailVerificationToken("hash", NOW.plusHours(1)), NOW);
 
         user.verifyEmail();
 
@@ -75,7 +78,7 @@ class UserTest {
     @Test
     void verifyEmailIsRejectedForBlockedAccountWithPendingToken() {
         var user = newUser();
-        user.requestEmailVerification(new EmailVerificationToken("hash", NOW.plusHours(1)));
+        user.requestEmailVerification(new EmailVerificationToken("hash", NOW.plusHours(1)), NOW);
         ReflectionTestUtils.setField(user, "status", UserStatus.BLOCKED);
 
         assertThrows(AccountNotPendingVerificationException.class, user::verifyEmail);
@@ -100,10 +103,48 @@ class UserTest {
     }
 
     @Test
+    void newUserGetsUniqueUuidAccountIdAndMaySignInWhilePending() {
+        var user = newUser();
+
+        assertNotNull(java.util.UUID.fromString(user.getAccountId()));
+        assertNotEquals(user.getAccountId(), newUser().getAccountId());
+        user.ensureCanSignIn();
+        ReflectionTestUtils.setField(user, "status", UserStatus.BLOCKED);
+        assertThrows(AccountNotActiveException.class, user::ensureCanSignIn);
+    }
+
+    @Test
     void requestEmailVerificationRejectsNullToken() {
         var user = newUser();
 
-        assertThrows(IllegalArgumentException.class, () -> user.requestEmailVerification(null));
+        assertThrows(IllegalArgumentException.class, () -> user.requestEmailVerification(null, NOW));
+        var token = new EmailVerificationToken("hash", NOW.plusHours(1));
+        assertThrows(IllegalArgumentException.class, () -> user.requestEmailVerification(token, null));
+    }
+
+    @Test
+    void resendCooldownIsZeroWithoutPreviousRequestAndRoundsUp() {
+        var user = newUser();
+        var cooldown = Duration.ofSeconds(60);
+
+        assertEquals(0L, user.secondsUntilVerificationResend(NOW, cooldown));
+        user.requestEmailVerification(new EmailVerificationToken("hash", NOW.plusHours(1)), NOW);
+        assertEquals(60L, user.secondsUntilVerificationResend(NOW, cooldown));
+        assertEquals(1L, user.secondsUntilVerificationResend(NOW.plusSeconds(59).plusNanos(1), cooldown));
+        assertEquals(0L, user.secondsUntilVerificationResend(NOW.plusSeconds(60), cooldown));
+    }
+
+    @Test
+    void sessionRequiresHashAndExpiration() {
+        var user = newUser();
+
+        assertTrue(user.isRefreshTokenExpiredAt(NOW));
+        assertThrows(IllegalArgumentException.class, () -> user.startSession(null, NOW));
+        assertThrows(IllegalArgumentException.class, () -> user.startSession("hash", null));
+        user.startSession("hash", NOW.plusDays(1));
+        assertFalse(user.isRefreshTokenExpiredAt(NOW));
+        user.endSession();
+        assertTrue(user.isRefreshTokenExpiredAt(NOW));
     }
 
     @Test

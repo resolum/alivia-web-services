@@ -39,6 +39,14 @@ public class UserRepositoryImpl implements UserRepository {
      * {@inheritDoc}
      */
     @Override
+    public Optional<User> findById(Long id) {
+        return persistenceRepository.findById(id);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     public Optional<User> findByEmail(EmailAddress email) {
         return persistenceRepository.findByEmail(email.email());
     }
@@ -49,6 +57,22 @@ public class UserRepositoryImpl implements UserRepository {
     @Override
     public Optional<User> findByEmailVerificationTokenHash(String tokenHash) {
         return persistenceRepository.findByEmailVerificationTokenHash(tokenHash);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Optional<User> findByRefreshTokenHash(String tokenHash) {
+        return persistenceRepository.findByRefreshTokenHash(tokenHash);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Optional<User> findByAccountId(String accountId) {
+        return persistenceRepository.findByAccountId(accountId);
     }
 
     /**

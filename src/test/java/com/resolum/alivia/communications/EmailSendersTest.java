@@ -1,6 +1,8 @@
-package com.resolum.alivia.iam;
+package com.resolum.alivia.communications;
 
-import com.resolum.alivia.iam.infrastructure.notifications.smtp.SmtpVerificationEmailService;
+import com.resolum.alivia.communications.application.internal.outboundservices.email.LoggingEmailSender;
+import com.resolum.alivia.communications.application.internal.outboundservices.email.UnavailableEmailSender;
+import com.resolum.alivia.communications.infrastructure.email.smtp.SmtpEmailSender;
 import jakarta.mail.Multipart;
 import jakarta.mail.Part;
 import jakarta.mail.Session;
@@ -13,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -22,65 +25,56 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class SmtpVerificationEmailServiceTest {
+class EmailSendersTest {
 
     private static final String FROM = "no-reply@alivia.test";
+    private static final String TO = "maria.lopez@example.com";
     private static final String SUBJECT = "Verifica tu cuenta de Alivia";
-    private static final String EMAIL = "maria.lopez@example.com";
-    private static final String RAW_TOKEN = "raw-token";
-    private static final String VERIFICATION_LINK =
-            "https://app.alivia.test/verify-email?token=raw-token&lang=es";
 
     private final JavaMailSender mailSender = mock(JavaMailSender.class);
     private final MimeMessage mimeMessage =
             new MimeMessage(Session.getInstance(new Properties()));
 
     @Test
-    void sendsPlainTextAndHtmlBodiesWithTheVerificationLink() throws Exception {
+    void smtpSenderSendsPlainTextAndHtmlBodies() throws Exception {
         when(mailSender.createMimeMessage()).thenReturn(mimeMessage);
-        var service = new SmtpVerificationEmailService(mailSender, FROM, SUBJECT);
 
-        service.sendVerificationEmail(EMAIL, RAW_TOKEN, VERIFICATION_LINK);
+        new SmtpEmailSender(mailSender, FROM).send(TO, SUBJECT, "plain body", "<p>html body</p>");
 
         verify(mailSender).send(mimeMessage);
         assertEquals(SUBJECT, mimeMessage.getSubject());
         assertEquals(FROM, mimeMessage.getFrom()[0].toString());
-        assertEquals(EMAIL, mimeMessage.getAllRecipients()[0].toString());
-
-        var bodies = textBodies(mimeMessage);
-        assertEquals(2, bodies.size());
-        assertTrue(bodies.stream().anyMatch(body -> body.contains(VERIFICATION_LINK)));
-        assertTrue(bodies.stream()
-                .anyMatch(body -> body.contains("token=raw-token&amp;lang=es")));
+        assertEquals(TO, mimeMessage.getAllRecipients()[0].toString());
+        assertEquals(List.of("plain body", "<p>html body</p>"), textBodies(mimeMessage));
     }
 
     @Test
-    void wrapsDeliveryFailuresAsIllegalState() throws Exception {
+    void smtpSenderWrapsDeliveryFailuresAsIllegalState() {
         when(mailSender.createMimeMessage()).thenReturn(mimeMessage);
         doThrow(new MailSendException("smtp down")).when(mailSender).send(any(MimeMessage.class));
-        var service = new SmtpVerificationEmailService(mailSender, FROM, SUBJECT);
+        var sender = new SmtpEmailSender(mailSender, FROM);
 
         var exception = assertThrows(IllegalStateException.class,
-                () -> service.sendVerificationEmail(EMAIL, RAW_TOKEN, VERIFICATION_LINK));
+                () -> sender.send(TO, SUBJECT, "plain", "<p>html</p>"));
 
-        assertEquals("Verification email could not be delivered.", exception.getMessage());
+        assertEquals("Email could not be delivered.", exception.getMessage());
         assertTrue(exception.getCause() instanceof MailSendException);
     }
 
     @Test
-    void rejectsAMissingSenderAddress() {
-        assertThrows(IllegalArgumentException.class,
-                () -> new SmtpVerificationEmailService(mailSender, "  ", SUBJECT));
+    void smtpSenderRejectsAMissingSenderAddress() {
+        assertThrows(IllegalArgumentException.class, () -> new SmtpEmailSender(mailSender, "  "));
     }
 
     @Test
-    void fallsBackToTheDefaultSubject() throws Exception {
-        when(mailSender.createMimeMessage()).thenReturn(mimeMessage);
-        var service = new SmtpVerificationEmailService(mailSender, FROM, " ");
+    void loggingSenderLogsWithoutException() {
+        assertDoesNotThrow(() -> new LoggingEmailSender().send(TO, SUBJECT, "plain", "<p>html</p>"));
+    }
 
-        service.sendVerificationEmail(EMAIL, RAW_TOKEN, VERIFICATION_LINK);
-
-        assertEquals(SUBJECT, mimeMessage.getSubject());
+    @Test
+    void unavailableSenderAlwaysFails() {
+        assertThrows(IllegalStateException.class,
+                () -> new UnavailableEmailSender().send(TO, SUBJECT, "plain", "<p>html</p>"));
     }
 
     private static List<String> textBodies(Part part) throws Exception {

@@ -19,7 +19,7 @@ public final class  RegisteredAccountResourceFromEntityAssembler {
      */
     public static RegisteredAccountResource toResourceFromEntity(User user) {
         return new RegisteredAccountResource(
-                user.getId(),
+                user.getAccountId(),
                 maskEmail(user.getEmail().email()),
                 user.getStatus().name());
     }

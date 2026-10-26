@@ -1,7 +1,10 @@
 package com.resolum.alivia.iam.infrastructure.tokens.jwt.services;
 
+import com.resolum.alivia.iam.domain.model.aggregates.User;
 import com.resolum.alivia.iam.domain.model.valueobjects.EmailVerificationToken;
 import com.resolum.alivia.iam.infrastructure.tokens.jwt.BearerTokenService;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -13,14 +16,17 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Base64;
+import java.util.Date;
 import java.util.HexFormat;
+import java.util.List;
+import javax.crypto.SecretKey;
 
 /**
- * Implementation of {@link BearerTokenService} for email verification tokens.
+ * Implementation of {@link BearerTokenService}.
  *
- * <p>Generates cryptographically secure opaque tokens, stores only their SHA-256 hash
- * and compares hashes in constant time. PENDING(auth): JWT generation for login will be
- * added here once that flow is in scope.</p>
+ * <p>Email verification and refresh tokens are cryptographically secure opaque tokens:
+ * only their SHA-256 hash is stored and hashes are compared in constant time. Access
+ * tokens are JWTs signed with HMAC-SHA256.</p>
  */
 @Service
 public class TokenServiceImpl implements BearerTokenService {
@@ -32,27 +38,45 @@ public class TokenServiceImpl implements BearerTokenService {
     private final Clock clock;
     private final int expirationHours;
     private final String linkBaseUrl;
+    private final SecretKey signingKey;
+    private final long accessTokenExpirationSeconds;
+    private final int refreshTokenExpirationDays;
 
     /**
      * Creates the token service.
      *
-     * @param clock           the shared clock
-     * @param expirationHours number of hours a verification token remains valid
-     * @param linkBaseUrl     base URL of the frontend verification route
+     * @param clock                        the shared clock
+     * @param expirationHours              number of hours a verification token remains valid
+     * @param linkBaseUrl                  base URL of the frontend verification route
+     * @param jwtSecret                    HMAC secret of at least 32 bytes
+     * @param accessTokenExpirationMinutes number of minutes an access token remains valid
+     * @param refreshTokenExpirationDays   number of days a refresh token remains valid
      */
     public TokenServiceImpl(
             Clock clock,
             @Value("${alivia.iam.email-verification.expiration-hours:24}") int expirationHours,
-            @Value("${alivia.iam.email-verification.link-base-url}") String linkBaseUrl) {
+            @Value("${alivia.iam.email-verification.link-base-url}") String linkBaseUrl,
+            @Value("${alivia.iam.jwt.secret}") String jwtSecret,
+            @Value("${alivia.iam.jwt.access-token-expiration-minutes:15}") int accessTokenExpirationMinutes,
+            @Value("${alivia.iam.jwt.refresh-token-expiration-days:7}") int refreshTokenExpirationDays) {
         if (expirationHours < 0) {
             throw new IllegalArgumentException("Verification token expiration must not be negative.");
         }
         if (linkBaseUrl == null || linkBaseUrl.isBlank()) {
             throw new IllegalArgumentException("Verification link base URL is required.");
         }
+        if (jwtSecret == null || jwtSecret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalArgumentException("JWT secret must have at least 32 bytes.");
+        }
+        if (accessTokenExpirationMinutes <= 0 || refreshTokenExpirationDays <= 0) {
+            throw new IllegalArgumentException("Session token expirations must be positive.");
+        }
         this.clock = clock;
         this.expirationHours = expirationHours;
         this.linkBaseUrl = linkBaseUrl.trim();
+        this.signingKey = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
+        this.accessTokenExpirationSeconds = accessTokenExpirationMinutes * 60L;
+        this.refreshTokenExpirationDays = refreshTokenExpirationDays;
     }
 
     /**
@@ -98,6 +122,64 @@ public class TokenServiceImpl implements BearerTokenService {
         return MessageDigest.isEqual(
                 sha256(rawToken).getBytes(StandardCharsets.US_ASCII),
                 expectedHash.getBytes(StandardCharsets.US_ASCII));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String generateAccessToken(User user) {
+        var issuedAt = clock.instant();
+        return Jwts.builder()
+                .subject(String.valueOf(user.getId()))
+                .claim("email", user.getEmail().email())
+                .claim("role", user.getAccessRole().name())
+                // PENDING(contract): no capability matrix per role is defined yet, so the role is the only authority.
+                .claim("permissions", List.of("ROLE_" + user.getAccessRole().name()))
+                .issuedAt(Date.from(issuedAt))
+                .expiration(Date.from(issuedAt.plusSeconds(accessTokenExpirationSeconds)))
+                .signWith(signingKey)
+                .compact();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long getAccessTokenExpirationSeconds() {
+        return accessTokenExpirationSeconds;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String getUserIdFromAccessToken(String accessToken) {
+        return Jwts.parser()
+                .verifyWith(signingKey)
+                .clock(() -> Date.from(clock.instant()))
+                .build()
+                .parseSignedClaims(accessToken)
+                .getPayload()
+                .getSubject();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public GeneratedRefreshToken generateRefreshToken() {
+        var rawToken = generateRawToken();
+        var expiresAt = LocalDateTime.now(clock).plusDays(refreshTokenExpirationDays);
+        return new GeneratedRefreshToken(rawToken, sha256(rawToken), expiresAt);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String hashRefreshToken(String rawToken) {
+        return hash(rawToken);
     }
 
     private String generateRawToken() {

@@ -30,10 +30,16 @@ class UserRepositoryImplTest {
         when(persistenceRepository.existsByEmail("user@example.com")).thenReturn(true);
         when(persistenceRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
         when(persistenceRepository.findByEmailVerificationTokenHash("hash123")).thenReturn(Optional.of(user));
+        when(persistenceRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(persistenceRepository.findByRefreshTokenHash("refresh-hash")).thenReturn(Optional.of(user));
+        when(persistenceRepository.findByAccountId("account-1")).thenReturn(Optional.of(user));
 
         assertTrue(repository.existsByEmail(email));
         assertEquals(Optional.of(user), repository.findByEmail(email));
         assertEquals(Optional.of(user), repository.findByEmailVerificationTokenHash("hash123"));
+        assertEquals(Optional.of(user), repository.findById(1L));
+        assertEquals(Optional.of(user), repository.findByRefreshTokenHash("refresh-hash"));
+        assertEquals(Optional.of(user), repository.findByAccountId("account-1"));
 
         verify(persistenceRepository).existsByEmail("user@example.com");
         verify(persistenceRepository).findByEmail("user@example.com");

@@ -37,4 +37,21 @@ public interface UserPersistenceRepository extends JpaRepository<User, Long> {
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<User> findByEmailVerificationTokenHash(String emailVerificationTokenHash);
+
+    /**
+     * Finds a user by the hash of its refresh token and locks the row for writing.
+     *
+     * @param refreshTokenHash the SHA-256 hash of the plain-text refresh token
+     * @return the matching user, or empty when no session matches
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<User> findByRefreshTokenHash(String refreshTokenHash);
+
+    /**
+     * Finds a user by its public account identifier.
+     *
+     * @param accountId the public account identifier
+     * @return the matching user, or empty when none exists
+     */
+    Optional<User> findByAccountId(String accountId);
 }

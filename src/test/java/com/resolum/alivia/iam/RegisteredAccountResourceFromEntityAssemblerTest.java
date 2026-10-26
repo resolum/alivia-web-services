@@ -18,7 +18,7 @@ class RegisteredAccountResourceFromEntityAssemblerTest {
 
         var resource = RegisteredAccountResourceFromEntityAssembler.toResourceFromEntity(user);
 
-        assertEquals(Long.valueOf(9L), resource.accountId());
+        assertEquals("acc-9", resource.accountId());
         assertEquals("m***@example.com", resource.maskedEmail());
         assertEquals("PENDING_VERIFICATION", resource.status());
     }
@@ -57,7 +57,7 @@ class RegisteredAccountResourceFromEntityAssemblerTest {
 
     private static User userWith(String email) {
         var user = mock(User.class);
-        when(user.getId()).thenReturn(9L);
+        when(user.getAccountId()).thenReturn("acc-9");
         when(user.getEmail()).thenReturn(new EmailAddress(email));
         when(user.getStatus()).thenReturn(UserStatus.PENDING_VERIFICATION);
         return user;
