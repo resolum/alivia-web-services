@@ -27,24 +27,33 @@ import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavai
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
 import com.resolum.alivia.profiles.domain.exceptions.StaffProfileNotFoundException;
+import com.resolum.alivia.shared.infrastructure.web.CorrelationIdFilter;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final String ERRORS_PROPERTY = "errors";
     private static final String CODE_PROPERTY = "code";
+    private static final String CORRELATION_ID_PROPERTY = "correlationId";
 
     @ExceptionHandler(ContractNotFound.class)
     public ProblemDetail handleContractNotFound(ContractNotFound exception) {
@@ -212,6 +221,37 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleRegistrationUnavailable(RegistrationUnavailableException exception) {
         return problem(HttpStatus.SERVICE_UNAVAILABLE, "registration_unavailable",
                 "Registration is temporarily unavailable.", List.of());
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ProblemDetail handleAccessDenied() {
+        return problem(HttpStatus.FORBIDDEN, "access_denied",
+                "The authenticated user is not allowed to perform this action.", List.of());
+    }
+
+    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
+    public ProblemDetail handleInvalidRequest() {
+        return problem(HttpStatus.BAD_REQUEST, "invalid_request",
+                "The request body or parameters are invalid.", List.of());
+    }
+
+    /**
+     * Safety net for unexpected failures. Framework exceptions that already carry their own
+     * status (404, 405, 415...) are passed through so this handler does not turn them into 500.
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ProblemDetail> handleUnexpected(Exception exception) {
+        if (exception instanceof ErrorResponse errorResponse) {
+            return ResponseEntity.status(errorResponse.getStatusCode()).body(errorResponse.getBody());
+        }
+        log.error("Unhandled exception", exception);
+        var problem = problem(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error",
+                "An unexpected error occurred.", List.of());
+        var correlationId = MDC.get(CorrelationIdFilter.MDC_KEY);
+        if (correlationId != null) {
+            problem.setProperty(CORRELATION_ID_PROPERTY, correlationId);
+        }
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problem);
     }
 
     private static ProblemDetail invalidVerificationTokenProblem() {
