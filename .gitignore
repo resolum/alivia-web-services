@@ -1,4 +1,6 @@
 target/
+src/main/resources/application-dev.properties
+scripts/reset-local-db.py
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

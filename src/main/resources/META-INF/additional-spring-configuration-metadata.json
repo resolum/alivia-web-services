@@ -1,0 +1,43 @@
+{
+  "properties": [
+    {
+      "name": "documentation.application.description",
+      "type": "java.lang.String",
+      "description": "The description of the application for OpenAPI documentation purposes."
+    },
+    {
+      "name": "documentation.application.version",
+      "type": "java.lang.String",
+      "description": "The version of the application for OpenAPI documentation purposes."
+    },
+    {
+      "name": "authorization.jwt.secret",
+      "type": "java.lang.String",
+      "description": "The secret key used for signing JWT tokens."
+    },
+    {
+      "name": "authorization.jwt.expiration.days",
+      "type": "java.lang.String",
+      "description": "The number of days before a JWT token expires."
+    },
+    {
+      "name":  "cloudinary.cloud-name",
+      "type":  "java.lang.String",
+      "description":  "The Cloudinary cloud name for image management."
+    },
+    {
+      "name":  "cloudinary.api-key",
+      "type":  "java.lang.String",
+      "description":  "The Cloudinary API key for image management."
+    },
+    {
+      "name":  "cloudinary.api-secret",
+      "type":  "java.lang.String",
+      "description":  "The Cloudinary API secret for image management."
+    },
+    {
+      "name": "environment.name",
+      "type": "java.lang.String",
+      "description": "Description for environment.name."
+    }
+  ] }
