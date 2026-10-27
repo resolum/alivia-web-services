@@ -61,9 +61,9 @@ class ProductionProfilePropertiesTest {
     }
 
     @Test
-    void keepsSchemaManagementOnUpdateUntilTheProductionSwitchIsAuthorized() {
-        // V1 already holds the full schema, but P-464.2 owns the switch to validate.
-        assertThat(PROD.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("update");
+    void validatesTheSchemaWithoutChangingIt() {
+        // Flyway owns the schema (V1); Hibernate must never create or alter tables in prod.
+        assertThat(PROD.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("validate");
     }
 
     @Test

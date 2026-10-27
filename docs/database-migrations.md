@@ -9,7 +9,7 @@ Flyway es el dueño del esquema. Las migraciones viven en
 |---|---|
 | Migración existente | `V1__baseline.sql` — esquema completo (24 tablas, 235 columnas, 29 `CHECK`, 9 claves foráneas, 45 índices) |
 | `ddl-auto` en `dev` | `update` (Hibernate puede crear tablas que falten; úsalo solo en local) |
-| `ddl-auto` en `prod` | `update` — P-464.2 cambiará a `validate` cuando se autorice |
+| `ddl-auto` en `prod` | `validate` — Flyway crea el esquema y Hibernate solo lo comprueba al arrancar |
 | `ddl-auto` en `test` | El del perfil de pruebas; Flyway está deshabilitado (ver más abajo) |
 | Historial | Tabla `flyway_schema_history` |
 
@@ -128,10 +128,16 @@ Ejecutada contra PostgreSQL 18.6 con el `V1` actual:
 |---|---|
 | Base limpia + `validate` | ✅ 24 tablas creadas por Flyway, arranque correcto |
 | Base existente baselineada + `validate` | ✅ `BASELINE` en v1, sin migraciones pendientes |
+| Perfil `prod` sobre base limpia | ✅ migra, valida, arranca; `/actuator/health` 200 y `/v3/api-docs` 404 |
+| Perfil `prod` sobre base con deriva (columna borrada) | ✅ el arranque falla: `Schema validation: missing column [failed_access_attempts] in table [users]` |
 | Columnas (nombre, tipo, longitud, nulabilidad) | ✅ 235/235 idénticas a las de Hibernate |
 | Restricciones (`pg_constraint`) | ✅ 234/234 idénticas |
 | Índices (`pg_indexes`) | ✅ 45/45 idénticos |
 | `.\mvnw.cmd clean verify` | ✅ 847 pruebas, 0 fallos, 8 *skipped* |
+
+La prueba de deriva es la que justifica `validate` en producción: sin ella, Hibernate habría
+seguido arrancando con la columna ausente y el error aparecería en la primera consulta.
+
 
 ## Añadir una entidad nueva al esquema
 
