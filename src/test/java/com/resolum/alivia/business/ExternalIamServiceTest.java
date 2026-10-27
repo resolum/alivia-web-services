@@ -9,6 +9,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDate;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -16,6 +18,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ExternalIamService (Business ACL) Tests")
 class ExternalIamServiceTest {
+
+    private static final LocalDate BIRTH_DATE = LocalDate.of(1990, 1, 15);
 
     @Mock
     private IamContextFacade iamContextFacade;
@@ -29,29 +33,38 @@ class ExternalIamServiceTest {
         when(iamContextFacade.registerCompanyUser(
                 "employee@acme.com",
                 "Password123!",
-                "John Doe",
+                "John",
+                "Doe",
                 "+51987654321",
                 "EMPLOYEE",
-                10L
+                10L,
+                "12345678",
+                BIRTH_DATE
         )).thenReturn(42L);
 
         Long accountId = externalIamService.signUpCompanyUser(
                 "employee@acme.com",
                 "Password123!",
-                "John Doe",
+                "John",
+                "Doe",
                 "+51987654321",
                 "EMPLOYEE",
-                10L
+                10L,
+                "12345678",
+                BIRTH_DATE
         );
 
         assertThat(accountId).isEqualTo(42L);
         verify(iamContextFacade).registerCompanyUser(
                 "employee@acme.com",
                 "Password123!",
-                "John Doe",
+                "John",
+                "Doe",
                 "+51987654321",
                 "EMPLOYEE",
-                10L
+                10L,
+                "12345678",
+                BIRTH_DATE
         );
     }
 

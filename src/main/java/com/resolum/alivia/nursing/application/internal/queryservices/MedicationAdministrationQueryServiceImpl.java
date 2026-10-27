@@ -1,5 +1,6 @@
 package com.resolum.alivia.nursing.application.internal.queryservices;
 
+import com.resolum.alivia.nursing.application.internal.outboundservices.acl.ExternalIamService;
 import com.resolum.alivia.nursing.application.internal.outboundservices.acl.ExternalProfilesService;
 import com.resolum.alivia.nursing.domain.exceptions.MedicationAdministrationAccessDeniedException;
 import com.resolum.alivia.nursing.domain.exceptions.MedicationAdministrationNotFoundException;
@@ -32,6 +33,7 @@ public class MedicationAdministrationQueryServiceImpl implements MedicationAdmin
     private final CareMembershipRepository careMembershipRepository;
     private final ActivityLogRepository activityLogRepository;
     private final ExternalProfilesService externalProfilesService;
+    private final ExternalIamService externalIamService;
 
     /**
      * Creates the service.
@@ -40,15 +42,18 @@ public class MedicationAdministrationQueryServiceImpl implements MedicationAdmin
      * @param careMembershipRepository the membership repository
      * @param activityLogRepository    the activity log repository
      * @param externalProfilesService  the Profiles ACL used to resolve names
+     * @param externalIamService       the IAM ACL used to find the staff profile of technicians
      */
     public MedicationAdministrationQueryServiceImpl(CareActivityRepository careActivityRepository,
                                                     CareMembershipRepository careMembershipRepository,
                                                     ActivityLogRepository activityLogRepository,
-                                                    ExternalProfilesService externalProfilesService) {
+                                                    ExternalProfilesService externalProfilesService,
+                                                    ExternalIamService externalIamService) {
         this.careActivityRepository = careActivityRepository;
         this.careMembershipRepository = careMembershipRepository;
         this.activityLogRepository = activityLogRepository;
         this.externalProfilesService = externalProfilesService;
+        this.externalIamService = externalIamService;
     }
 
     /**
@@ -83,6 +88,13 @@ public class MedicationAdministrationQueryServiceImpl implements MedicationAdmin
                 .orElse(null);
         var names = externalProfilesService.fetchPersonNames(
                 caregiver == null ? Set.of(person) : Set.of(person, caregiver.getMemberPersonProfileId()));
+        var caregiverStaffProfile = caregiver == null ? null
+                : externalIamService.fetchStaffProfileIds(Set.of(caregiver.getUserId())).get(caregiver.getUserId());
+        // Profile ids are per table, so a technician is named from its staff profile, never by person id.
+        var caregiverName = caregiver == null ? null
+                : caregiverStaffProfile != null
+                ? externalProfilesService.fetchStaffNames(Set.of(caregiverStaffProfile)).get(caregiverStaffProfile)
+                : names.get(caregiver.getMemberPersonProfileId());
         var activityLog = activityLogRepository.findByAssignmentIdAndDate(id.assignmentId(), id.date()).orElse(null);
         var schedule = assignment.getSchedule();
 
@@ -91,7 +103,7 @@ public class MedicationAdministrationQueryServiceImpl implements MedicationAdmin
                 schedule.occurrenceStart(id.date()), schedule.occurrenceEnd(id.date()),
                 assignment.getCaregiverId(),
                 caregiver == null ? null : caregiver.getUserId(),
-                caregiver == null ? null : names.get(caregiver.getMemberPersonProfileId()),
+                caregiverName,
                 activityLog);
     }
 

@@ -57,6 +57,12 @@ public class BusinessProfile extends Profile {
     @Embedded
     private Address address;
 
+    /**
+     * Required by JPA.
+     */
+    protected BusinessProfile() {
+    }
+
     public BusinessProfile(EmailAddress emailAddress, Photo photo, PhoneNumber whatsappNum, Ruc ruc,
             BusinessName businessName, LegalName legalName, String description, String mainActivity,
             PhoneNumber businessPhone, BusinessHours businessHours, String slogan,

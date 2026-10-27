@@ -1,6 +1,7 @@
 package com.resolum.alivia.nursing;
 
 import com.resolum.alivia.nursing.application.internal.commandservices.MedicationAdministrationCommandServiceImpl;
+import com.resolum.alivia.nursing.application.internal.outboundservices.acl.ExternalIamService;
 import com.resolum.alivia.nursing.application.internal.outboundservices.acl.ExternalProfilesService;
 import com.resolum.alivia.nursing.application.internal.queryservices.MedicationAdministrationQueryServiceImpl;
 import com.resolum.alivia.nursing.domain.exceptions.MedicationAdministrationAccessDeniedException;
@@ -79,6 +80,8 @@ class MedicationAdministrationServicesTest {
     private ActivityLogRepository activityLogRepository;
     @Mock
     private ExternalProfilesService externalProfilesService;
+    @Mock
+    private ExternalIamService externalIamService;
 
     private MedicationAdministrationQueryServiceImpl queryService;
     private MedicationAdministrationCommandServiceImpl commandService;
@@ -86,7 +89,7 @@ class MedicationAdministrationServicesTest {
     @BeforeEach
     void setUp() {
         queryService = new MedicationAdministrationQueryServiceImpl(careActivityRepository, careMembershipRepository,
-                activityLogRepository, externalProfilesService);
+                activityLogRepository, externalProfilesService, externalIamService);
         commandService = new MedicationAdministrationCommandServiceImpl(queryService, activityLogRepository, CLOCK);
     }
 
@@ -110,6 +113,22 @@ class MedicationAdministrationServicesTest {
         assertThat(administration.caregiverUserId()).isEqualTo(CAREGIVER);
         assertThat(administration.responsibleName()).isEqualTo("Ana Torres");
         assertThat(administration.status()).isEqualTo(MedicationAdministrationStatus.PENDING);
+    }
+
+    @Test
+    @DisplayName("A technician caregiver is named from its staff profile")
+    void technicianCaregiverIsNamedFromStaffProfile() {
+        givenActivity(CareActivityType.MEDICATION);
+        givenMemberships(CAREGIVER, CareRole.CAREGIVER);
+        givenAssignedCaregiverMembership();
+        when(externalProfilesService.fetchPersonNames(Set.of(PERSON, CAREGIVER_PROFILE)))
+                .thenReturn(Map.of(PERSON, "Maria Lopez", CAREGIVER_PROFILE, "Unrelated Person"));
+        when(externalIamService.fetchStaffProfileIds(Set.of(CAREGIVER))).thenReturn(Map.of(CAREGIVER, 40L));
+        when(externalProfilesService.fetchStaffNames(Set.of(40L))).thenReturn(Map.of(40L, "Juan Perez"));
+
+        var administration = queryService.handle(new GetMedicationAdministrationQuery(CAREGIVER, ID));
+
+        assertThat(administration.responsibleName()).isEqualTo("Juan Perez");
     }
 
     @Test

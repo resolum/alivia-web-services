@@ -4,6 +4,7 @@ import com.resolum.alivia.iam.domain.exceptions.AccountAlreadyVerifiedException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotActiveException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotFoundException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotPendingVerificationException;
+import com.resolum.alivia.iam.domain.exceptions.DniAlreadyRegisteredException;
 import com.resolum.alivia.iam.domain.exceptions.EmailAlreadyRegisteredException;
 import com.resolum.alivia.iam.domain.exceptions.InvalidCredentialsException;
 import com.resolum.alivia.iam.domain.exceptions.InvalidRefreshTokenException;
@@ -103,6 +104,13 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.CONFLICT, "email_already_registered",
                 "The email address is already registered.",
                 List.of(new ApiFieldError("email", "email_already_registered")));
+    }
+
+    @ExceptionHandler(DniAlreadyRegisteredException.class)
+    public ProblemDetail handleDniAlreadyRegistered(DniAlreadyRegisteredException exception) {
+        return problem(HttpStatus.CONFLICT, "dni_already_registered",
+                "The DNI is already registered.",
+                List.of(new ApiFieldError("dni", "dni_already_registered")));
     }
 
     @ExceptionHandler(SignUpValidationException.class)

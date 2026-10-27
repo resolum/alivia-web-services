@@ -171,8 +171,10 @@ public class CareActivityQueryServiceImpl implements CareActivityQueryService {
         var profilesToName = new HashSet<>(assistedPersons);
         caregivers.values().forEach(caregiver -> profilesToName.add(caregiver.getMemberPersonProfileId()));
         var personNames = externalProfilesService.fetchPersonNames(profilesToName);
-        var emails = externalIamService.fetchEmails(caregivers.values().stream()
-                .map(CareMembership::getUserId).collect(Collectors.toSet()));
+        var caregiverUsers = caregivers.values().stream().map(CareMembership::getUserId).collect(Collectors.toSet());
+        var emails = externalIamService.fetchEmails(caregiverUsers);
+        var staffProfiles = externalIamService.fetchStaffProfileIds(caregiverUsers);
+        var staffNames = externalProfilesService.fetchStaffNames(new HashSet<>(staffProfiles.values()));
         var now = LocalDateTime.now(clock.withZone(AGENDA_ZONE));
 
         List<AgendaItem> result = new ArrayList<>();
@@ -187,13 +189,20 @@ public class CareActivityQueryServiceImpl implements CareActivityQueryService {
                 var contact = new AgendaItem.Contact(
                         personNames.get(scoped.activity().getAssistedPersonProfileId()),
                         caregiverProfile,
-                        caregiverProfile == null ? null : personNames.get(caregiverProfile),
+                        caregiver == null ? null : caregiverName(caregiver, personNames, staffProfiles, staffNames),
                         caregiver == null ? null : emails.get(caregiver.getUserId()));
                 var activityLog = logs.get(new OccurrenceKey(assignment.getId(), date));
                 result.add(AgendaItem.of(scoped.activity(), assignment, date, activityLog, now).withContact(contact));
             }
         }
         return result;
+    }
+
+    // Profile ids are per table, so a technician is named from its staff profile, never by person id.
+    private static String caregiverName(CareMembership caregiver, Map<PersonProfileId, String> personNames,
+                                        Map<UserId, Long> staffProfiles, Map<Long, String> staffNames) {
+        var staffProfile = staffProfiles.get(caregiver.getUserId());
+        return staffProfile != null ? staffNames.get(staffProfile) : personNames.get(caregiver.getMemberPersonProfileId());
     }
 
     private Map<OccurrenceKey, ActivityLog> logsByOccurrence(List<ScopedAssignment> scope, LocalDate from,

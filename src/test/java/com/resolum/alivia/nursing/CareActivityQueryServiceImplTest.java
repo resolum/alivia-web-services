@@ -113,6 +113,23 @@ class CareActivityQueryServiceImplTest {
     }
 
     @Test
+    @DisplayName("A technician caregiver is named from its staff profile, not by person id")
+    void technicianCaregiverIsNamedFromStaffProfile() {
+        givenMemberships(CAREGIVER, caregiverMembership());
+        givenAgendaActivities();
+        when(careMembershipRepository.findActiveByAssistedPersonProfileIds(Set.of(PERSON)))
+                .thenReturn(List.of(caregiverMembership()));
+        when(externalProfilesService.fetchPersonNames(Set.of(PERSON, profileOf(CAREGIVER))))
+                .thenReturn(Map.of(PERSON, "Maria Lopez", profileOf(CAREGIVER), "Unrelated Person"));
+        when(externalIamService.fetchStaffProfileIds(Set.of(CAREGIVER))).thenReturn(Map.of(CAREGIVER, 40L));
+        when(externalProfilesService.fetchStaffNames(Set.of(40L))).thenReturn(Map.of(40L, "Juan Perez"));
+
+        var item = service.handle(agendaQuery(CAREGIVER, null, null, null)).getFirst();
+
+        assertThat(item.contact().caregiverName()).isEqualTo("Juan Perez");
+    }
+
+    @Test
     @DisplayName("A relative sees every assignment of the assisted person, sorted by start")
     void relativeSeesAllAssignments() {
         givenMemberships(RELATIVE, membership(RELATIVE, CareRole.RELATIVE, 3L));
