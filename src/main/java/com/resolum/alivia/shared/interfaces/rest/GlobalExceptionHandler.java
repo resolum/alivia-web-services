@@ -26,6 +26,13 @@ import com.resolum.alivia.subscriptions.domain.exceptions.PlanNotFound;
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
+import com.resolum.alivia.profiles.domain.exceptions.BusinessNameAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.BusinessProfileNotFoundException;
+import com.resolum.alivia.profiles.domain.exceptions.DniAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.EmailAddressAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.LegalNameAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.PersonProfileNotFoundException;
+import com.resolum.alivia.profiles.domain.exceptions.RucAlreadyExistsException;
 import com.resolum.alivia.profiles.domain.exceptions.StaffProfileNotFoundException;
 import com.resolum.alivia.shared.infrastructure.web.CorrelationIdFilter;
 import lombok.extern.slf4j.Slf4j;
@@ -70,9 +77,27 @@ public class GlobalExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
     }
 
-    @ExceptionHandler({EmployeeNotFound.class, StaffProfileNotFoundException.class})
-    public ProblemDetail handleHcmNotFound(RuntimeException exception) {
+    @ExceptionHandler(EmployeeNotFound.class)
+    public ProblemDetail handleEmployeeNotFound(EmployeeNotFound exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(StaffProfileNotFoundException.class)
+    public ProblemDetail handleStaffProfileNotFound(StaffProfileNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, "staff_profile_not_found",
+                "The staff profile does not exist.", List.of());
+    }
+
+    @ExceptionHandler(PersonProfileNotFoundException.class)
+    public ProblemDetail handlePersonProfileNotFound(PersonProfileNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, "person_profile_not_found",
+                "The person profile does not exist.", List.of());
+    }
+
+    @ExceptionHandler(BusinessProfileNotFoundException.class)
+    public ProblemDetail handleBusinessProfileNotFound(BusinessProfileNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, "business_profile_not_found",
+                "The business profile does not exist.", List.of());
     }
 
     @ExceptionHandler(EmployeeNotInBusiness.class)
@@ -134,6 +159,36 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.CONFLICT, "dni_already_registered",
                 "The DNI is already registered.",
                 List.of(new ApiFieldError("dni", "dni_already_registered")));
+    }
+
+    @ExceptionHandler(EmailAddressAlreadyExistsException.class)
+    public ProblemDetail handleEmailAddressAlreadyExists(EmailAddressAlreadyExistsException exception) {
+        return problem(HttpStatus.CONFLICT, "email_already_registered",
+                "The email address is already registered.", List.of());
+    }
+
+    @ExceptionHandler(DniAlreadyExistsException.class)
+    public ProblemDetail handleDniAlreadyExists(DniAlreadyExistsException exception) {
+        return problem(HttpStatus.CONFLICT, "dni_already_registered",
+                "The DNI is already registered.", List.of());
+    }
+
+    @ExceptionHandler(RucAlreadyExistsException.class)
+    public ProblemDetail handleRucAlreadyExists(RucAlreadyExistsException exception) {
+        return problem(HttpStatus.CONFLICT, "ruc_already_exists",
+                "The RUC is already registered.", List.of());
+    }
+
+    @ExceptionHandler(BusinessNameAlreadyExistsException.class)
+    public ProblemDetail handleBusinessNameAlreadyExists(BusinessNameAlreadyExistsException exception) {
+        return problem(HttpStatus.CONFLICT, "business_name_already_exists",
+                "The business name is already registered.", List.of());
+    }
+
+    @ExceptionHandler(LegalNameAlreadyExistsException.class)
+    public ProblemDetail handleLegalNameAlreadyExists(LegalNameAlreadyExistsException exception) {
+        return problem(HttpStatus.CONFLICT, "legal_name_already_exists",
+                "The legal name is already registered.", List.of());
     }
 
     @ExceptionHandler(SignUpValidationException.class)

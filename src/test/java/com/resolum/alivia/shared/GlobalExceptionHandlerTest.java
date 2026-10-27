@@ -1,8 +1,18 @@
 package com.resolum.alivia.shared;
 
+import com.resolum.alivia.profiles.domain.exceptions.BusinessNameAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.BusinessProfileNotFoundException;
+import com.resolum.alivia.profiles.domain.exceptions.DniAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.EmailAddressAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.LegalNameAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.PersonProfileNotFoundException;
+import com.resolum.alivia.profiles.domain.exceptions.RucAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.StaffProfileNotFoundException;
 import com.resolum.alivia.shared.infrastructure.web.CorrelationIdFilter;
 import com.resolum.alivia.shared.interfaces.rest.GlobalExceptionHandler;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.web.servlet.MockMvc;
@@ -66,6 +76,25 @@ class GlobalExceptionHandlerTest {
                 .andExpect(status().isMethodNotAllowed());
     }
 
+    @ParameterizedTest
+    @CsvSource({
+            "/probe/email-exists, 409, email_already_registered",
+            "/probe/dni-exists, 409, dni_already_registered",
+            "/probe/ruc-exists, 409, ruc_already_exists",
+            "/probe/business-name-exists, 409, business_name_already_exists",
+            "/probe/legal-name-exists, 409, legal_name_already_exists",
+            "/probe/person-profile-missing, 404, person_profile_not_found",
+            "/probe/business-profile-missing, 404, business_profile_not_found",
+            "/probe/staff-profile-missing, 404, staff_profile_not_found"
+    })
+    void profileErrorsUseStableCodes(String path, int status, String code) throws Exception {
+        mvc.perform(get(path))
+                .andExpect(status().is(status))
+                .andExpect(jsonPath("$.code").value(code))
+                .andExpect(jsonPath("$.errors").isArray())
+                .andExpect(jsonPath("$.trace").doesNotExist());
+    }
+
     record ProbeBody(String name) {
     }
 
@@ -88,6 +117,46 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/probe/failure")
         void failure() {
             throw new IllegalStateException("boom");
+        }
+
+        @GetMapping("/probe/email-exists")
+        void emailExists() {
+            throw new EmailAddressAlreadyExistsException("corp@alivia.com");
+        }
+
+        @GetMapping("/probe/dni-exists")
+        void dniExists() {
+            throw new DniAlreadyExistsException("12345678");
+        }
+
+        @GetMapping("/probe/ruc-exists")
+        void rucExists() {
+            throw new RucAlreadyExistsException("20123456789");
+        }
+
+        @GetMapping("/probe/business-name-exists")
+        void businessNameExists() {
+            throw new BusinessNameAlreadyExistsException("Alivia Lab");
+        }
+
+        @GetMapping("/probe/legal-name-exists")
+        void legalNameExists() {
+            throw new LegalNameAlreadyExistsException("Alivia Lab SAC");
+        }
+
+        @GetMapping("/probe/person-profile-missing")
+        void personProfileMissing() {
+            throw new PersonProfileNotFoundException(99L);
+        }
+
+        @GetMapping("/probe/business-profile-missing")
+        void businessProfileMissing() {
+            throw new BusinessProfileNotFoundException(99L);
+        }
+
+        @GetMapping("/probe/staff-profile-missing")
+        void staffProfileMissing() {
+            throw new StaffProfileNotFoundException(99L);
         }
     }
 }
