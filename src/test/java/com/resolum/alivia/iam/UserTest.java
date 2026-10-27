@@ -41,6 +41,18 @@ class UserTest {
     }
 
     @Test
+    void assignProfileLinksPositiveIdentifierOnly() {
+        var user = newUser();
+
+        assertNull(user.getProfileId());
+        assertThrows(IllegalArgumentException.class, () -> user.assignProfile(null));
+        assertThrows(IllegalArgumentException.class, () -> user.assignProfile(0L));
+
+        user.assignProfile(15L);
+        assertEquals(15L, user.getProfileId());
+    }
+
+    @Test
     void requestEmailVerificationReplacesPendingToken() {
         var user = newUser();
         var first = new EmailVerificationToken("hash-1", NOW.plusHours(1));

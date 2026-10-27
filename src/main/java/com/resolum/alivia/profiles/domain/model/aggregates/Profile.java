@@ -23,6 +23,12 @@ public class Profile extends AuditableAbstractAggregateRoot<Profile> {
     @Embedded
     private PhoneNumber phoneNumber;
 
+    /**
+     * Required by JPA.
+     */
+    protected Profile() {
+    }
+
     Profile(EmailAddress emailAddress, Photo photo, PhoneNumber phoneNumber) {
         if (emailAddress == null) {
             throw new IllegalArgumentException("Email address cannot be null");

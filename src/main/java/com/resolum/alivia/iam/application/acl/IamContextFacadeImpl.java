@@ -1,5 +1,7 @@
 package com.resolum.alivia.iam.application.acl;
 
+import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
+import com.resolum.alivia.iam.domain.model.aggregates.User;
 import com.resolum.alivia.iam.domain.model.commands.SignUpCommand;
 import com.resolum.alivia.iam.domain.model.valueobjects.AccessRole;
 import com.resolum.alivia.iam.domain.repositories.UserRepository;
@@ -9,6 +11,11 @@ import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Implementation of the IAM anti-corruption layer facade.
@@ -59,20 +66,70 @@ public class IamContextFacadeImpl implements IamContextFacade {
      * {@inheritDoc}
      */
     @Override
+    @Transactional(readOnly = true)
+    public Map<Long, String> fetchEmailsByUserIds(Set<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        return userRepository.findAllByIds(userIds).stream()
+                .collect(Collectors.toMap(User::getId, user -> user.getEmail().email()));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, Long> fetchPersonProfileIdsByUserIds(Set<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        return userRepository.findAllByIds(userIds).stream()
+                .filter(user -> user.getProfileId() != null)
+                .filter(user -> user.getAccessRole() == AccessRole.CAREGIVER
+                        || user.getAccessRole() == AccessRole.ASSISTED_PERSON)
+                .collect(Collectors.toMap(User::getId, User::getProfileId));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, Long> fetchStaffProfileIdsByUserIds(Set<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        return userRepository.findAllByIds(userIds).stream()
+                .filter(user -> user.getProfileId() != null)
+                .filter(user -> user.getAccessRole() == AccessRole.TECHNICIAN)
+                .collect(Collectors.toMap(User::getId, User::getProfileId));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     @Transactional
-    public Long signUpUser(String email, String password, String fullName, String phoneNumber,
-                           String roleStr, Long businessId, Long familiarId) {
+    public Long signUpUser(String email, String password, String firstName, String lastName, String phoneNumber,
+                           String roleStr, Long businessId, Long familiarId,
+                           String dni, LocalDate birthDate) {
         log.info("Signing up user via IAM ACL facade with role: {}", roleStr);
         AccessRole role = parseRole(roleStr);
         var command = new SignUpCommand(
                 email,
                 password,
-                fullName,
+                firstName,
+                lastName,
                 phoneNumber,
                 true,
                 role,
                 businessId,
-                familiarId
+                familiarId,
+                dni,
+                birthDate,
+                null,
+                null
         );
         var user = userCommandService.handle(command);
         log.info("User signed up via IAM ACL facade with account ID: {}", user.getId());
@@ -84,8 +141,8 @@ public class IamContextFacadeImpl implements IamContextFacade {
      */
     @Override
     @Transactional
-    public Long registerUser(String email, String password, String fullName, String phoneNumber, String role) {
-        return signUpUser(email, password, fullName, phoneNumber, role, null, null);
+    public Long registerUser(String email, String password, String firstName, String lastName, String phoneNumber, String role) {
+        return signUpUser(email, password, firstName, lastName, phoneNumber, role, null, null, null, null);
     }
 
     /**
@@ -93,9 +150,11 @@ public class IamContextFacadeImpl implements IamContextFacade {
      */
     @Override
     @Transactional
-    public Long registerCompanyUser(String email, String password, String fullName, String phoneNumber,
-                                   String role, Long businessId) {
-        return signUpUser(email, password, fullName, phoneNumber, role, businessId, null);
+    public Long registerCompanyUser(String email, String password, String firstName, String lastName, String phoneNumber,
+                                   String role, Long businessId,
+                                   String dni, LocalDate birthDate) {
+        return signUpUser(email, password, firstName, lastName, phoneNumber, role, businessId, null,
+                dni, birthDate);
     }
 
     /**
@@ -103,16 +162,18 @@ public class IamContextFacadeImpl implements IamContextFacade {
      */
     @Override
     @Transactional
-    public Long registerAssistedPerson(String email, String password, String fullName, String phoneNumber,
-                                      Long familiarId) {
-        return signUpUser(email, password, fullName, phoneNumber, "ASSISTED_PERSON", null, familiarId);
+    public Long registerAssistedPerson(String email, String password, String firstName, String lastName, String phoneNumber,
+                                      Long familiarId,
+                                      String dni, LocalDate birthDate) {
+        return signUpUser(email, password, firstName, lastName, phoneNumber, "ASSISTED_PERSON", null, familiarId,
+                dni, birthDate);
     }
 
     private static AccessRole parseRole(String roleStr) {
         try {
             return com.resolum.alivia.iam.domain.services.RoleParser.parse(roleStr);
         } catch (IllegalArgumentException e) {
-            return AccessRole.CAREGIVER;
+            throw new SignUpValidationException("role", "invalid_role");
         }
     }
 }

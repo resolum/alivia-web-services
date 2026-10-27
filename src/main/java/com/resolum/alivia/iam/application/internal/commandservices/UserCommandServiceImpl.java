@@ -9,6 +9,7 @@ import com.resolum.alivia.iam.application.internal.outboundservices.tokens.Token
 import com.resolum.alivia.iam.domain.exceptions.AccountAlreadyVerifiedException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotActiveException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotPendingVerificationException;
+import com.resolum.alivia.iam.domain.exceptions.DniAlreadyRegisteredException;
 import com.resolum.alivia.iam.domain.exceptions.EmailAlreadyRegisteredException;
 import com.resolum.alivia.iam.domain.exceptions.InvalidCredentialsException;
 import com.resolum.alivia.iam.domain.exceptions.InvalidRefreshTokenException;
@@ -342,9 +343,13 @@ public class UserCommandServiceImpl implements UserCommandService {
     }
 
     private void validateProfileData(SignUpCommand command) {
-        if (command.fullName() == null || command.fullName().isBlank()) {
-            log.warn("Sign-up rejected: full name is missing");
-            throw new SignUpValidationException("fullName", SignUpValidationException.REQUIRED);
+        if (command.firstName() == null || command.firstName().isBlank()) {
+            log.warn("Sign-up rejected: first name is missing");
+            throw new SignUpValidationException("firstName", SignUpValidationException.REQUIRED);
+        }
+        if (command.lastName() == null || command.lastName().isBlank()) {
+            log.warn("Sign-up rejected: last name is missing");
+            throw new SignUpValidationException("lastName", SignUpValidationException.REQUIRED);
         }
         if (command.phoneNumber() == null || command.phoneNumber().isBlank()) {
             log.warn("Sign-up rejected: phone number is missing");
@@ -363,8 +368,16 @@ public class UserCommandServiceImpl implements UserCommandService {
 
     private void createProfile(User user, SignUpCommand command) {
         try {
-            externalProfilesService.createProfile(user.getId(), command.toProfileData());
+            Long profileId = externalProfilesService.createProfile(user.getId(), user.getEmail().email(),
+                    user.getAccessRole(), command.toProfileData());
+            if (profileId != null) {
+                // user is managed after saveAndFlush, so the link is written when the transaction commits.
+                user.assignProfile(profileId);
+            }
+        } catch (SignUpValidationException | EmailAlreadyRegisteredException | DniAlreadyRegisteredException exception) {
+            throw exception;
         } catch (RuntimeException exception) {
+            // shortcut: a duplicate DNI or email that wins a race against the pre-check lands here as 503; map Profiles errors if it shows up.
             log.error("Profile creation failed for account id {}: {}",
                     user.getId(), exception.getClass().getSimpleName());
             log.debug("Profile creation failure details", exception);

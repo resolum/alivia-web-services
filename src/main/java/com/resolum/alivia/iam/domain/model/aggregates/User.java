@@ -84,6 +84,10 @@ public class User extends AuditableAbstractAggregateRoot<User> {
     @Column(name = "refresh_token_expires_at")
     private LocalDateTime refreshTokenExpiresAt;
 
+    // Profile in the Profiles context; null for roles without a profile and for accounts created before the link.
+    @Column(name = "profile_id")
+    private Long profileId;
+
     /**
      * Required by JPA.
      */
@@ -215,6 +219,28 @@ public class User extends AuditableAbstractAggregateRoot<User> {
      */
     public String getAccountId() {
         return accountId;
+    }
+
+    /**
+     * Links the user to the profile created for it in the Profiles context.
+     *
+     * @param profileId the profile identifier
+     * @throws IllegalArgumentException if the identifier is null or not positive
+     */
+    public void assignProfile(Long profileId) {
+        if (profileId == null || profileId <= 0) {
+            throw new IllegalArgumentException("Profile identifier must be positive.");
+        }
+        this.profileId = profileId;
+    }
+
+    /**
+     * Returns the profile identifier in the Profiles context.
+     *
+     * @return the profile identifier, or {@code null} when the user has no profile
+     */
+    public Long getProfileId() {
+        return profileId;
     }
 
     /**

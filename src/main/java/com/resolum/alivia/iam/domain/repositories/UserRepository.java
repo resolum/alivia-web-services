@@ -3,6 +3,8 @@ package com.resolum.alivia.iam.domain.repositories;
 import com.resolum.alivia.iam.domain.model.aggregates.User;
 import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -62,6 +64,14 @@ public interface UserRepository {
      * @return the matching user, or empty when none exists
      */
     Optional<User> findByAccountId(String accountId);
+
+    /**
+     * Finds the users with the given internal identifiers.
+     *
+     * @param ids the internal identifiers
+     * @return the matching users; unknown identifiers are skipped
+     */
+    List<User> findAllByIds(Collection<Long> ids);
 
     /**
      * Persists a user.

@@ -31,10 +31,12 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -76,7 +78,7 @@ public class AuthenticationController {
          * @param resource the sign-up request
          * @return the registered account
          */
-        @PostMapping("/sign-up")
+        @PostMapping(value = "/sign-up", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
         @ResponseStatus(HttpStatus.CREATED)
         @Operation(summary = "Registrar una cuenta", description = "Crea una cuenta pendiente de verificación y envía un enlace al correo registrado.")
         @ApiResponses({
@@ -85,7 +87,7 @@ public class AuthenticationController {
                         @ApiResponse(responseCode = "409", description = "Correo ya registrado", content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
                         @ApiResponse(responseCode = "503", description = "Servicio de registro no disponible", content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
         })
-        public RegisteredAccountResource signUp(@Valid @RequestBody SignUpResource resource) {
+        public RegisteredAccountResource signUp(@Valid @ModelAttribute SignUpResource resource) {
                 log.info("Received sign-up request");
                 var user = userCommandService.handle(
                                 SignUpCommandFromResourceAssembler.toCommandFromResource(resource));

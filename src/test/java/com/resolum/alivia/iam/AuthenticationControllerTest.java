@@ -28,17 +28,24 @@ import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import com.resolum.alivia.shared.interfaces.rest.GlobalExceptionHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -62,15 +69,13 @@ class AuthenticationControllerTest {
         private static final String REFRESH_BODY = """
                         {"refreshToken": "refresh-token"}
                         """;
-        private static final String VALID_SIGN_UP_BODY = """
-                        {
-                          "fullName": "Maria Lopez",
-                          "email": "maria.lopez@example.com",
-                          "phoneNumber": "+51987654321",
-                          "password": "Strong1!",
-                          "acceptedTerms": true
-                        }
-                        """;
+        private static final Map<String, String> VALID_SIGN_UP_FORM = Map.of(
+                        "firstName", "Maria",
+                        "lastName", "Lopez",
+                        "email", "maria.lopez@example.com",
+                        "phoneNumber", "+51987654321",
+                        "password", "Strong1!",
+                        "acceptedTerms", "true");
 
         private final UserCommandService commandService = mock(UserCommandService.class);
         private final UserQueryService queryService = mock(UserQueryService.class);
@@ -84,9 +89,7 @@ class AuthenticationControllerTest {
                 var user = user(7L, "maria.lopez@example.com", UserStatus.PENDING_VERIFICATION);
                 when(commandService.handle(any(SignUpCommand.class))).thenReturn(user);
 
-                mvc.perform(post(SIGN_UP_PATH)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(VALID_SIGN_UP_BODY))
+                mvc.perform(signUp())
                                 .andExpect(status().isCreated())
                                 .andExpect(jsonPath("$.accountId").value("acc-7"))
                                 .andExpect(jsonPath("$.maskedEmail").value("m***@example.com"))
@@ -100,9 +103,7 @@ class AuthenticationControllerTest {
                 when(commandService.handle(any(SignUpCommand.class)))
                                 .thenThrow(new EmailAlreadyRegisteredException());
 
-                mvc.perform(post(SIGN_UP_PATH)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(VALID_SIGN_UP_BODY))
+                mvc.perform(signUp())
                                 .andExpect(status().isConflict())
                                 .andExpect(jsonPath("$.code").value("email_already_registered"))
                                 .andExpect(jsonPath("$.errors[0].field").value("email"))
@@ -115,9 +116,7 @@ class AuthenticationControllerTest {
                                 .thenThrow(new SignUpValidationException("password",
                                                 SignUpValidationException.PASSWORD_WEAK));
 
-                mvc.perform(post(SIGN_UP_PATH)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(VALID_SIGN_UP_BODY))
+                mvc.perform(signUp())
                                 .andExpect(status().isBadRequest())
                                 .andExpect(jsonPath("$.code").value("validation_failed"))
                                 .andExpect(jsonPath("$.errors[0].field").value("password"))
@@ -126,12 +125,7 @@ class AuthenticationControllerTest {
 
         @Test
         void signUpRejectsUnacceptedTerms() throws Exception {
-                var body = VALID_SIGN_UP_BODY.replace("\"acceptedTerms\": true",
-                                "\"acceptedTerms\": false");
-
-                mvc.perform(post(SIGN_UP_PATH)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(body))
+                mvc.perform(signUp("acceptedTerms", "false"))
                                 .andExpect(status().isBadRequest())
                                 .andExpect(jsonPath("$.code").value("validation_failed"))
                                 .andExpect(jsonPath("$.errors[0].field").value("acceptedTerms"))
@@ -140,13 +134,44 @@ class AuthenticationControllerTest {
 
         @Test
         void signUpReportsOneRequiredErrorPerMissingField() throws Exception {
-                mvc.perform(post(SIGN_UP_PATH)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("{}"))
+                mvc.perform(multipart(SIGN_UP_PATH))
                                 .andExpect(status().isBadRequest())
                                 .andExpect(jsonPath("$.code").value("validation_failed"))
-                                .andExpect(jsonPath("$.errors.length()").value(5))
+                                .andExpect(jsonPath("$.errors.length()").value(6))
                                 .andExpect(jsonPath("$.errors[?(@.field == 'email')].code").value("required"));
+        }
+
+        @Test
+        void signUpRejectsMalformedDni() throws Exception {
+                mvc.perform(signUp("dni", "123"))
+                                .andExpect(status().isBadRequest())
+                                .andExpect(jsonPath("$.code").value("validation_failed"))
+                                .andExpect(jsonPath("$.errors.length()").value(1))
+                                .andExpect(jsonPath("$.errors[0].field").value("dni"));
+        }
+
+        @Test
+        void signUpRejectsPhotoThatIsNotAnImage() throws Exception {
+                var file = new MockMultipartFile("photo", "notes.txt", "text/plain", "hello".getBytes());
+
+                mvc.perform(signUp().file(file))
+                                .andExpect(status().isBadRequest())
+                                .andExpect(jsonPath("$.code").value("validation_failed"))
+                                .andExpect(jsonPath("$.errors[0].field").value("photo"))
+                                .andExpect(jsonPath("$.errors[0].code").value("invalid_photo"));
+        }
+
+        @Test
+        void signUpForwardsUploadedPhotoToCommand() throws Exception {
+                var user = user(7L, "maria.lopez@example.com", UserStatus.PENDING_VERIFICATION);
+                when(commandService.handle(any(SignUpCommand.class))).thenReturn(user);
+                byte[] image = {1, 2, 3};
+
+                mvc.perform(signUp().file(new MockMultipartFile("photo", "maria.jpg", "image/jpeg", image)))
+                                .andExpect(status().isCreated());
+
+                verify(commandService).handle(argThat((SignUpCommand command) -> Arrays.equals(image, command.photo())
+                                && "maria.jpg".equals(command.photoFileName())));
         }
 
         @Test
@@ -154,9 +179,7 @@ class AuthenticationControllerTest {
                 when(commandService.handle(any(SignUpCommand.class)))
                                 .thenThrow(new RegistrationUnavailableException(new IllegalStateException("down")));
 
-                mvc.perform(post(SIGN_UP_PATH)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(VALID_SIGN_UP_BODY))
+                mvc.perform(signUp())
                                 .andExpect(status().isServiceUnavailable())
                                 .andExpect(jsonPath("$.code").value("registration_unavailable"))
                                 .andExpect(jsonPath("$.errors").isEmpty());
@@ -206,21 +229,8 @@ class AuthenticationControllerTest {
                 var user = user(8L, "employee@example.com", UserStatus.PENDING_VERIFICATION);
                 when(commandService.handle(any(SignUpCommand.class))).thenReturn(user);
 
-                var employeeBody = """
-                                {
-                                  "fullName": "Juan Perez",
-                                  "email": "employee@example.com",
-                                  "phoneNumber": "+51987654321",
-                                  "password": "StrongPassword1!",
-                                  "acceptedTerms": true,
-                                  "role": "EMPLOYEE",
-                                  "businessId": 10
-                                }
-                                """;
-
-                mvc.perform(post(SIGN_UP_PATH)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(employeeBody))
+                mvc.perform(signUp("firstName", "Juan", "lastName", "Perez", "email", "employee@example.com",
+                                "password", "StrongPassword1!", "role", "EMPLOYEE", "businessId", "10"))
                                 .andExpect(status().isCreated())
                                 .andExpect(jsonPath("$.accountId").value("acc-8"))
                                 .andExpect(jsonPath("$.maskedEmail").value("e***@example.com"))
@@ -380,5 +390,16 @@ class AuthenticationControllerTest {
                 when(user.getEmail()).thenReturn(new EmailAddress(email));
                 when(user.getStatus()).thenReturn(status);
                 return user;
+        }
+
+        // Valid sign-up form; pairs of name and value replace its fields.
+        private static MockMultipartHttpServletRequestBuilder signUp(String... overrides) {
+                var form = new HashMap<>(VALID_SIGN_UP_FORM);
+                for (int i = 0; i < overrides.length; i += 2) {
+                        form.put(overrides[i], overrides[i + 1]);
+                }
+                var request = multipart(SIGN_UP_PATH);
+                form.forEach(request::param);
+                return request;
         }
 }

@@ -4,6 +4,8 @@ import com.resolum.alivia.iam.interfaces.acl.IamContextFacade;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+
 /**
  * Outbound service acting as an Anti-Corruption Layer (ACL) adapter
  * to communicate with the Identity and Access Management (IAM) bounded context.
@@ -26,16 +28,21 @@ public class ExternalIamService {
      *
      * @param email       the user email
      * @param password    the raw password
-     * @param fullName    the user full name (forwarded via IAM to Profiles)
+     * @param firstName   the user first names
+     * @param lastName    the user last names
      * @param phoneNumber the user phone number (forwarded via IAM to Profiles)
      * @param role        the access role (e.g. "TECHNICIAN" / "EMPLOYEE", "ADMINISTRATOR", "CAREGIVER")
      * @param businessId  the business/company identifier
+     * @param dni           the DNI, required for roles with a profile (forwarded to Profiles)
+     * @param birthDate     the birth date, required for roles with a profile (forwarded to Profiles)
      * @return the created IAM account identifier
      */
-    public Long signUpCompanyUser(String email, String password, String fullName, String phoneNumber,
-                                  String role, Long businessId) {
+    public Long signUpCompanyUser(String email, String password, String firstName, String lastName, String phoneNumber,
+                                  String role, Long businessId,
+                                  String dni, LocalDate birthDate) {
         log.info("Requesting IAM sign-up for company user with email: {} and business ID: {}", email, businessId);
-        Long accountId = iamContextFacade.registerCompanyUser(email, password, fullName, phoneNumber, role, businessId);
+        Long accountId = iamContextFacade.registerCompanyUser(email, password, firstName, lastName, phoneNumber, role, businessId,
+                dni, birthDate);
         log.info("IAM sign-up completed for company user with account ID: {}", accountId);
         return accountId;
     }
