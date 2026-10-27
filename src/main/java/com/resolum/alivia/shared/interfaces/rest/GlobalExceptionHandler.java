@@ -5,6 +5,10 @@ import com.resolum.alivia.hcm.domain.exceptions.EmployeeNotInBusiness;
 import com.resolum.alivia.hcm.domain.exceptions.ContractNotActive;
 import com.resolum.alivia.hcm.domain.exceptions.ContractNotFound;
 import com.resolum.alivia.hcm.domain.exceptions.ContractOverlap;
+import com.resolum.alivia.hcm.domain.exceptions.WorkScheduleNotEditable;
+import com.resolum.alivia.hcm.domain.exceptions.WorkScheduleNotFound;
+import com.resolum.alivia.hcm.domain.exceptions.WorkScheduleOutsideContract;
+import com.resolum.alivia.hcm.domain.exceptions.WorkScheduleOverlap;
 import com.resolum.alivia.iam.domain.exceptions.AccountAlreadyVerifiedException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotActiveException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotFoundException;
@@ -53,6 +57,17 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({ContractOverlap.class, ContractNotActive.class})
     public ProblemDetail handleContractConflict(RuntimeException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
+    @ExceptionHandler(WorkScheduleNotFound.class)
+    public ProblemDetail handleWorkScheduleNotFound(WorkScheduleNotFound exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler({WorkScheduleOverlap.class, WorkScheduleOutsideContract.class,
+            WorkScheduleNotEditable.class})
+    public ProblemDetail handleWorkScheduleConflict(RuntimeException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
     }
 
