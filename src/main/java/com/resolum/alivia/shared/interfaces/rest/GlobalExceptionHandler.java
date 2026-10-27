@@ -2,6 +2,9 @@ package com.resolum.alivia.shared.interfaces.rest;
 
 import com.resolum.alivia.hcm.domain.exceptions.EmployeeNotFound;
 import com.resolum.alivia.hcm.domain.exceptions.EmployeeNotInBusiness;
+import com.resolum.alivia.hcm.domain.exceptions.ContractNotActive;
+import com.resolum.alivia.hcm.domain.exceptions.ContractNotFound;
+import com.resolum.alivia.hcm.domain.exceptions.ContractOverlap;
 import com.resolum.alivia.iam.domain.exceptions.AccountAlreadyVerifiedException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotActiveException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotFoundException;
@@ -41,6 +44,16 @@ public class GlobalExceptionHandler {
 
     private static final String ERRORS_PROPERTY = "errors";
     private static final String CODE_PROPERTY = "code";
+
+    @ExceptionHandler(ContractNotFound.class)
+    public ProblemDetail handleContractNotFound(ContractNotFound exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler({ContractOverlap.class, ContractNotActive.class})
+    public ProblemDetail handleContractConflict(RuntimeException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+    }
 
     @ExceptionHandler(ConfigurationDraftNotFound.class)
     public ProblemDetail handleConfigurationDraftNotFound(ConfigurationDraftNotFound exception) {
