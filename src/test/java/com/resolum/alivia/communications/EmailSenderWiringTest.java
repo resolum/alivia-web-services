@@ -3,6 +3,7 @@ package com.resolum.alivia.communications;
 import com.resolum.alivia.communications.application.internal.outboundservices.email.EmailSender;
 import com.resolum.alivia.communications.application.internal.outboundservices.email.LoggingEmailSender;
 import com.resolum.alivia.communications.application.internal.outboundservices.email.UnavailableEmailSender;
+import com.resolum.alivia.communications.infrastructure.email.sendgrid.SendGridEmailSender;
 import com.resolum.alivia.communications.infrastructure.email.smtp.SmtpEmailSender;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -22,7 +23,8 @@ class EmailSenderWiringTest {
             .withUserConfiguration(
                     LoggingEmailSender.class,
                     UnavailableEmailSender.class,
-                    SmtpEmailSender.class)
+                    SmtpEmailSender.class,
+                    SendGridEmailSender.class)
             .withConfiguration(AutoConfigurations.of(MailSenderAutoConfiguration.class))
             .withPropertyValues("alivia.communications.email.from=no-reply@alivia.test");
 
@@ -70,5 +72,14 @@ class EmailSenderWiringTest {
     void failsFastWhenSmtpIsSelectedWithoutAMailHost() {
         runner.withPropertyValues("alivia.communications.email.provider=smtp")
                 .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void sendsThroughSendGridWhenItIsTheProvider() {
+        runner.withPropertyValues("alivia.communications.email.provider=sendgrid",
+                        "alivia.communications.email.sendgrid.api-key=SG.test-key")
+                .run(context -> assertThat(context)
+                        .getBean(EmailSender.class)
+                        .isInstanceOf(SendGridEmailSender.class));
     }
 }
