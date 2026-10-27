@@ -68,8 +68,9 @@ class EmployeeServicesTest {
     void createsEmployeeWithStaffProfileAndCompanyUser() {
         when(profiles.createStaffProfile("ana@alivia.pe", "https://img/ana.png", "ana", "+51987654321",
                 "Ana", "Pérez", "12345678", BIRTH_DATE)).thenReturn(30L);
-        when(iam.registerCompanyUser(eq("ana@alivia.pe"), startsWith("Tmp!A9"), eq("Ana Pérez"),
-                eq("+51987654321"), eq("SUBSCRIPTION_MANAGER"), eq(1L))).thenReturn(20L);
+        when(iam.registerCompanyUser(eq("ana@alivia.pe"), startsWith("Tmp!A9"), eq("Ana"), eq("Pérez"),
+                eq("+51987654321"), eq("SUBSCRIPTION_MANAGER"), eq(1L), eq("12345678"),
+                eq(BIRTH_DATE))).thenReturn(20L);
 
         var employee = commandService.handle(createCommand(1L, EmployeeRole.SUBSCRIPTION_MANAGER));
 
@@ -83,12 +84,14 @@ class EmployeeServicesTest {
     @Test
     void registersOperationalEmployeesAsTechnicians() {
         when(profiles.createStaffProfile(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(30L);
-        when(iam.registerCompanyUser(any(), any(), any(), any(), eq("TECHNICIAN"), eq(1L))).thenReturn(20L);
+        when(iam.registerCompanyUser(any(), any(), any(), any(), any(), eq("TECHNICIAN"), eq(1L),
+                any(), any())).thenReturn(20L);
 
         var employee = commandService.handle(createCommand(1L, EmployeeRole.CLEANING));
 
         assertEquals(EmployeeRole.CLEANING, employee.getRole());
-        verify(iam).registerCompanyUser(any(), any(), any(), any(), eq("TECHNICIAN"), eq(1L));
+        verify(iam).registerCompanyUser(any(), any(), any(), any(), any(), eq("TECHNICIAN"), eq(1L),
+                any(), any());
     }
 
     @Test
