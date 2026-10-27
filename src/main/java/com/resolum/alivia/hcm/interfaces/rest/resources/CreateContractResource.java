@@ -13,7 +13,7 @@ import java.time.LocalDate;
 
 public record CreateContractResource(
         @Pattern(regexp = "CTR-ALV-\\d{4}-\\d{4,8}") String code,
-        @NotNull Long businessId,
+        Long businessId,
         @NotBlank @Size(max = 100) String position,
         @NotNull ContractModality modality,
         @Min(1) @Max(48) Integer weeklyHours,

@@ -33,6 +33,7 @@ import com.resolum.alivia.hcm.interfaces.rest.transform.ContractResourceAssemble
 import com.resolum.alivia.hcm.interfaces.rest.transform.EmployeeResourceAssembler;
 import com.resolum.alivia.profiles.interfaces.acl.ProfilesContextFacade;
 import com.resolum.alivia.profiles.interfaces.acl.ProfilesContextFacade.StaffProfileData;
+import com.resolum.alivia.hcm.interfaces.rest.DefaultBusiness;
 import com.resolum.alivia.shared.interfaces.rest.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -87,11 +88,11 @@ class HcmControllersTest {
         employeeQueries = mock(EmployeeQueryService.class);
         profiles = mock(ProfilesContextFacade.class);
         contractsMvc = MockMvcBuilders.standaloneSetup(new ContractsController(contractCommands, contractQueries,
-                        new ContractResourceAssembler(CLOCK), CLOCK))
+                        new ContractResourceAssembler(CLOCK), CLOCK, new DefaultBusiness(1L)))
                 .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         employeesMvc = MockMvcBuilders.standaloneSetup(new EmployeesController(employeeCommands, employeeQueries,
-                        new EmployeeResourceAssembler(profiles)))
+                        new EmployeeResourceAssembler(profiles), new DefaultBusiness(1L)))
                 .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
