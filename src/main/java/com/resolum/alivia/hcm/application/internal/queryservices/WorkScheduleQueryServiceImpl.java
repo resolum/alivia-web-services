@@ -5,8 +5,11 @@ import com.resolum.alivia.hcm.domain.model.aggregates.Contract;
 import com.resolum.alivia.hcm.domain.model.aggregates.Employee;
 import com.resolum.alivia.hcm.domain.model.aggregates.WorkSchedule;
 import com.resolum.alivia.hcm.domain.model.queries.GetWorkScheduleQuery;
+import com.resolum.alivia.hcm.domain.model.queries.GetWorkScheduleSummaryQuery;
 import com.resolum.alivia.hcm.domain.model.queries.GetWorkSchedulesQuery;
 import com.resolum.alivia.hcm.domain.model.valueobjects.WorkScheduleStatus;
+import com.resolum.alivia.hcm.domain.model.valueobjects.WorkScheduleSummary;
+import com.resolum.alivia.hcm.domain.model.valueobjects.WorkScheduleViewStatus;
 import com.resolum.alivia.hcm.domain.services.WorkScheduleQueryService;
 import com.resolum.alivia.hcm.infrastructure.persistence.jpa.repositories.ContractPersistenceRepository;
 import com.resolum.alivia.hcm.infrastructure.persistence.jpa.repositories.WorkSchedulePersistenceRepository;
@@ -15,6 +18,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -80,6 +85,22 @@ public class WorkScheduleQueryServiceImpl implements WorkScheduleQueryService {
             throw new WorkScheduleNotFound(query.workScheduleId());
         }
         return workSchedule;
+    }
+
+    /** Counts the schedules in effect or about to start; drafts, finished and inactive ones are left out. */
+    @Override
+    @Transactional(readOnly = true)
+    public WorkScheduleSummary handle(GetWorkScheduleSummaryQuery query) {
+        var today = LocalDate.now(clock);
+        var current = workSchedules.findByBusinessIdAndStatus(query.businessId(), WorkScheduleStatus.ACTIVE)
+                .stream()
+                .filter(schedule -> schedule.viewStatus(today) != WorkScheduleViewStatus.FINISHED)
+                .toList();
+        if (current.isEmpty()) return new WorkScheduleSummary(0, 0, BigDecimal.ZERO);
+        var totalHours = current.stream().map(WorkSchedule::weeklyHours).reduce(BigDecimal.ZERO, BigDecimal::add);
+        long employees = current.stream().map(WorkSchedule::getEmployeeId).distinct().count();
+        return new WorkScheduleSummary(current.size(), employees,
+                totalHours.divide(BigDecimal.valueOf(current.size()), 1, RoundingMode.HALF_UP));
     }
 
     @Override

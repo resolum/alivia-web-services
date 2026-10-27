@@ -5,6 +5,7 @@ import com.resolum.alivia.hcm.domain.model.commands.CreateWorkScheduleCommand;
 import com.resolum.alivia.hcm.domain.model.commands.DeactivateWorkScheduleCommand;
 import com.resolum.alivia.hcm.domain.model.commands.UpdateWorkScheduleCommand;
 import com.resolum.alivia.hcm.domain.model.queries.GetWorkScheduleQuery;
+import com.resolum.alivia.hcm.domain.model.queries.GetWorkScheduleSummaryQuery;
 import com.resolum.alivia.hcm.domain.model.queries.GetWorkSchedulesQuery;
 import com.resolum.alivia.hcm.domain.model.valueobjects.EmployeeRole;
 import com.resolum.alivia.hcm.domain.model.valueobjects.WorkScheduleViewStatus;
@@ -68,6 +69,14 @@ public class WorkSchedulesController {
                 search, pageable));
         return new WorkSchedulePageResource(page.getContent().stream().map(this::toResource).toList(),
                 page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages());
+    }
+
+    @GetMapping("/work-schedules/summary")
+    @Operation(summary = "Consultar los totales de horarios configurados")
+    public WorkScheduleSummaryResource summary(@RequestParam Long businessId) {
+        var summary = queryService.handle(new GetWorkScheduleSummaryQuery(businessId));
+        return new WorkScheduleSummaryResource(summary.totalSchedules(), summary.employeesWithSchedule(),
+                summary.averageWeeklyHours());
     }
 
     @GetMapping("/employees/{employeeId}/work-schedules/{workScheduleId}")
