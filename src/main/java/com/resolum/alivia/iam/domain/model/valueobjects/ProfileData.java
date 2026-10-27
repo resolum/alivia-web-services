@@ -1,6 +1,8 @@
 package com.resolum.alivia.iam.domain.model.valueobjects;
 
 import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * Profile data value object that IAM forwards to the Profiles bounded context.
@@ -56,5 +58,41 @@ public record ProfileData(String firstName, String lastName, String phoneNumber,
         if (phoneNumber == null || phoneNumber.isBlank()) {
             throw new IllegalArgumentException("Phone number is required.");
         }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof ProfileData that)) return false;
+        return Objects.equals(firstName, that.firstName)
+                && Objects.equals(lastName, that.lastName)
+                && Objects.equals(phoneNumber, that.phoneNumber)
+                && Objects.equals(businessId, that.businessId)
+                && Objects.equals(familiarId, that.familiarId)
+                && Objects.equals(dni, that.dni)
+                && Objects.equals(birthDate, that.birthDate)
+                && Arrays.equals(photo, that.photo)
+                && Objects.equals(photoFileName, that.photoFileName);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = Objects.hash(firstName, lastName, phoneNumber, businessId, familiarId, dni, birthDate,
+                photoFileName);
+        return 31 * result + Arrays.hashCode(photo);
+    }
+
+    // Photo shown by size so logs never dump binary content
+    @Override
+    public String toString() {
+        return "ProfileData[firstName=" + firstName
+                + ", lastName=" + lastName
+                + ", phoneNumber=" + phoneNumber
+                + ", businessId=" + businessId
+                + ", familiarId=" + familiarId
+                + ", dni=" + dni
+                + ", birthDate=" + birthDate
+                + ", photo=" + (photo == null ? "null" : photo.length + " bytes")
+                + ", photoFileName=" + photoFileName + "]";
     }
 }
