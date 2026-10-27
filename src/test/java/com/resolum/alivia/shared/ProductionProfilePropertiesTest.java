@@ -61,9 +61,8 @@ class ProductionProfilePropertiesTest {
     }
 
     @Test
-    void keepsSchemaManagementOnUpdateUntilMigrationsCoverTheFullSchema() {
-        // P-480.1 only adds the baseline marker; the full schema (P-480.2/AP-482) is pending,
-        // so validate would break a fresh production database.
+    void keepsSchemaManagementOnUpdateUntilTheProductionSwitchIsAuthorized() {
+        // V1 already holds the full schema, but P-464.2 owns the switch to validate.
         assertThat(PROD.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("update");
     }
 
