@@ -1,5 +1,6 @@
 package com.resolum.alivia.profiles.interfaces.rest.controllers;
 
+import com.resolum.alivia.profiles.domain.exceptions.BusinessProfileNotFoundException;
 import com.resolum.alivia.profiles.domain.model.queries.GetBusinessProfileByIdQuery;
 import com.resolum.alivia.profiles.domain.services.BusinessProfileCommandService;
 import com.resolum.alivia.profiles.domain.services.BusinessProfileQueryService;
@@ -56,9 +57,9 @@ public class BusinessProfilesController {
     })
     public ResponseEntity<BusinessProfileResource> getBusinessProfileById(@PathVariable Long profileId) {
         var query = new GetBusinessProfileByIdQuery(profileId);
-        var profile = queryService.handle(query);
-        return profile.map(entity -> ResponseEntity.ok(BusinessProfileResourceFromEntityAssembler.toResourceFromEntity(entity)))
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        var profile = queryService.handle(query)
+                .orElseThrow(() -> new BusinessProfileNotFoundException(profileId));
+        return ResponseEntity.ok(BusinessProfileResourceFromEntityAssembler.toResourceFromEntity(profile));
     }
 
     @PutMapping("/{profileId}")

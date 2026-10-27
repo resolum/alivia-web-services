@@ -202,7 +202,8 @@ class ProfileControllersTest {
                 .andExpect(jsonPath("$.businessName").value("Alivia Lab"));
 
         businessMvc.perform(get("/api/v1/business-profiles/2"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("business_profile_not_found"));
     }
 
     @Test
@@ -336,7 +337,8 @@ class ProfileControllersTest {
                 .andExpect(jsonPath("$.firstName").value("Juan"));
 
         personMvc.perform(get("/api/v1/person-profiles/20"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("person_profile_not_found"));
     }
 
     @Test
@@ -441,7 +443,8 @@ class ProfileControllersTest {
                 .andExpect(jsonPath("$.firstName").value("Ana"));
 
         staffMvc.perform(get("/api/v1/staff-profiles/40"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("staff_profile_not_found"));
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.resolum.alivia.profiles.interfaces.rest.controllers;
 
+import com.resolum.alivia.profiles.domain.exceptions.StaffProfileNotFoundException;
 import com.resolum.alivia.profiles.domain.model.queries.GetStaffProfileByIdQuery;
 import com.resolum.alivia.profiles.domain.services.StaffProfileCommandService;
 import com.resolum.alivia.profiles.domain.services.StaffProfileQueryService;
@@ -56,9 +57,9 @@ public class StaffProfilesController {
     })
     public ResponseEntity<StaffProfileResource> getStaffProfileById(@PathVariable Long profileId) {
         var query = new GetStaffProfileByIdQuery(profileId);
-        var profile = queryService.handle(query);
-        return profile.map(entity -> ResponseEntity.ok(StaffProfileResourceFromEntityAssembler.toResourceFromEntity(entity)))
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        var profile = queryService.handle(query)
+                .orElseThrow(() -> new StaffProfileNotFoundException(profileId));
+        return ResponseEntity.ok(StaffProfileResourceFromEntityAssembler.toResourceFromEntity(profile));
     }
 
     @PutMapping("/{profileId}")
