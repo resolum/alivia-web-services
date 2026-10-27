@@ -89,7 +89,8 @@ class CareAgendaControllerTest {
     void fromAfterToReturns400() throws Exception {
         mvc.perform(get("/api/v1/care-agenda").principal(() -> "7")
                         .param("from", "2026-11-02").param("to", "2026-11-01"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("invalid_argument"));
 
         verify(queryService, never()).handle(any(GetCareAgendaQuery.class));
     }
@@ -101,7 +102,8 @@ class CareAgendaControllerTest {
                 .andExpect(status().isBadRequest());
         mvc.perform(get("/api/v1/care-agenda").principal(() -> "7")
                         .param("from", "26-10-2026").param("to", "2026-11-01"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("invalid_request"));
     }
 
     @Test
@@ -111,14 +113,17 @@ class CareAgendaControllerTest {
 
         mvc.perform(get("/api/v1/care-agenda").principal(() -> "7")
                         .param("from", "2026-10-26").param("to", "2026-11-01").param("assistedPersonId", "20"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("assisted_person_access_denied"))
+                .andExpect(jsonPath("$.errors").isArray());
     }
 
     @Test
     @DisplayName("GET /reminders with a status other than PENDING returns 400")
     void invalidReminderStatusReturns400() throws Exception {
         mvc.perform(get("/api/v1/reminders").principal(() -> "7").param("status", "DONE"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("invalid_request"));
 
         verify(queryService, never()).handle(any(GetPendingRemindersQuery.class));
     }
