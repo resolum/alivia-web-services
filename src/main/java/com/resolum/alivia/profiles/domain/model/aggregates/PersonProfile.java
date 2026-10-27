@@ -9,12 +9,15 @@ import com.resolum.alivia.shared.domain.model.valueobjects.Photo;
 
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.Setter;
 
 @Getter
 @Setter
 @Entity
+@Table(uniqueConstraints = @UniqueConstraint(name = "uk_person_profiles_dni", columnNames = "dni"))
 public class PersonProfile extends Profile {
     @Embedded
     private PersonName personName;
@@ -22,6 +25,12 @@ public class PersonProfile extends Profile {
     private Dni dni;
     @Embedded
     private BirthDate birthDate;
+
+    /**
+     * Required by JPA.
+     */
+    protected PersonProfile() {
+    }
 
     public PersonProfile(EmailAddress emailAddress, Photo photo, PhoneNumber phoneNumber,
             PersonName personName, Dni dni, BirthDate birthDate) {

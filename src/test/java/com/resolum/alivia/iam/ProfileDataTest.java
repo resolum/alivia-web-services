@@ -11,8 +11,9 @@ class ProfileDataTest {
 
     @Test
     void twoArgConstructorSetsNullIds() {
-        var profile = new ProfileData("Carlos Perez", "+51987654321");
-        assertEquals("Carlos Perez", profile.fullName());
+        var profile = new ProfileData("Carlos", "Perez", "+51987654321");
+        assertEquals("Carlos", profile.firstName());
+        assertEquals("Perez", profile.lastName());
         assertEquals("+51987654321", profile.phoneNumber());
         assertNull(profile.businessId());
         assertNull(profile.familiarId());
@@ -20,16 +21,16 @@ class ProfileDataTest {
 
     @Test
     void fourArgConstructorSetsAllFields() {
-        var profile = new ProfileData("Carlos Perez", "+51987654321", 5L, 10L);
+        var profile = new ProfileData("Carlos", "Perez", "+51987654321", 5L, 10L);
         assertEquals(5L, profile.businessId());
         assertEquals(10L, profile.familiarId());
     }
 
     @Test
     void rejectsNullOrBlankFields() {
-        assertThrows(IllegalArgumentException.class, () -> new ProfileData(null, "+51987654321"));
-        assertThrows(IllegalArgumentException.class, () -> new ProfileData("   ", "+51987654321"));
-        assertThrows(IllegalArgumentException.class, () -> new ProfileData("Carlos Perez", null));
-        assertThrows(IllegalArgumentException.class, () -> new ProfileData("Carlos Perez", "   "));
+        assertThrows(IllegalArgumentException.class, () -> new ProfileData(null, "Perez", "+51987654321"));
+        assertThrows(IllegalArgumentException.class, () -> new ProfileData("Carlos", "   ", "+51987654321"));
+        assertThrows(IllegalArgumentException.class, () -> new ProfileData("Carlos", "Perez", null));
+        assertThrows(IllegalArgumentException.class, () -> new ProfileData("Carlos", "Perez", "   "));
     }
 }

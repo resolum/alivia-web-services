@@ -41,8 +41,8 @@ class SignUpCommandFromResourceAssemblerTest {
             "PACIENTE, ASSISTED_PERSON"
     })
     void mapsRoleAliasesCorrectly(String inputRole, AccessRole expectedRole) {
-        var resource = new SignUpResource("John Doe", "user@example.com", "+51987654321",
-                "Password123!", true, inputRole, 10L, 20L);
+        var resource = new SignUpResource("John", "Doe", "user@example.com", "+51987654321",
+                "Password123!", true, inputRole, 10L, 20L, null, null, null);
 
         var command = SignUpCommandFromResourceAssembler.toCommandFromResource(resource);
 
@@ -50,7 +50,8 @@ class SignUpCommandFromResourceAssemblerTest {
         assertEquals(expectedRole, command.role());
         assertEquals("user@example.com", command.email());
         assertEquals("Password123!", command.password());
-        assertEquals("John Doe", command.fullName());
+        assertEquals("John", command.firstName());
+        assertEquals("Doe", command.lastName());
         assertEquals("+51987654321", command.phoneNumber());
         assertTrue(command.termsAccepted());
         assertEquals(10L, command.businessId());
@@ -59,8 +60,8 @@ class SignUpCommandFromResourceAssemblerTest {
 
     @Test
     void defaultsToCaregiverWhenRoleIsBlank() {
-        var resource = new SignUpResource("John Doe", "user@example.com", "+51987654321",
-                "Password123!", true, "   ", null, null);
+        var resource = new SignUpResource("John", "Doe", "user@example.com", "+51987654321",
+                "Password123!", true, "   ", null, null, null, null, null);
 
         var command = SignUpCommandFromResourceAssembler.toCommandFromResource(resource);
 
@@ -70,8 +71,8 @@ class SignUpCommandFromResourceAssemblerTest {
 
     @Test
     void throwsValidationExceptionWhenRoleIsInvalid() {
-        var resource = new SignUpResource("John Doe", "user@example.com", "+51987654321",
-                "Password123!", true, "UNKNOWN_ROLE", null, null);
+        var resource = new SignUpResource("John", "Doe", "user@example.com", "+51987654321",
+                "Password123!", true, "UNKNOWN_ROLE", null, null, null, null, null);
 
         assertThrows(SignUpValidationException.class, () ->
                 SignUpCommandFromResourceAssembler.toCommandFromResource(resource));

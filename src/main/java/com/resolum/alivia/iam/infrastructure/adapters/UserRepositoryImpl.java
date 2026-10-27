@@ -8,6 +8,8 @@ import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -73,6 +75,14 @@ public class UserRepositoryImpl implements UserRepository {
     @Override
     public Optional<User> findByAccountId(String accountId) {
         return persistenceRepository.findByAccountId(accountId);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List<User> findAllByIds(Collection<Long> ids) {
+        return persistenceRepository.findAllById(ids);
     }
 
     /**
