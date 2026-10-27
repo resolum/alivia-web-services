@@ -61,8 +61,9 @@ class ProductionProfilePropertiesTest {
     }
 
     @Test
-    void keepsSchemaManagementOnUpdateUntilFlywayExists() {
-        // AP-480/AP-482 are not implemented yet; validate would break a fresh production database.
+    void keepsSchemaManagementOnUpdateUntilMigrationsCoverTheFullSchema() {
+        // P-480.1 only adds the baseline marker; the full schema (P-480.2/AP-482) is pending,
+        // so validate would break a fresh production database.
         assertThat(PROD.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("update");
     }
 
