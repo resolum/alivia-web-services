@@ -1,9 +1,15 @@
 package com.resolum.alivia.shared.interfaces.rest;
 
+import com.resolum.alivia.hcm.domain.exceptions.EmployeeNotFound;
+import com.resolum.alivia.hcm.domain.exceptions.EmployeeNotInBusiness;
+import com.resolum.alivia.hcm.domain.exceptions.ContractNotActive;
+import com.resolum.alivia.hcm.domain.exceptions.ContractNotFound;
+import com.resolum.alivia.hcm.domain.exceptions.ContractOverlap;
 import com.resolum.alivia.iam.domain.exceptions.AccountAlreadyVerifiedException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotActiveException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotFoundException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotPendingVerificationException;
+import com.resolum.alivia.iam.domain.exceptions.DniAlreadyRegisteredException;
 import com.resolum.alivia.iam.domain.exceptions.EmailAlreadyRegisteredException;
 import com.resolum.alivia.iam.domain.exceptions.InvalidCredentialsException;
 import com.resolum.alivia.iam.domain.exceptions.InvalidRefreshTokenException;
@@ -12,47 +18,57 @@ import com.resolum.alivia.iam.domain.exceptions.RegistrationUnavailableException
 import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationResendTooSoonException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationTokenExpiredException;
-import com.resolum.alivia.shared.infrastructure.web.CorrelationIdFilter;
+import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationDraftNotFound;
 import com.resolum.alivia.subscriptions.domain.exceptions.InvalidStripeWebhookSignature;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentRejected;
-import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupNotFound;
-import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupUnauthorized;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.PlanNotFound;
-import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationConflict;
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
-import lombok.extern.slf4j.Slf4j;
-import org.slf4j.MDC;
+import com.resolum.alivia.profiles.domain.exceptions.StaffProfileNotFoundException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
-import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final String ERRORS_PROPERTY = "errors";
     private static final String CODE_PROPERTY = "code";
-    private static final String CORRELATION_ID_PROPERTY = "correlationId";
 
-    @ExceptionHandler(PreauthorizationConflict.class)
-    public ProblemDetail handlePreauthorizationConflict(PreauthorizationConflict exception) {
+    @ExceptionHandler(ContractNotFound.class)
+    public ProblemDetail handleContractNotFound(ContractNotFound exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler({ContractOverlap.class, ContractNotActive.class})
+    public ProblemDetail handleContractConflict(RuntimeException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
+    @ExceptionHandler(ConfigurationDraftNotFound.class)
+    public ProblemDetail handleConfigurationDraftNotFound(ConfigurationDraftNotFound exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler({EmployeeNotFound.class, StaffProfileNotFoundException.class})
+    public ProblemDetail handleHcmNotFound(RuntimeException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(EmployeeNotInBusiness.class)
+    public ProblemDetail handleEmployeeNotInBusiness(EmployeeNotInBusiness exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, exception.getMessage());
     }
 
     @ExceptionHandler(PreauthorizationUnavailable.class)
@@ -82,16 +98,6 @@ public class GlobalExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
     }
 
-    @ExceptionHandler(PaymentSetupNotFound.class)
-    public ProblemDetail handlePaymentSetupNotFound(PaymentSetupNotFound exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
-    }
-
-    @ExceptionHandler(PaymentSetupUnauthorized.class)
-    public ProblemDetail handlePaymentSetupUnauthorized(PaymentSetupUnauthorized exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, exception.getMessage());
-    }
-
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleInvalidArgument(IllegalArgumentException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
@@ -112,6 +118,13 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.CONFLICT, "email_already_registered",
                 "The email address is already registered.",
                 List.of(new ApiFieldError("email", "email_already_registered")));
+    }
+
+    @ExceptionHandler(DniAlreadyRegisteredException.class)
+    public ProblemDetail handleDniAlreadyRegistered(DniAlreadyRegisteredException exception) {
+        return problem(HttpStatus.CONFLICT, "dni_already_registered",
+                "The DNI is already registered.",
+                List.of(new ApiFieldError("dni", "dni_already_registered")));
     }
 
     @ExceptionHandler(SignUpValidationException.class)
@@ -199,37 +212,6 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleRegistrationUnavailable(RegistrationUnavailableException exception) {
         return problem(HttpStatus.SERVICE_UNAVAILABLE, "registration_unavailable",
                 "Registration is temporarily unavailable.", List.of());
-    }
-
-    @ExceptionHandler(AccessDeniedException.class)
-    public ProblemDetail handleAccessDenied() {
-        return problem(HttpStatus.FORBIDDEN, "access_denied",
-                "The authenticated user is not allowed to perform this action.", List.of());
-    }
-
-    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
-    public ProblemDetail handleInvalidRequest() {
-        return problem(HttpStatus.BAD_REQUEST, "invalid_request",
-                "The request body or parameters are invalid.", List.of());
-    }
-
-    /**
-     * Safety net for unexpected failures. Framework exceptions that already carry their own
-     * status (404, 405, 415...) are passed through so this handler does not turn them into 500.
-     */
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ProblemDetail> handleUnexpected(Exception exception) {
-        if (exception instanceof ErrorResponse errorResponse) {
-            return ResponseEntity.status(errorResponse.getStatusCode()).body(errorResponse.getBody());
-        }
-        log.error("Unhandled exception", exception);
-        var problem = problem(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error",
-                "An unexpected error occurred.", List.of());
-        var correlationId = MDC.get(CorrelationIdFilter.MDC_KEY);
-        if (correlationId != null) {
-            problem.setProperty(CORRELATION_ID_PROPERTY, correlationId);
-        }
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problem);
     }
 
     private static ProblemDetail invalidVerificationTokenProblem() {

@@ -47,7 +47,8 @@ class StripePaymentAuthorizationGatewayTest {
                         && "pm_test".equals(params.getPaymentMethod())
                         && params.getCaptureMethod() == PaymentIntentCreateParams.CaptureMethod.MANUAL
                         && Boolean.TRUE.equals(params.getConfirm())
-                        && Boolean.TRUE.equals(params.getOffSession())),
+                        && params.getOffSession() == null
+                        && "contract_preauthorization".equals(params.getMetadata().get("alivia_operation"))),
                 argThat(options -> ("preauthorization-" + key).equals(options.getIdempotencyKey())));
     }
 

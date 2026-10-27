@@ -10,6 +10,7 @@ import com.resolum.alivia.iam.application.internal.outboundservices.tokens.Token
 import com.resolum.alivia.iam.domain.exceptions.AccountAlreadyVerifiedException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotActiveException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotPendingVerificationException;
+import com.resolum.alivia.iam.domain.exceptions.DniAlreadyRegisteredException;
 import com.resolum.alivia.iam.domain.exceptions.EmailAlreadyRegisteredException;
 import com.resolum.alivia.iam.domain.exceptions.InvalidCredentialsException;
 import com.resolum.alivia.iam.domain.exceptions.InvalidRefreshTokenException;
@@ -184,6 +185,7 @@ class UserCommandServiceTest {
                 var result = service.handle(signUpCommand());
 
                 assertEquals(Long.valueOf(42L), result.getId());
+                assertEquals(Long.valueOf(15L), result.getProfileId());
                 assertEquals(EMAIL, result.getEmail().email());
                 assertEquals("bcrypt-hash", result.getPassword().value());
                 assertEquals(AccessRole.CAREGIVER, result.getAccessRole());
@@ -195,7 +197,7 @@ class UserCommandServiceTest {
                 assertEquals(TOKEN_HASH, result.getPendingEmailVerificationToken().value());
                 assertEquals(NOW.plusHours(24), result.getPendingEmailVerificationToken().expiresAt());
                 verify(hashingService).encode(PASSWORD);
-                verify(profilesService).createProfile(42L, new ProfileData("Maria Lopez", "+51987654321"));
+                verify(profilesService).createProfile(42L, EMAIL, AccessRole.CAREGIVER, new ProfileData("Maria", "Lopez", "+51987654321"));
                 verify(emailService).sendVerificationEmail(EMAIL, VERIFICATION_LINK);
                 verify(userRepository).save(any(User.class));
         }
@@ -212,7 +214,7 @@ class UserCommandServiceTest {
 
         @Test
         void rejectsWeakPassword() {
-                var command = new SignUpCommand(EMAIL, "short", "Maria Lopez", "+51987654321", true);
+                var command = new SignUpCommand(EMAIL, "short", "Maria", "Lopez", "+51987654321", true);
 
                 var exception = assertThrows(SignUpValidationException.class, () -> service.handle(command));
 
@@ -224,7 +226,7 @@ class UserCommandServiceTest {
 
         @Test
         void rejectsUnacceptedTerms() {
-                var command = new SignUpCommand(EMAIL, PASSWORD, "Maria Lopez", "+51987654321", false);
+                var command = new SignUpCommand(EMAIL, PASSWORD, "Maria", "Lopez", "+51987654321", false);
 
                 var exception = assertThrows(SignUpValidationException.class, () -> service.handle(command));
 
@@ -236,16 +238,16 @@ class UserCommandServiceTest {
 
         @Test
         void rejectsMissingProfileData() {
-                var missingFullName = new SignUpCommand(EMAIL, PASSWORD, " ", "+51987654321", true);
-                var missingPhone = new SignUpCommand(EMAIL, PASSWORD, "Maria Lopez", "", true);
+                var missingFirstName = new SignUpCommand(EMAIL, PASSWORD, " ", "Lopez", "+51987654321", true);
+                var missingPhone = new SignUpCommand(EMAIL, PASSWORD, "Maria", "Lopez", "", true);
 
-                var fullNameError = assertThrows(SignUpValidationException.class,
-                                () -> service.handle(missingFullName));
+                var firstNameError = assertThrows(SignUpValidationException.class,
+                                () -> service.handle(missingFirstName));
                 var phoneError = assertThrows(SignUpValidationException.class,
                                 () -> service.handle(missingPhone));
 
-                assertEquals("fullName", fullNameError.violations().getFirst().field());
-                assertEquals("required", fullNameError.violations().getFirst().code());
+                assertEquals("firstName", firstNameError.violations().getFirst().field());
+                assertEquals("required", firstNameError.violations().getFirst().code());
                 assertEquals("phoneNumber", phoneError.violations().getFirst().field());
                 assertEquals("required", phoneError.violations().getFirst().code());
                 verifyNoInteractions(userRepository, hashingService, tokenService,
@@ -269,7 +271,7 @@ class UserCommandServiceTest {
         void registrationFailsWhenProfilesServiceFails() {
                 stubSuccessfulRegistration();
                 doThrow(new IllegalStateException("profiles down"))
-                                .when(profilesService).createProfile(anyLong(), any(ProfileData.class));
+                                .when(profilesService).createProfile(anyLong(), anyString(), any(AccessRole.class), any(ProfileData.class));
 
                 var exception = assertThrows(RegistrationUnavailableException.class,
                                 () -> service.handle(signUpCommand()));
@@ -370,46 +372,69 @@ class UserCommandServiceTest {
         }
 
         @Test
+        void registrationKeepsProfileValidationErrors() {
+                stubSuccessfulRegistration();
+                doThrow(new SignUpValidationException("dni", SignUpValidationException.REQUIRED))
+                                .when(profilesService).createProfile(anyLong(), anyString(), any(AccessRole.class), any(ProfileData.class));
+
+                var exception = assertThrows(SignUpValidationException.class, () -> service.handle(signUpCommand()));
+
+                assertEquals("dni", exception.violations().getFirst().field());
+                verifyNoInteractions(emailService);
+        }
+
+        @Test
+        void registrationKeepsDuplicateDniConflict() {
+                stubSuccessfulRegistration();
+                doThrow(new DniAlreadyRegisteredException())
+                                .when(profilesService).createProfile(anyLong(), anyString(), any(AccessRole.class), any(ProfileData.class));
+
+                assertThrows(DniAlreadyRegisteredException.class, () -> service.handle(signUpCommand()));
+
+                verifyNoInteractions(emailService);
+        }
+
+        @Test
         void registersAdministratorWithSignUpCommand() {
                 stubSuccessfulRegistration();
 
-                var cmd = new SignUpCommand(EMAIL, PASSWORD, "Admin User", "+51987654321", true,
+                var cmd = new SignUpCommand(EMAIL, PASSWORD, "Admin", "User", "+51987654321", true,
                                 AccessRole.ADMINISTRATOR, null, null);
                 var result = service.handle(cmd);
 
                 assertEquals(AccessRole.ADMINISTRATOR, result.getAccessRole());
-                verify(profilesService).createProfile(42L, new ProfileData("Admin User", "+51987654321", null, null));
+                verify(profilesService).createProfile(42L, EMAIL, AccessRole.ADMINISTRATOR, new ProfileData("Admin", "User", "+51987654321", null, null));
         }
 
         @Test
         void registersEmployeeWithBusinessId() {
                 stubSuccessfulRegistration();
 
-                var cmd = new SignUpCommand(EMAIL, PASSWORD, "Emp User", "+51987654321", true,
+                var cmd = new SignUpCommand(EMAIL, PASSWORD, "Emp", "User", "+51987654321", true,
                                 AccessRole.TECHNICIAN, 100L, null);
                 var result = service.handle(cmd);
 
                 assertEquals(AccessRole.TECHNICIAN, result.getAccessRole());
-                verify(profilesService).createProfile(42L, new ProfileData("Emp User", "+51987654321", 100L, null));
+                verify(profilesService).createProfile(42L, EMAIL, AccessRole.TECHNICIAN, new ProfileData("Emp", "User", "+51987654321", 100L, null));
         }
 
         @Test
         void registersAssistedPersonWithFamiliarId() {
                 stubSuccessfulRegistration();
 
-                var cmd = new SignUpCommand(EMAIL, PASSWORD, "Assisted", "+51987654321", true,
+                var cmd = new SignUpCommand(EMAIL, PASSWORD, "Assisted", "Person", "+51987654321", true,
                                 AccessRole.ASSISTED_PERSON, null, 200L);
                 var result = service.handle(cmd);
 
                 assertEquals(AccessRole.ASSISTED_PERSON, result.getAccessRole());
-                verify(profilesService).createProfile(42L, new ProfileData("Assisted", "+51987654321", null, 200L));
+                verify(profilesService).createProfile(42L, EMAIL, AccessRole.ASSISTED_PERSON, new ProfileData("Assisted", "Person", "+51987654321", null, 200L));
         }
 
         @Test
         void registersCaregiverWhenRoleIsMissing() {
                 stubSuccessfulRegistration();
 
-                var result = service.handle(new SignUpCommand(EMAIL, PASSWORD, "Maria Lopez", "+51987654321", true,
+                var result = service.handle(new SignUpCommand(EMAIL, PASSWORD, "Maria", "Lopez", "+51987654321", true,
                                 (AccessRole) null));
 
                 assertEquals(AccessRole.CAREGIVER, result.getAccessRole());
@@ -431,15 +456,15 @@ class UserCommandServiceTest {
         @Test
         void rejectsMissingProfileFieldsAndInvalidEmail() {
                 assertThrows(SignUpValidationException.class, () -> service.handle(
-                                new SignUpCommand(EMAIL, PASSWORD, null, "+51987654321", true)));
+                                new SignUpCommand(EMAIL, PASSWORD, null, "Lopez", "+51987654321", true)));
                 assertThrows(SignUpValidationException.class, () -> service.handle(
-                                new SignUpCommand(EMAIL, PASSWORD, "  ", "+51987654321", true)));
+                                new SignUpCommand(EMAIL, PASSWORD, "Maria", "  ", "+51987654321", true)));
                 assertThrows(SignUpValidationException.class, () -> service.handle(
-                                new SignUpCommand(EMAIL, PASSWORD, "Name", null, true)));
+                                new SignUpCommand(EMAIL, PASSWORD, "Name", "Last", null, true)));
                 assertThrows(SignUpValidationException.class, () -> service.handle(
-                                new SignUpCommand(EMAIL, PASSWORD, "Name", "  ", true)));
+                                new SignUpCommand(EMAIL, PASSWORD, "Name", "Last", "  ", true)));
                 assertThrows(SignUpValidationException.class, () -> service.handle(
-                                new SignUpCommand("invalid-email", PASSWORD, "Name", "+51987654321", true)));
+                                new SignUpCommand("invalid-email", PASSWORD, "Name", "Last", "+51987654321", true)));
         }
 
         @Test
@@ -521,11 +546,13 @@ class UserCommandServiceTest {
                         assignId(invocation.getArgument(0), 42L);
                         return invocation.getArgument(0);
                 });
+                when(profilesService.createProfile(anyLong(), anyString(), any(AccessRole.class), any(ProfileData.class)))
+                                .thenReturn(15L);
         }
 
         private static SignUpCommand signUpCommand() {
                 return new SignUpCommand("  Maria.Lopez@Example.COM ", PASSWORD,
-                                "Maria Lopez", "+51987654321", true);
+                                "Maria", "Lopez", "+51987654321", true);
         }
 
         private static User pendingUser(LocalDateTime expiresAt) {
