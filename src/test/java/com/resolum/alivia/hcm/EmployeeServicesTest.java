@@ -14,6 +14,8 @@ import com.resolum.alivia.hcm.domain.model.valueobjects.EmployeeRole;
 import com.resolum.alivia.hcm.domain.model.valueobjects.EmployeeStatus;
 import com.resolum.alivia.hcm.infrastructure.persistence.jpa.repositories.EmployeeChangeLogRepository;
 import com.resolum.alivia.hcm.infrastructure.persistence.jpa.repositories.EmployeeRepository;
+import com.resolum.alivia.hcm.application.internal.outboundservices.acl.ExternalIamService;
+import com.resolum.alivia.hcm.application.internal.outboundservices.acl.ExternalProfilesService;
 import com.resolum.alivia.iam.interfaces.acl.IamContextFacade;
 import com.resolum.alivia.profiles.domain.exceptions.StaffProfileNotFoundException;
 import com.resolum.alivia.profiles.interfaces.acl.ProfilesContextFacade;
@@ -38,7 +40,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.*;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
@@ -59,7 +60,8 @@ class EmployeeServicesTest {
         changeLogs = mock(EmployeeChangeLogRepository.class);
         profiles = mock(ProfilesContextFacade.class);
         iam = mock(IamContextFacade.class);
-        commandService = new EmployeeCommandServiceImpl(repository, changeLogs, profiles, iam,
+        commandService = new EmployeeCommandServiceImpl(repository, changeLogs,
+                new ExternalProfilesService(profiles), new ExternalIamService(iam),
                 "https://res.cloudinary.com/demo/image/upload/v123/default-photo.webp");
         queryService = new EmployeeQueryServiceImpl(repository);
         when(repository.save(any(Employee.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -69,9 +71,8 @@ class EmployeeServicesTest {
     void createsEmployeeWithStaffProfileAndCompanyUser() {
         when(profiles.createStaffProfile("ana@alivia.pe", "https://img/ana.png", "ana", "+51987654321",
                 "Ana", "Pérez", "12345678", BIRTH_DATE)).thenReturn(30L);
-        when(iam.registerCompanyUser(eq("ana@alivia.pe"), startsWith("Tmp!A9"), eq("Ana"), eq("Pérez"),
-                eq("+51987654321"), eq("SUBSCRIPTION_MANAGER"), eq(1L), eq("12345678"),
-                eq(BIRTH_DATE))).thenReturn(20L);
+        when(iam.inviteCompanyUser("ana@alivia.pe", "Ana Pérez", "Gestor de suscripciones",
+                "SUBSCRIPTION_MANAGER", 30L)).thenReturn(20L);
 
         var employee = commandService.handle(createCommand(1L, EmployeeRole.SUBSCRIPTION_MANAGER));
 
@@ -85,7 +86,7 @@ class EmployeeServicesTest {
     @Test
     void givesTheDefaultPhotoToEmployeesRegisteredWithoutOne() {
         when(profiles.createStaffProfile(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(30L);
-        when(iam.registerCompanyUser(any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(20L);
+        when(iam.inviteCompanyUser(any(), any(), any(), any(), any())).thenReturn(20L);
 
         commandService.handle(new CreateEmployeeCommand(1L, "ana@alivia.pe", null, null, "+51987654321",
                 "Ana", "Pérez", "12345678", BIRTH_DATE, EmployeeRole.SUBSCRIPTION_MANAGER));
@@ -98,14 +99,12 @@ class EmployeeServicesTest {
     @Test
     void registersOperationalEmployeesAsTechnicians() {
         when(profiles.createStaffProfile(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(30L);
-        when(iam.registerCompanyUser(any(), any(), any(), any(), any(), eq("TECHNICIAN"), eq(1L),
-                any(), any())).thenReturn(20L);
+        when(iam.inviteCompanyUser(any(), any(), any(), eq("TECHNICIAN"), any())).thenReturn(20L);
 
         var employee = commandService.handle(createCommand(1L, EmployeeRole.CLEANING));
 
         assertEquals(EmployeeRole.CLEANING, employee.getRole());
-        verify(iam).registerCompanyUser(any(), any(), any(), any(), any(), eq("TECHNICIAN"), eq(1L),
-                any(), any());
+        verify(iam).inviteCompanyUser("ana@alivia.pe", "Ana Pérez", "Limpieza", "TECHNICIAN", 30L);
     }
 
     @Test
