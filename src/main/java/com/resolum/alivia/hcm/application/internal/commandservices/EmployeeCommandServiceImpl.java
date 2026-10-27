@@ -13,9 +13,11 @@ import com.resolum.alivia.hcm.infrastructure.persistence.jpa.repositories.Employ
 import com.resolum.alivia.iam.interfaces.acl.IamContextFacade;
 import com.resolum.alivia.profiles.domain.exceptions.StaffProfileNotFoundException;
 import com.resolum.alivia.profiles.interfaces.acl.ProfilesContextFacade;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.URI;
 import java.security.SecureRandom;
 import java.util.LinkedHashMap;
 
@@ -26,22 +28,29 @@ public class EmployeeCommandServiceImpl implements EmployeeCommandService {
     private final EmployeeChangeLogRepository changeLogRepository;
     private final ProfilesContextFacade profiles;
     private final IamContextFacade iam;
+    private final String defaultPhotoUrl;
 
     public EmployeeCommandServiceImpl(EmployeeRepository repository,
                                       EmployeeChangeLogRepository changeLogRepository,
-                                      ProfilesContextFacade profiles, IamContextFacade iam) {
+                                      ProfilesContextFacade profiles, IamContextFacade iam,
+                                      @Value("${alivia.iam.profiles.default-photo-url}") String defaultPhotoUrl) {
         this.repository = repository;
         this.changeLogRepository = changeLogRepository;
         this.profiles = profiles;
         this.iam = iam;
+        this.defaultPhotoUrl = defaultPhotoUrl;
     }
 
     @Override
     @Transactional
     public Employee handle(CreateEmployeeCommand command) {
         requirePositive(command.businessId(), "Business identifier");
-        var profileId = profiles.createStaffProfile(command.corporateEmail(), command.photoUrl(),
-                command.photoPublicId(), command.phoneNumber(), command.firstName(), command.lastName(),
+        // Without a photo the employee gets the same default photo as any new profile.
+        boolean hasPhoto = command.photoUrl() != null && !command.photoUrl().isBlank();
+        var photoUrl = hasPhoto ? command.photoUrl() : defaultPhotoUrl;
+        var photoPublicId = hasPhoto ? command.photoPublicId() : publicIdOf(defaultPhotoUrl);
+        var profileId = profiles.createStaffProfile(command.corporateEmail(), photoUrl,
+                photoPublicId, command.phoneNumber(), command.firstName(), command.lastName(),
                 command.dni(), command.birthDate());
         var userId = iam.registerCompanyUser(command.corporateEmail(), temporaryPassword(),
                 command.firstName(), command.lastName(), command.phoneNumber(),
@@ -104,5 +113,15 @@ public class EmployeeCommandServiceImpl implements EmployeeCommandService {
 
     private static void requirePositive(Long id, String name) {
         if (id == null || id <= 0) throw new IllegalArgumentException(name + " must be positive.");
+    }
+
+    // Cloudinary public id of a photo URL: the path after /upload/ without the version and the extension.
+    private static String publicIdOf(String photoUrl) {
+        var path = URI.create(photoUrl).getPath();
+        int upload = path.indexOf("/upload/");
+        var id = upload < 0 ? path.substring(path.lastIndexOf('/') + 1)
+                : path.substring(upload + "/upload/".length()).replaceFirst("^v\\d+/", "");
+        int dot = id.lastIndexOf('.');
+        return dot > 0 ? id.substring(0, dot) : id;
     }
 }

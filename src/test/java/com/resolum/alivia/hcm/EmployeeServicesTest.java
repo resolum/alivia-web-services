@@ -59,7 +59,8 @@ class EmployeeServicesTest {
         changeLogs = mock(EmployeeChangeLogRepository.class);
         profiles = mock(ProfilesContextFacade.class);
         iam = mock(IamContextFacade.class);
-        commandService = new EmployeeCommandServiceImpl(repository, changeLogs, profiles, iam);
+        commandService = new EmployeeCommandServiceImpl(repository, changeLogs, profiles, iam,
+                "https://res.cloudinary.com/demo/image/upload/v123/default-photo.webp");
         queryService = new EmployeeQueryServiceImpl(repository);
         when(repository.save(any(Employee.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
@@ -79,6 +80,19 @@ class EmployeeServicesTest {
         assertEquals(30L, employee.getStaffProfileId());
         assertEquals(EmployeeRole.SUBSCRIPTION_MANAGER, employee.getRole());
         assertEquals(EmployeeStatus.ACTIVE, employee.getStatus());
+    }
+
+    @Test
+    void givesTheDefaultPhotoToEmployeesRegisteredWithoutOne() {
+        when(profiles.createStaffProfile(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(30L);
+        when(iam.registerCompanyUser(any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(20L);
+
+        commandService.handle(new CreateEmployeeCommand(1L, "ana@alivia.pe", null, null, "+51987654321",
+                "Ana", "Pérez", "12345678", BIRTH_DATE, EmployeeRole.SUBSCRIPTION_MANAGER));
+
+        verify(profiles).createStaffProfile("ana@alivia.pe",
+                "https://res.cloudinary.com/demo/image/upload/v123/default-photo.webp", "default-photo",
+                "+51987654321", "Ana", "Pérez", "12345678", BIRTH_DATE);
     }
 
     @Test
