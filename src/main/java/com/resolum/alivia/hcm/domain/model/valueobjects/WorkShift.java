@@ -34,6 +34,6 @@ public record WorkShift(
     }
 
     public boolean overlapsWith(WorkShift other) {
-        return day == other.day && range().overlaps(other.range());
+        return day.equals(other.day) && range().overlaps(other.range());
     }
 }

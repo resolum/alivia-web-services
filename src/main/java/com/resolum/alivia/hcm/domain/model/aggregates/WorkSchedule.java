@@ -122,7 +122,7 @@ public class WorkSchedule extends AuditableAbstractAggregateRoot<WorkSchedule> {
 
     /** True when one shift of that day contains the whole range (used to assign technician visits). */
     public boolean covers(DayOfWeek day, TimeRange range) {
-        return shifts.stream().anyMatch(shift -> shift.day() == day && shift.range().contains(range));
+        return shifts.stream().anyMatch(shift -> shift.day().equals(day) && shift.range().contains(range));
     }
 
     public boolean isInEffectOn(LocalDate date) {
