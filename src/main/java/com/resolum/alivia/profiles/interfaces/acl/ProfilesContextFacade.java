@@ -14,6 +14,11 @@ import com.resolum.alivia.shared.domain.model.valueobjects.WeeklyPeriod;
  */
 public interface ProfilesContextFacade {
 
+    record StaffProfileData(Long id, String emailAddress, String photoUrl, String photoPublicId,
+                            String phoneNumber, String firstName, String lastName, String dni,
+                            LocalDate birthDate) {
+    }
+
     /**
      * Creates a new person profile.
      *
@@ -47,6 +52,12 @@ public interface ProfilesContextFacade {
     Long createStaffProfile(String emailAddress, String photoUrl, String photoPublicId,
                             String phoneNumber, String firstName, String lastName,
                             String dni, LocalDate birthDate);
+
+    Optional<StaffProfileData> fetchStaffProfileById(Long profileId);
+
+    Long updateStaffProfile(Long profileId, String firstName, String lastName,
+                            LocalDate birthDate, String phoneNumber, String photoUrl,
+                            String photoPublicId);
 
     /**
      * Creates a new business profile.

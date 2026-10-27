@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.resolum.alivia.profiles.domain.model.commands.CreateBusinessProfileCommand;
 import com.resolum.alivia.profiles.domain.model.commands.CreatePersonProfileCommand;
 import com.resolum.alivia.profiles.domain.model.commands.CreateStaffProfileCommand;
+import com.resolum.alivia.profiles.domain.model.commands.UpdateStaffProfileCommand;
 import com.resolum.alivia.profiles.domain.model.queries.ExistsBusinessProfileByEmailAddressQuery;
 import com.resolum.alivia.profiles.domain.model.queries.ExistsPersonProfileByDniQuery;
 import com.resolum.alivia.profiles.domain.model.queries.ExistsPersonProfileByEmailAddressQuery;
@@ -99,6 +100,28 @@ public class ProfilesContextFacadeImpl implements ProfilesContextFacade {
         Long profileId = staffProfileCommandService.handle(command);
         log.info("Staff profile created via ACL with id: {}", profileId);
         return profileId;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<ProfilesContextFacade.StaffProfileData> fetchStaffProfileById(Long profileId) {
+        if (profileId == null || profileId <= 0) return Optional.empty();
+        return staffProfileQueryService.handle(new GetStaffProfileByIdQuery(profileId))
+                .map(profile -> new ProfilesContextFacade.StaffProfileData(
+                        profile.getId(), profile.getEmailAddress().email(),
+                        profile.getPhoto().photoUrl(), profile.getPhoto().photoPublicId(),
+                        profile.getPhoneNumber().phoneNumber(), profile.getPersonName().firstName(),
+                        profile.getPersonName().lastName(), profile.getDni().dni(),
+                        profile.getBirthDate().date()));
+    }
+
+    @Override
+    @Transactional
+    public Long updateStaffProfile(Long profileId, String firstName, String lastName,
+                                   LocalDate birthDate, String phoneNumber, String photoUrl,
+                                   String photoPublicId) {
+        return staffProfileCommandService.handle(new UpdateStaffProfileCommand(
+                profileId, firstName, lastName, birthDate, phoneNumber, photoUrl, photoPublicId));
     }
 
     /**
