@@ -1,7 +1,9 @@
 package com.resolum.alivia.hcm.interfaces.rest.transform;
 
 import com.resolum.alivia.hcm.domain.model.aggregates.Contract;
+import com.resolum.alivia.hcm.domain.model.entities.ContractVersion;
 import com.resolum.alivia.hcm.interfaces.rest.resources.ContractResource;
+import com.resolum.alivia.hcm.interfaces.rest.resources.ContractVersionResource;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
@@ -22,5 +24,10 @@ public class ContractResourceAssembler {
                 contract.getWeeklyHours(), contract.getStartDate(), contract.getEndDate(),
                 contract.viewStatus(today), contract.isEligibleOn(today), contract.getNotes(),
                 contract.getCreatedAt(), contract.getUpdatedAt());
+    }
+
+    public ContractVersionResource toHistoryResource(ContractVersion version) {
+        return new ContractVersionResource(version.getVersion(), version.getAction(),
+                version.getActorUserId(), version.getSnapshot(), version.getCreatedAt());
     }
 }

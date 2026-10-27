@@ -4,11 +4,13 @@ import com.resolum.alivia.hcm.domain.exceptions.ContractNotFound;
 import com.resolum.alivia.hcm.domain.exceptions.EmployeeNotFound;
 import com.resolum.alivia.hcm.domain.exceptions.EmployeeNotInBusiness;
 import com.resolum.alivia.hcm.domain.model.aggregates.Contract;
+import com.resolum.alivia.hcm.domain.model.entities.ContractVersion;
 import com.resolum.alivia.hcm.domain.model.queries.GetContractQuery;
 import com.resolum.alivia.hcm.domain.model.queries.GetContractsQuery;
 import com.resolum.alivia.hcm.domain.services.ContractQueryService;
 import com.resolum.alivia.hcm.domain.model.valueobjects.ContractStatus;
 import com.resolum.alivia.hcm.infrastructure.persistence.jpa.repositories.ContractPersistenceRepository;
+import com.resolum.alivia.hcm.infrastructure.persistence.jpa.repositories.ContractVersionRepository;
 import com.resolum.alivia.hcm.infrastructure.persistence.jpa.repositories.EmployeeRepository;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Page;
@@ -18,16 +20,20 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.List;
 
 @Service
 public class ContractQueryServiceImpl implements ContractQueryService {
     private final ContractPersistenceRepository contracts;
+    private final ContractVersionRepository versions;
     private final EmployeeRepository employees;
     private final Clock clock;
 
     public ContractQueryServiceImpl(ContractPersistenceRepository contracts,
+                                    ContractVersionRepository versions,
                                     EmployeeRepository employees, Clock clock) {
         this.contracts = contracts;
+        this.versions = versions;
         this.employees = employees;
         this.clock = clock;
     }
@@ -77,6 +83,13 @@ public class ContractQueryServiceImpl implements ContractQueryService {
             throw new ContractNotFound(query.contractId());
         }
         return contract;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ContractVersion> history(GetContractQuery query) {
+        handle(query);
+        return versions.findByContractIdOrderByVersionDesc(query.contractId());
     }
 
     @Override

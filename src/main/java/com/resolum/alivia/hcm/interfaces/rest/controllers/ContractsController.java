@@ -1,6 +1,8 @@
 package com.resolum.alivia.hcm.interfaces.rest.controllers;
 
 import com.resolum.alivia.hcm.domain.model.commands.CreateContractCommand;
+import com.resolum.alivia.hcm.domain.model.commands.RenewContractCommand;
+import com.resolum.alivia.hcm.domain.model.commands.TerminateContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.UpdateContractCommand;
 import com.resolum.alivia.hcm.domain.model.queries.GetContractQuery;
 import com.resolum.alivia.hcm.domain.model.queries.GetContractsQuery;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.*;
 import java.security.Principal;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
@@ -98,6 +101,34 @@ public class ContractsController {
         return assembler.toResource(commandService.handle(new UpdateContractCommand(employeeId,
                 contractId, businessId, resource.position(), resource.modality(), resource.weeklyHours(),
                 resource.startDate(), resource.endDate(), resource.notes(), actorId(principal))));
+    }
+
+    @PostMapping(value = "/employees/{employeeId}/contracts/{contractId}/renewals",
+            consumes = APPLICATION_JSON_VALUE)
+    @Operation(summary = "Renovar un contrato")
+    public ContractResource renew(@PathVariable Long employeeId, @PathVariable Long contractId,
+                                  @RequestParam Long businessId,
+                                  @Valid @RequestBody RenewContractResource resource,
+                                  Principal principal) {
+        return assembler.toResource(commandService.handle(new RenewContractCommand(employeeId,
+                contractId, businessId, resource.startDate(), resource.endDate(), actorId(principal))));
+    }
+
+    @PostMapping("/employees/{employeeId}/contracts/{contractId}/termination")
+    @Operation(summary = "Finalizar un contrato sin eliminarlo")
+    public ContractResource terminate(@PathVariable Long employeeId, @PathVariable Long contractId,
+                                      @RequestParam Long businessId, Principal principal) {
+        return assembler.toResource(commandService.handle(new TerminateContractCommand(employeeId,
+                contractId, businessId, actorId(principal))));
+    }
+
+    @GetMapping("/employees/{employeeId}/contracts/{contractId}/history")
+    @Operation(summary = "Consultar las versiones y actores de un contrato")
+    public List<ContractVersionResource> history(@PathVariable Long employeeId,
+                                                 @PathVariable Long contractId,
+                                                 @RequestParam Long businessId) {
+        return queryService.history(new GetContractQuery(employeeId, contractId, businessId)).stream()
+                .map(assembler::toHistoryResource).toList();
     }
 
     @GetMapping("/employees/{employeeId}/eligibility")
