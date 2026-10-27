@@ -44,9 +44,10 @@ public class BusinessProfilesController {
     public ResponseEntity<BusinessProfileResource> createBusinessProfile(@RequestBody CreateBusinessProfileResource resource) {
         var command = CreateBusinessProfileCommandFromResourceAssembler.toCommandFromResource(resource);
         var profileId = commandService.handle(command);
-        var profile = queryService.handle(new GetBusinessProfileByIdQuery(profileId));
-        return profile.map(entity -> new ResponseEntity<>(BusinessProfileResourceFromEntityAssembler.toResourceFromEntity(entity), HttpStatus.CREATED))
-                .orElseGet(() -> ResponseEntity.badRequest().build());
+        return queryService.handle(new GetBusinessProfileByIdQuery(profileId))
+                .map(entity -> new ResponseEntity<>(BusinessProfileResourceFromEntityAssembler.toResourceFromEntity(entity), HttpStatus.CREATED))
+                .orElseThrow(() -> new IllegalStateException(
+                        "Business profile " + profileId + " was not found after creation."));
     }
 
     @GetMapping("/{profileId}")
@@ -76,6 +77,6 @@ public class BusinessProfilesController {
         var updatedId = commandService.handle(command);
         var profile = queryService.handle(new GetBusinessProfileByIdQuery(updatedId));
         return profile.map(entity -> ResponseEntity.ok(BusinessProfileResourceFromEntityAssembler.toResourceFromEntity(entity)))
-                .orElseGet(() -> ResponseEntity.notFound().build());
+                .orElseThrow(() -> new BusinessProfileNotFoundException(updatedId));
     }
 }

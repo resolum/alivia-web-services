@@ -44,9 +44,10 @@ public class StaffProfilesController {
     public ResponseEntity<StaffProfileResource> createStaffProfile(@RequestBody CreateStaffProfileResource resource) {
         var command = CreateStaffProfileCommandFromResourceAssembler.toCommandFromResource(resource);
         var profileId = commandService.handle(command);
-        var profile = queryService.handle(new GetStaffProfileByIdQuery(profileId));
-        return profile.map(entity -> new ResponseEntity<>(StaffProfileResourceFromEntityAssembler.toResourceFromEntity(entity), HttpStatus.CREATED))
-                .orElseGet(() -> ResponseEntity.badRequest().build());
+        return queryService.handle(new GetStaffProfileByIdQuery(profileId))
+                .map(entity -> new ResponseEntity<>(StaffProfileResourceFromEntityAssembler.toResourceFromEntity(entity), HttpStatus.CREATED))
+                .orElseThrow(() -> new IllegalStateException(
+                        "Staff profile " + profileId + " was not found after creation."));
     }
 
     @GetMapping("/{profileId}")
@@ -76,6 +77,6 @@ public class StaffProfilesController {
         var updatedId = commandService.handle(command);
         var profile = queryService.handle(new GetStaffProfileByIdQuery(updatedId));
         return profile.map(entity -> ResponseEntity.ok(StaffProfileResourceFromEntityAssembler.toResourceFromEntity(entity)))
-                .orElseGet(() -> ResponseEntity.notFound().build());
+                .orElseThrow(() -> new StaffProfileNotFoundException(updatedId));
     }
 }

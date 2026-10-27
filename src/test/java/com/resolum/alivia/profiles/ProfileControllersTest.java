@@ -135,7 +135,7 @@ class ProfileControllersTest {
     }
 
     @Test
-    void createBusinessProfileReturns400WhenNotFoundAfterCreation() throws Exception {
+    void createBusinessProfileReturns500WhenNotFoundAfterCreation() throws Exception {
         when(businessCmdService.handle(any(CreateBusinessProfileCommand.class))).thenReturn(1L);
         when(businessQueryService.handle(new GetBusinessProfileByIdQuery(1L))).thenReturn(Optional.empty());
 
@@ -171,7 +171,8 @@ class ProfileControllersTest {
         businessMvc.perform(post("/api/v1/business-profiles")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("internal_error"));
     }
 
     @Test
@@ -270,13 +271,14 @@ class ProfileControllersTest {
         businessMvc.perform(put("/api/v1/business-profiles/2")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("business_profile_not_found"));
     }
 
     // --- PersonProfilesController ---
 
     @Test
-    void createPersonProfileReturns201Or400() throws Exception {
+    void createPersonProfileReturns201Or500() throws Exception {
         var person = new PersonProfile(
                 new EmailAddress("juan@alivia.com"),
                 new Photo("http://img.jpg", "img_1"),
@@ -308,14 +310,15 @@ class ProfileControllersTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.firstName").value("Juan"));
 
-        // Bad request when query returns empty
+        // Server-side inconsistency when the created profile cannot be read back
         when(personCmdService.handle(any(CreatePersonProfileCommand.class))).thenReturn(99L);
         when(personQueryService.handle(new GetPersonProfileByIdQuery(99L))).thenReturn(Optional.empty());
 
         personMvc.perform(post("/api/v1/person-profiles")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("internal_error"));
     }
 
     @Test
@@ -377,13 +380,14 @@ class ProfileControllersTest {
         personMvc.perform(put("/api/v1/person-profiles/20")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("person_profile_not_found"));
     }
 
     // --- StaffProfilesController ---
 
     @Test
-    void createStaffProfileReturns201Or400() throws Exception {
+    void createStaffProfileReturns201Or500() throws Exception {
         var staff = new StaffProfile(
                 new EmailAddress("ana@alivia.com"),
                 new Photo("http://img.jpg", "img_1"),
@@ -421,7 +425,8 @@ class ProfileControllersTest {
         staffMvc.perform(post("/api/v1/staff-profiles")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("internal_error"));
     }
 
     @Test
@@ -483,7 +488,8 @@ class ProfileControllersTest {
         staffMvc.perform(put("/api/v1/staff-profiles/40")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("staff_profile_not_found"));
     }
 
     @Test

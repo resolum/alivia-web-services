@@ -44,9 +44,10 @@ public class PersonProfilesController {
     public ResponseEntity<PersonProfileResource> createPersonProfile(@RequestBody CreatePersonProfileResource resource) {
         var command = CreatePersonProfileCommandFromResourceAssembler.toCommandFromResource(resource);
         var profileId = commandService.handle(command);
-        var profile = queryService.handle(new GetPersonProfileByIdQuery(profileId));
-        return profile.map(entity -> new ResponseEntity<>(PersonProfileResourceFromEntityAssembler.toResourceFromEntity(entity), HttpStatus.CREATED))
-                .orElseGet(() -> ResponseEntity.badRequest().build());
+        return queryService.handle(new GetPersonProfileByIdQuery(profileId))
+                .map(entity -> new ResponseEntity<>(PersonProfileResourceFromEntityAssembler.toResourceFromEntity(entity), HttpStatus.CREATED))
+                .orElseThrow(() -> new IllegalStateException(
+                        "Person profile " + profileId + " was not found after creation."));
     }
 
     @GetMapping("/{profileId}")
@@ -76,6 +77,6 @@ public class PersonProfilesController {
         var updatedId = commandService.handle(command);
         var profile = queryService.handle(new GetPersonProfileByIdQuery(updatedId));
         return profile.map(entity -> ResponseEntity.ok(PersonProfileResourceFromEntityAssembler.toResourceFromEntity(entity)))
-                .orElseGet(() -> ResponseEntity.notFound().build());
+                .orElseThrow(() -> new PersonProfileNotFoundException(updatedId));
     }
 }
