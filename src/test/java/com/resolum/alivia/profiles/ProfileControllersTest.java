@@ -9,10 +9,14 @@ import com.resolum.alivia.profiles.domain.model.queries.GetPersonProfileByIdQuer
 import com.resolum.alivia.profiles.domain.model.queries.GetStaffProfileByIdQuery;
 import com.resolum.alivia.profiles.domain.model.valueobjects.*;
 import com.resolum.alivia.profiles.domain.services.*;
+import com.resolum.alivia.profiles.application.internal.commandservices.PersonProfileCommandServiceImpl;
+import com.resolum.alivia.profiles.domain.exceptions.*;
+import com.resolum.alivia.profiles.infrastructure.persistence.jpa.repositories.PersonProfileRepository;
 import com.resolum.alivia.profiles.interfaces.rest.controllers.BusinessProfilesController;
 import com.resolum.alivia.profiles.interfaces.rest.controllers.PersonProfilesController;
 import com.resolum.alivia.profiles.interfaces.rest.controllers.StaffProfilesController;
 import com.resolum.alivia.shared.domain.model.valueobjects.*;
+import com.resolum.alivia.shared.interfaces.rest.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -53,19 +57,19 @@ class ProfileControllersTest {
         businessQueryService = mock(BusinessProfileQueryService.class);
         businessMvc = MockMvcBuilders.standaloneSetup(
                 new BusinessProfilesController(businessCmdService, businessQueryService)
-        ).build();
+        ).setControllerAdvice(new GlobalExceptionHandler()).build();
 
         personCmdService = mock(PersonProfileCommandService.class);
         personQueryService = mock(PersonProfileQueryService.class);
         personMvc = MockMvcBuilders.standaloneSetup(
                 new PersonProfilesController(personCmdService, personQueryService)
-        ).build();
+        ).setControllerAdvice(new GlobalExceptionHandler()).build();
 
         staffCmdService = mock(StaffProfileCommandService.class);
         staffQueryService = mock(StaffProfileQueryService.class);
         staffMvc = MockMvcBuilders.standaloneSetup(
                 new StaffProfilesController(staffCmdService, staffQueryService)
-        ).build();
+        ).setControllerAdvice(new GlobalExceptionHandler()).build();
     }
 
     // --- BusinessProfilesController ---
@@ -131,7 +135,7 @@ class ProfileControllersTest {
     }
 
     @Test
-    void createBusinessProfileReturns400WhenNotFoundAfterCreation() throws Exception {
+    void createBusinessProfileReturns500WhenNotFoundAfterCreation() throws Exception {
         when(businessCmdService.handle(any(CreateBusinessProfileCommand.class))).thenReturn(1L);
         when(businessQueryService.handle(new GetBusinessProfileByIdQuery(1L))).thenReturn(Optional.empty());
 
@@ -167,7 +171,8 @@ class ProfileControllersTest {
         businessMvc.perform(post("/api/v1/business-profiles")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("internal_error"));
     }
 
     @Test
@@ -198,7 +203,8 @@ class ProfileControllersTest {
                 .andExpect(jsonPath("$.businessName").value("Alivia Lab"));
 
         businessMvc.perform(get("/api/v1/business-profiles/2"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("business_profile_not_found"));
     }
 
     @Test
@@ -265,13 +271,14 @@ class ProfileControllersTest {
         businessMvc.perform(put("/api/v1/business-profiles/2")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("business_profile_not_found"));
     }
 
     // --- PersonProfilesController ---
 
     @Test
-    void createPersonProfileReturns201Or400() throws Exception {
+    void createPersonProfileReturns201Or500() throws Exception {
         var person = new PersonProfile(
                 new EmailAddress("juan@alivia.com"),
                 new Photo("http://img.jpg", "img_1"),
@@ -303,14 +310,15 @@ class ProfileControllersTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.firstName").value("Juan"));
 
-        // Bad request when query returns empty
+        // Server-side inconsistency when the created profile cannot be read back
         when(personCmdService.handle(any(CreatePersonProfileCommand.class))).thenReturn(99L);
         when(personQueryService.handle(new GetPersonProfileByIdQuery(99L))).thenReturn(Optional.empty());
 
         personMvc.perform(post("/api/v1/person-profiles")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("internal_error"));
     }
 
     @Test
@@ -332,7 +340,8 @@ class ProfileControllersTest {
                 .andExpect(jsonPath("$.firstName").value("Juan"));
 
         personMvc.perform(get("/api/v1/person-profiles/20"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("person_profile_not_found"));
     }
 
     @Test
@@ -371,13 +380,14 @@ class ProfileControllersTest {
         personMvc.perform(put("/api/v1/person-profiles/20")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("person_profile_not_found"));
     }
 
     // --- StaffProfilesController ---
 
     @Test
-    void createStaffProfileReturns201Or400() throws Exception {
+    void createStaffProfileReturns201Or500() throws Exception {
         var staff = new StaffProfile(
                 new EmailAddress("ana@alivia.com"),
                 new Photo("http://img.jpg", "img_1"),
@@ -415,7 +425,8 @@ class ProfileControllersTest {
         staffMvc.perform(post("/api/v1/staff-profiles")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("internal_error"));
     }
 
     @Test
@@ -437,7 +448,8 @@ class ProfileControllersTest {
                 .andExpect(jsonPath("$.firstName").value("Ana"));
 
         staffMvc.perform(get("/api/v1/staff-profiles/40"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("staff_profile_not_found"));
     }
 
     @Test
@@ -476,6 +488,60 @@ class ProfileControllersTest {
         staffMvc.perform(put("/api/v1/staff-profiles/40")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("staff_profile_not_found"));
+    }
+
+    @Test
+    void createPersonProfileWithDuplicateEmailReturns409() throws Exception {
+        when(personCmdService.handle(any(CreatePersonProfileCommand.class)))
+                .thenThrow(new EmailAddressAlreadyExistsException("juan@alivia.com"));
+
+        String json = """
+                {
+                    "emailAddress": "juan@alivia.com",
+                    "photoUrl": "http://img.jpg",
+                    "photoPublicId": "img_1",
+                    "phoneNumber": "51987654321",
+                    "firstName": "Juan",
+                    "lastName": "Perez",
+                    "dni": "12345678",
+                    "birthDate": "1990-05-10"
+                }
+                """;
+
+        personMvc.perform(post("/api/v1/person-profiles")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("email_already_registered"))
+                .andExpect(jsonPath("$.errors").isArray());
+    }
+
+    @Test
+    void updatePersonProfileWithRealServiceReturns404WhenMissing() throws Exception {
+        var repository = mock(PersonProfileRepository.class);
+        when(repository.findById(99L)).thenReturn(Optional.empty());
+        var realMvc = MockMvcBuilders.standaloneSetup(
+                        new PersonProfilesController(new PersonProfileCommandServiceImpl(repository), personQueryService))
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+
+        String json = """
+                {
+                    "firstName": "Juan",
+                    "lastName": "Perez",
+                    "birthDate": "1990-05-10",
+                    "phoneNumber": "51987654321",
+                    "photoUrl": "http://img.jpg",
+                    "photoPublicId": "img_1"
+                }
+                """;
+
+        realMvc.perform(put("/api/v1/person-profiles/99")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("person_profile_not_found"));
     }
 }

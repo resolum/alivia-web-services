@@ -1,5 +1,6 @@
 package com.resolum.alivia.profiles.interfaces.rest.controllers;
 
+import com.resolum.alivia.profiles.domain.exceptions.BusinessProfileNotFoundException;
 import com.resolum.alivia.profiles.domain.model.queries.GetBusinessProfileByIdQuery;
 import com.resolum.alivia.profiles.domain.services.BusinessProfileCommandService;
 import com.resolum.alivia.profiles.domain.services.BusinessProfileQueryService;
@@ -43,9 +44,10 @@ public class BusinessProfilesController {
     public ResponseEntity<BusinessProfileResource> createBusinessProfile(@RequestBody CreateBusinessProfileResource resource) {
         var command = CreateBusinessProfileCommandFromResourceAssembler.toCommandFromResource(resource);
         var profileId = commandService.handle(command);
-        var profile = queryService.handle(new GetBusinessProfileByIdQuery(profileId));
-        return profile.map(entity -> new ResponseEntity<>(BusinessProfileResourceFromEntityAssembler.toResourceFromEntity(entity), HttpStatus.CREATED))
-                .orElseGet(() -> ResponseEntity.badRequest().build());
+        return queryService.handle(new GetBusinessProfileByIdQuery(profileId))
+                .map(entity -> new ResponseEntity<>(BusinessProfileResourceFromEntityAssembler.toResourceFromEntity(entity), HttpStatus.CREATED))
+                .orElseThrow(() -> new IllegalStateException(
+                        "Business profile " + profileId + " was not found after creation."));
     }
 
     @GetMapping("/{profileId}")
@@ -56,9 +58,9 @@ public class BusinessProfilesController {
     })
     public ResponseEntity<BusinessProfileResource> getBusinessProfileById(@PathVariable Long profileId) {
         var query = new GetBusinessProfileByIdQuery(profileId);
-        var profile = queryService.handle(query);
-        return profile.map(entity -> ResponseEntity.ok(BusinessProfileResourceFromEntityAssembler.toResourceFromEntity(entity)))
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        var profile = queryService.handle(query)
+                .orElseThrow(() -> new BusinessProfileNotFoundException(profileId));
+        return ResponseEntity.ok(BusinessProfileResourceFromEntityAssembler.toResourceFromEntity(profile));
     }
 
     @PutMapping("/{profileId}")
@@ -75,6 +77,6 @@ public class BusinessProfilesController {
         var updatedId = commandService.handle(command);
         var profile = queryService.handle(new GetBusinessProfileByIdQuery(updatedId));
         return profile.map(entity -> ResponseEntity.ok(BusinessProfileResourceFromEntityAssembler.toResourceFromEntity(entity)))
-                .orElseGet(() -> ResponseEntity.notFound().build());
+                .orElseThrow(() -> new BusinessProfileNotFoundException(updatedId));
     }
 }

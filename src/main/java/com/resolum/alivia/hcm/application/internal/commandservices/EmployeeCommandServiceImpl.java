@@ -44,8 +44,8 @@ public class EmployeeCommandServiceImpl implements EmployeeCommandService {
                 command.photoPublicId(), command.phoneNumber(), command.firstName(), command.lastName(),
                 command.dni(), command.birthDate());
         var userId = iam.registerCompanyUser(command.corporateEmail(), temporaryPassword(),
-                command.firstName() + " " + command.lastName(), command.phoneNumber(),
-                toIamRole(command.role()), command.businessId());
+                command.firstName(), command.lastName(), command.phoneNumber(),
+                toIamRole(command.role()), command.businessId(), command.dni(), command.birthDate());
         return repository.save(new Employee(command.businessId(), userId, profileId, command.role()));
     }
 

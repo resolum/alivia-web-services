@@ -10,7 +10,6 @@ import com.resolum.alivia.profiles.domain.model.aggregates.StaffProfile;
 import com.resolum.alivia.profiles.domain.model.queries.*;
 import com.resolum.alivia.profiles.infrastructure.persistence.jpa.repositories.BusinessProfileRepository;
 import com.resolum.alivia.profiles.infrastructure.persistence.jpa.repositories.PersonProfileRepository;
-import com.resolum.alivia.profiles.infrastructure.persistence.jpa.repositories.ProfilePersistenceRepository;
 import com.resolum.alivia.profiles.infrastructure.persistence.jpa.repositories.StaffProfileRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,7 +26,6 @@ class ProfileQueryServicesTest {
     private BusinessProfileRepository businessRepo;
     private PersonProfileRepository personRepo;
     private StaffProfileRepository staffRepo;
-    private ProfilePersistenceRepository profilePersistenceRepo;
 
     private BusinessProfileQueryServiceImpl businessService;
     private PersonProfileQueryServiceImpl personService;
@@ -39,20 +37,18 @@ class ProfileQueryServicesTest {
         businessRepo = mock(BusinessProfileRepository.class);
         personRepo = mock(PersonProfileRepository.class);
         staffRepo = mock(StaffProfileRepository.class);
-        profilePersistenceRepo = mock(ProfilePersistenceRepository.class);
 
         businessService = new BusinessProfileQueryServiceImpl(businessRepo);
         personService = new PersonProfileQueryServiceImpl(personRepo);
         staffService = new StaffProfileQueryServiceImpl(staffRepo);
-        profileService = new ProfileQueryServiceImpl(profilePersistenceRepo);
+        profileService = new ProfileQueryServiceImpl(personRepo, staffRepo, businessRepo);
     }
 
     // --- ProfileQueryService ---
 
     @Test
     void profileQueryServiceChecksExistence() {
-        when(profilePersistenceRepo.existsById(100L)).thenReturn(true);
-        when(profilePersistenceRepo.existsById(200L)).thenReturn(false);
+        when(staffRepo.existsById(100L)).thenReturn(true);
 
         assertTrue(profileService.handle(new ExistsProfileByIdQuery(100L)));
         assertFalse(profileService.handle(new ExistsProfileByIdQuery(200L)));

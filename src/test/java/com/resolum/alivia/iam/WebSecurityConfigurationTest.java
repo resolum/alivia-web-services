@@ -106,6 +106,12 @@ class WebSecurityConfigurationTest {
     }
 
     @Test
+    void actuatorHealthAndInfoAreReachableWithoutToken() throws Exception {
+        mvc.perform(get("/actuator/health")).andExpect(status().isOk());
+        mvc.perform(get("/actuator/info")).andExpect(status().isOk());
+    }
+
+    @Test
     void corsAllowsOnlyConfiguredOrigins() throws Exception {
         mvc.perform(options(PRIVATE_PATH)
                         .header(HttpHeaders.ORIGIN, "https://app.alivia.com")
@@ -153,6 +159,16 @@ class WebSecurityConfigurationTest {
         @GetMapping(PRIVATE_PATH)
         String read() {
             return "ok";
+        }
+
+        @GetMapping("/actuator/health")
+        String health() {
+            return "{\"status\":\"UP\"}";
+        }
+
+        @GetMapping("/actuator/info")
+        String info() {
+            return "{}";
         }
 
         @PostMapping(PRIVATE_PATH)
