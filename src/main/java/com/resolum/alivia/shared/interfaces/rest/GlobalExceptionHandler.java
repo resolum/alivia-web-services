@@ -30,34 +30,56 @@ import com.resolum.alivia.subscriptions.domain.exceptions.PlanNotFound;
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
+import com.resolum.alivia.profiles.domain.exceptions.BusinessNameAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.BusinessProfileNotFoundException;
+import com.resolum.alivia.profiles.domain.exceptions.DniAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.EmailAddressAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.LegalNameAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.PersonProfileNotFoundException;
+import com.resolum.alivia.profiles.domain.exceptions.RucAlreadyExistsException;
 import com.resolum.alivia.profiles.domain.exceptions.StaffProfileNotFoundException;
+import com.resolum.alivia.shared.infrastructure.web.CorrelationIdFilter;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final String ERRORS_PROPERTY = "errors";
     private static final String CODE_PROPERTY = "code";
+    private static final String CORRELATION_ID_PROPERTY = "correlationId";
 
     @ExceptionHandler(ContractNotFound.class)
     public ProblemDetail handleContractNotFound(ContractNotFound exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+        return problem(HttpStatus.NOT_FOUND, "contract_not_found", exception.getMessage(), List.of());
     }
 
-    @ExceptionHandler({ContractOverlap.class, ContractNotActive.class})
-    public ProblemDetail handleContractConflict(RuntimeException exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+    @ExceptionHandler(ContractOverlap.class)
+    public ProblemDetail handleContractOverlap(ContractOverlap exception) {
+        return problem(HttpStatus.CONFLICT, "contract_overlap", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(ContractNotActive.class)
+    public ProblemDetail handleContractNotActive(ContractNotActive exception) {
+        return problem(HttpStatus.CONFLICT, "contract_not_active", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(WorkScheduleNotFound.class)
@@ -73,59 +95,87 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ConfigurationDraftNotFound.class)
     public ProblemDetail handleConfigurationDraftNotFound(ConfigurationDraftNotFound exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+        return problem(HttpStatus.NOT_FOUND, "configuration_draft_not_found",
+                exception.getMessage(), List.of());
     }
 
-    @ExceptionHandler({EmployeeNotFound.class, StaffProfileNotFoundException.class})
-    public ProblemDetail handleHcmNotFound(RuntimeException exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    @ExceptionHandler(EmployeeNotFound.class)
+    public ProblemDetail handleEmployeeNotFound(EmployeeNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "employee_not_found",
+                "The employee does not exist.", List.of());
+    }
+
+    @ExceptionHandler(StaffProfileNotFoundException.class)
+    public ProblemDetail handleStaffProfileNotFound(StaffProfileNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, "staff_profile_not_found",
+                "The staff profile does not exist.", List.of());
+    }
+
+    @ExceptionHandler(PersonProfileNotFoundException.class)
+    public ProblemDetail handlePersonProfileNotFound(PersonProfileNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, "person_profile_not_found",
+                "The person profile does not exist.", List.of());
+    }
+
+    @ExceptionHandler(BusinessProfileNotFoundException.class)
+    public ProblemDetail handleBusinessProfileNotFound(BusinessProfileNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, "business_profile_not_found",
+                "The business profile does not exist.", List.of());
     }
 
     @ExceptionHandler(EmployeeNotInBusiness.class)
     public ProblemDetail handleEmployeeNotInBusiness(EmployeeNotInBusiness exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, exception.getMessage());
+        return problem(HttpStatus.FORBIDDEN, "employee_not_in_business",
+                exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(PreauthorizationUnavailable.class)
     public ProblemDetail handlePreauthorizationUnavailable(PreauthorizationUnavailable exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, "preauthorization_unavailable",
+                exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(PaymentRejected.class)
     public ProblemDetail handlePaymentRejected(PaymentRejected exception) {
-        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
+        var problem = problem(HttpStatus.UNPROCESSABLE_ENTITY, "payment_rejected",
+                exception.getMessage(), List.of());
         problem.setProperty("status", "PAYMENT_REJECTED");
         return problem;
     }
 
     @ExceptionHandler(StripeWebhookProcessingFailed.class)
     public ProblemDetail handleStripeWebhookProcessingFailed(StripeWebhookProcessingFailed exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage());
+        return problem(HttpStatus.INTERNAL_SERVER_ERROR, "stripe_webhook_processing_failed",
+                exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(InvalidStripeWebhookSignature.class)
     public ProblemDetail handleInvalidStripeWebhookSignature(InvalidStripeWebhookSignature exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
+        return problem(HttpStatus.BAD_REQUEST, "invalid_stripe_webhook_signature",
+                exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(StripeWebhookUnavailable.class)
     public ProblemDetail handleStripeWebhookUnavailable(StripeWebhookUnavailable exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, "stripe_webhook_unavailable",
+                exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleInvalidArgument(IllegalArgumentException exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
+        return problem(HttpStatus.BAD_REQUEST, "invalid_argument",
+                exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(PlanNotFound.class)
     public ProblemDetail handlePlanNotFound(PlanNotFound exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+        return problem(HttpStatus.NOT_FOUND, "plan_not_found", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(PaymentSetupUnavailable.class)
     public ProblemDetail handlePaymentSetupUnavailable(PaymentSetupUnavailable exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, "payment_setup_unavailable",
+                exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(EmailAlreadyRegisteredException.class)
@@ -140,6 +190,36 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.CONFLICT, "dni_already_registered",
                 "The DNI is already registered.",
                 List.of(new ApiFieldError("dni", "dni_already_registered")));
+    }
+
+    @ExceptionHandler(EmailAddressAlreadyExistsException.class)
+    public ProblemDetail handleEmailAddressAlreadyExists(EmailAddressAlreadyExistsException exception) {
+        return problem(HttpStatus.CONFLICT, "email_already_registered",
+                "The email address is already registered.", List.of());
+    }
+
+    @ExceptionHandler(DniAlreadyExistsException.class)
+    public ProblemDetail handleDniAlreadyExists(DniAlreadyExistsException exception) {
+        return problem(HttpStatus.CONFLICT, "dni_already_registered",
+                "The DNI is already registered.", List.of());
+    }
+
+    @ExceptionHandler(RucAlreadyExistsException.class)
+    public ProblemDetail handleRucAlreadyExists(RucAlreadyExistsException exception) {
+        return problem(HttpStatus.CONFLICT, "ruc_already_exists",
+                "The RUC is already registered.", List.of());
+    }
+
+    @ExceptionHandler(BusinessNameAlreadyExistsException.class)
+    public ProblemDetail handleBusinessNameAlreadyExists(BusinessNameAlreadyExistsException exception) {
+        return problem(HttpStatus.CONFLICT, "business_name_already_exists",
+                "The business name is already registered.", List.of());
+    }
+
+    @ExceptionHandler(LegalNameAlreadyExistsException.class)
+    public ProblemDetail handleLegalNameAlreadyExists(LegalNameAlreadyExistsException exception) {
+        return problem(HttpStatus.CONFLICT, "legal_name_already_exists",
+                "The legal name is already registered.", List.of());
     }
 
     @ExceptionHandler(SignUpValidationException.class)
@@ -227,6 +307,80 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleRegistrationUnavailable(RegistrationUnavailableException exception) {
         return problem(HttpStatus.SERVICE_UNAVAILABLE, "registration_unavailable",
                 "Registration is temporarily unavailable.", List.of());
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ProblemDetail handleAccessDenied() {
+        return problem(HttpStatus.FORBIDDEN, "access_denied",
+                "The authenticated user is not allowed to perform this action.", List.of());
+    }
+
+    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
+    public ProblemDetail handleInvalidRequest() {
+        return problem(HttpStatus.BAD_REQUEST, "invalid_request",
+                "The request body or parameters are invalid.", List.of());
+    }
+
+    /**
+     * Safety net for unexpected failures. Framework exceptions that already carry their own
+     * status (404, 405, 415...) keep that status and body and only receive the shared
+     * {@code code} and {@code errors} properties, so this handler does not turn them into 500.
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ProblemDetail> handleUnexpected(Exception exception) {
+        if (exception instanceof ErrorResponse errorResponse) {
+            var status = errorResponse.getStatusCode();
+            var problem = errorResponse.getBody();
+            if (problem == null) {
+                problem = ProblemDetail.forStatus(status);
+            }
+            enrichFrameworkProblem(problem, status);
+            return ResponseEntity.status(status).body(problem);
+        }
+        log.error("Unhandled exception", exception);
+        var problem = problem(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error",
+                "An unexpected error occurred.", List.of());
+        var correlationId = MDC.get(CorrelationIdFilter.MDC_KEY);
+        if (correlationId != null) {
+            problem.setProperty(CORRELATION_ID_PROPERTY, correlationId);
+        }
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problem);
+    }
+
+    /**
+     * Adds the shared error properties to a framework {@link ProblemDetail} that is passed
+     * through unchanged, so every error response carries a stable code and the errors list.
+     */
+    private static void enrichFrameworkProblem(ProblemDetail problem, HttpStatusCode status) {
+        var properties = problem.getProperties();
+        if (properties == null || !properties.containsKey(CODE_PROPERTY)) {
+            problem.setProperty(CODE_PROPERTY, frameworkCode(status));
+        }
+        properties = problem.getProperties();
+        if (properties == null || !properties.containsKey(ERRORS_PROPERTY)) {
+            problem.setProperty(ERRORS_PROPERTY, List.of());
+        }
+    }
+
+    private static String frameworkCode(HttpStatusCode status) {
+        return switch (status.value()) {
+            case 400 -> "invalid_request";
+            case 401 -> "unauthorized";
+            case 403 -> "access_denied";
+            case 404 -> "not_found";
+            case 405 -> "method_not_allowed";
+            case 406 -> "not_acceptable";
+            case 409 -> "conflict";
+            case 413 -> "payload_too_large";
+            case 415 -> "unsupported_media_type";
+            case 429 -> "too_many_requests";
+            case 500 -> "internal_error";
+            case 502 -> "bad_gateway";
+            case 503 -> "service_unavailable";
+            case 504 -> "gateway_timeout";
+            default -> status.is4xxClientError() ? "invalid_request"
+                    : status.is5xxServerError() ? "internal_error" : "request_failed";
+        };
     }
 
     private static ProblemDetail invalidVerificationTokenProblem() {

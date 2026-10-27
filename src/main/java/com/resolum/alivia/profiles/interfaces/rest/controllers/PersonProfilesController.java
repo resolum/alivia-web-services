@@ -1,5 +1,6 @@
 package com.resolum.alivia.profiles.interfaces.rest.controllers;
 
+import com.resolum.alivia.profiles.domain.exceptions.PersonProfileNotFoundException;
 import com.resolum.alivia.profiles.domain.model.queries.GetPersonProfileByIdQuery;
 import com.resolum.alivia.profiles.domain.services.PersonProfileCommandService;
 import com.resolum.alivia.profiles.domain.services.PersonProfileQueryService;
@@ -43,9 +44,10 @@ public class PersonProfilesController {
     public ResponseEntity<PersonProfileResource> createPersonProfile(@RequestBody CreatePersonProfileResource resource) {
         var command = CreatePersonProfileCommandFromResourceAssembler.toCommandFromResource(resource);
         var profileId = commandService.handle(command);
-        var profile = queryService.handle(new GetPersonProfileByIdQuery(profileId));
-        return profile.map(entity -> new ResponseEntity<>(PersonProfileResourceFromEntityAssembler.toResourceFromEntity(entity), HttpStatus.CREATED))
-                .orElseGet(() -> ResponseEntity.badRequest().build());
+        return queryService.handle(new GetPersonProfileByIdQuery(profileId))
+                .map(entity -> new ResponseEntity<>(PersonProfileResourceFromEntityAssembler.toResourceFromEntity(entity), HttpStatus.CREATED))
+                .orElseThrow(() -> new IllegalStateException(
+                        "Person profile " + profileId + " was not found after creation."));
     }
 
     @GetMapping("/{profileId}")
@@ -56,9 +58,9 @@ public class PersonProfilesController {
     })
     public ResponseEntity<PersonProfileResource> getPersonProfileById(@PathVariable Long profileId) {
         var query = new GetPersonProfileByIdQuery(profileId);
-        var profile = queryService.handle(query);
-        return profile.map(entity -> ResponseEntity.ok(PersonProfileResourceFromEntityAssembler.toResourceFromEntity(entity)))
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        var profile = queryService.handle(query)
+                .orElseThrow(() -> new PersonProfileNotFoundException(profileId));
+        return ResponseEntity.ok(PersonProfileResourceFromEntityAssembler.toResourceFromEntity(profile));
     }
 
     @PutMapping("/{profileId}")
@@ -75,6 +77,6 @@ public class PersonProfilesController {
         var updatedId = commandService.handle(command);
         var profile = queryService.handle(new GetPersonProfileByIdQuery(updatedId));
         return profile.map(entity -> ResponseEntity.ok(PersonProfileResourceFromEntityAssembler.toResourceFromEntity(entity)))
-                .orElseGet(() -> ResponseEntity.notFound().build());
+                .orElseThrow(() -> new PersonProfileNotFoundException(updatedId));
     }
 }

@@ -170,7 +170,8 @@ class HcmControllersTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(5));
         contractsMvc.perform(get("/api/v1/employees/3/contracts/404").param("businessId", "1"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("contract_not_found"));
     }
 
     @Test
@@ -188,7 +189,8 @@ class HcmControllersTest {
                 .andExpect(status().isOk());
         contractsMvc.perform(patch("/api/v1/employees/3/contracts/5").param("businessId", "1").principal(ADMIN)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isConflict());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("contract_overlap"));
     }
 
     @Test
@@ -272,7 +274,8 @@ class HcmControllersTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.dni").value("12345678"));
         employeesMvc.perform(get("/api/v1/employees/3").param("businessId", "2"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("employee_not_in_business"));
     }
 
     @Test
