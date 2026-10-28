@@ -4,6 +4,7 @@ import com.resolum.alivia.communications.application.internal.outboundservices.e
 import com.resolum.alivia.communications.application.internal.outboundservices.email.LoggingEmailSender;
 import com.resolum.alivia.communications.application.internal.outboundservices.email.UnavailableEmailSender;
 import com.resolum.alivia.communications.infrastructure.email.sendgrid.SendGridEmailSender;
+import com.resolum.alivia.communications.infrastructure.email.resend.ResendEmailSender;
 import com.resolum.alivia.communications.infrastructure.email.smtp.SmtpEmailSender;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -24,7 +25,8 @@ class EmailSenderWiringTest {
                     LoggingEmailSender.class,
                     UnavailableEmailSender.class,
                     SmtpEmailSender.class,
-                    SendGridEmailSender.class)
+                    SendGridEmailSender.class,
+                    ResendEmailSender.class)
             .withConfiguration(AutoConfigurations.of(MailSenderAutoConfiguration.class))
             .withPropertyValues("alivia.communications.email.from=no-reply@alivia.test");
 
@@ -81,5 +83,14 @@ class EmailSenderWiringTest {
                 .run(context -> assertThat(context)
                         .getBean(EmailSender.class)
                         .isInstanceOf(SendGridEmailSender.class));
+    }
+
+    @Test
+    void sendsThroughResendWhenItIsTheProvider() {
+        runner.withPropertyValues("alivia.communications.email.provider=resend",
+                        "alivia.communications.email.resend.api-key=re_test-key")
+                .run(context -> assertThat(context)
+                        .getBean(EmailSender.class)
+                        .isInstanceOf(ResendEmailSender.class));
     }
 }
