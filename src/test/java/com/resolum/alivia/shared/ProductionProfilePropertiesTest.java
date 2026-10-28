@@ -61,9 +61,9 @@ class ProductionProfilePropertiesTest {
     }
 
     @Test
-    void keepsSchemaManagementOnUpdateUntilFlywayExists() {
-        // AP-480/AP-482 are not implemented yet; validate would break a fresh production database.
-        assertThat(PROD.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("update");
+    void validatesTheSchemaWithoutChangingIt() {
+        // Flyway owns the schema (V1); Hibernate must never create or alter tables in prod.
+        assertThat(PROD.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("validate");
     }
 
     @Test

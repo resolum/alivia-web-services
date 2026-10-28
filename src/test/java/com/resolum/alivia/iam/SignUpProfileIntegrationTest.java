@@ -76,6 +76,9 @@ import static org.mockito.Mockito.when;
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.datasource.username=sa",
         "spring.datasource.password=",
+        // The migrations are PostgreSQL DDL and H2 cannot run them; this slice builds its
+        // schema with Hibernate. See docs/database-migrations.md.
+        "spring.flyway.enabled=false",
         "alivia.iam.profiles.default-photo-url=https://cdn.example.com/default.png"})
 class SignUpProfileIntegrationTest {
 
