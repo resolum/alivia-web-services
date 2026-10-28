@@ -180,6 +180,9 @@ Los 25 conteos coinciden entre origen y destino:
 El SHA-256 del volcado de datos filtrado fue
 `4E89D4C24D0CF5F036F07471156C41BF4F60FB415FF65ECA6390524C5F5448E6` en origen y destino.
 
+El registro formal del simulacro de `P-483.2`, con la plantilla para repetirlo, está en
+`docs/operations/restore-drill.md`.
+
 ## Limitaciones y pendientes
 
 - **Retención y destino:** no hay política definida de cuántos respaldos conservar, durante
@@ -202,6 +205,7 @@ El SHA-256 del volcado de datos filtrado fue
 
 ## Referencias
 
+- `docs/operations/restore-drill.md`: plantilla y registro del simulacro de `P-483.2`.
 - `docs/database-migrations.md`: convenciones de Flyway y verificación del esquema.
 - `docs/local-environment.md`: arranque local y credenciales de `compose.yaml`.
 - `src/main/resources/db/migration/`: migraciones que se incluyen en el respaldo.
