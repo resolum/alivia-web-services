@@ -37,6 +37,9 @@ import com.resolum.alivia.subscriptions.domain.exceptions.InvalidStripeWebhookSi
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentRejected;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.PlanNotFound;
+import com.resolum.alivia.operations.domain.exceptions.AppointmentAlreadyExists;
+import com.resolum.alivia.operations.domain.exceptions.AppointmentSlotTaken;
+import com.resolum.alivia.operations.domain.exceptions.DraftNotReadyForAppointment;
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
@@ -100,6 +103,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({WorkScheduleOverlap.class, WorkScheduleOutsideContract.class,
             WorkScheduleNotEditable.class})
     public ProblemDetail handleWorkScheduleConflict(RuntimeException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
+    @ExceptionHandler({AppointmentSlotTaken.class, AppointmentAlreadyExists.class, DraftNotReadyForAppointment.class})
+    public ProblemDetail handleAppointmentConflict(RuntimeException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
     }
 
