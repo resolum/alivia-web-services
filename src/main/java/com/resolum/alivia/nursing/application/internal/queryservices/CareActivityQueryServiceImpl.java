@@ -21,6 +21,7 @@ import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
@@ -93,6 +94,7 @@ public class CareActivityQueryServiceImpl implements CareActivityQueryService {
      * {@inheritDoc}
      */
     @Override
+    @Transactional(readOnly = true)
     public List<AgendaItem> handle(GetCareAgendaQuery query) {
         log.debug("Handling care agenda query from {} to {}", query.from(), query.to());
         var scope = accessibleAssignments(query.userId(), query.assistedPersonProfileId());
@@ -110,6 +112,7 @@ public class CareActivityQueryServiceImpl implements CareActivityQueryService {
      * <p>The window starts yesterday so overnight occurrences still in progress are included.</p>
      */
     @Override
+    @Transactional(readOnly = true)
     public List<AgendaItem> handle(GetPendingRemindersQuery query) {
         log.debug("Handling pending reminders query");
         var today = LocalDate.now(clock.withZone(AGENDA_ZONE));

@@ -113,6 +113,19 @@ public interface IamContextFacade {
      * @param birthDate     the birth date, required for roles with a profile (forwarded to Profiles)
      * @return the created account ID
      */
+    /**
+     * Creates a staff account without a password and emails its owner an invitation link to
+     * activate it and choose the password.
+     *
+     * @param email     the corporate email address, used to sign in
+     * @param fullName  the name shown in the invitation
+     * @param roleLabel the role shown in the invitation
+     * @param role      the access role name (for example TECHNICIAN or SUBSCRIPTION_MANAGER)
+     * @param profileId the staff profile created by the inviting context
+     * @return the id of the new account
+     */
+    Long inviteCompanyUser(String email, String fullName, String roleLabel, String role, Long profileId);
+
     Long registerAssistedPerson(String email, String password, String firstName, String lastName, String phoneNumber,
                                Long familiarId,
                                String dni, LocalDate birthDate);

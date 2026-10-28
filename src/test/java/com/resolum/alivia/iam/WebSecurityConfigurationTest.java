@@ -66,6 +66,14 @@ class WebSecurityConfigurationTest {
     }
 
     @Test
+    void configurationDraftsAreReachableWithoutToken() throws Exception {
+        mvc.perform(post("/api/v1/configuration-drafts")).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/configuration-drafts/7f0c")).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/appointments/available-slots")).andExpect(status().isOk());
+        mvc.perform(post("/api/v1/appointments")).andExpect(status().isOk());
+    }
+
+    @Test
     void privateEndpointWithoutTokenReturns401() throws Exception {
         mvc.perform(get(PRIVATE_PATH)).andExpect(status().isUnauthorized());
         mvc.perform(get(PRIVATE_PATH).header(HttpHeaders.AUTHORIZATION, "Basic abc"))
@@ -103,6 +111,12 @@ class WebSecurityConfigurationTest {
 
         mvc.perform(get(PRIVATE_PATH).header(HttpHeaders.AUTHORIZATION, BEARER))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void actuatorHealthAndInfoAreReachableWithoutToken() throws Exception {
+        mvc.perform(get("/actuator/health")).andExpect(status().isOk());
+        mvc.perform(get("/actuator/info")).andExpect(status().isOk());
     }
 
     @Test
@@ -153,6 +167,36 @@ class WebSecurityConfigurationTest {
         @GetMapping(PRIVATE_PATH)
         String read() {
             return "ok";
+        }
+
+        @PostMapping("/api/v1/configuration-drafts")
+        String createDraft() {
+            return "{}";
+        }
+
+        @GetMapping("/api/v1/configuration-drafts/{id}")
+        String draft() {
+            return "{}";
+        }
+
+        @GetMapping("/api/v1/appointments/available-slots")
+        String slots() {
+            return "[]";
+        }
+
+        @PostMapping("/api/v1/appointments")
+        String appointment() {
+            return "{}";
+        }
+
+        @GetMapping("/actuator/health")
+        String health() {
+            return "{\"status\":\"UP\"}";
+        }
+
+        @GetMapping("/actuator/info")
+        String info() {
+            return "{}";
         }
 
         @PostMapping(PRIVATE_PATH)

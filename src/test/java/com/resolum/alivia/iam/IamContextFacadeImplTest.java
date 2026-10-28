@@ -30,7 +30,8 @@ class IamContextFacadeImplTest {
 
     private final UserRepository userRepository = mock(UserRepository.class);
     private final UserCommandService userCommandService = mock(UserCommandService.class);
-    private final IamContextFacadeImpl facade = new IamContextFacadeImpl(userRepository, userCommandService);
+    private final IamContextFacadeImpl facade = new IamContextFacadeImpl(userRepository, userCommandService,
+            mock(com.resolum.alivia.iam.domain.services.AccountActivationService.class));
 
     @Test
     void returnsTrueWhenTheEmailIsRegistered() {

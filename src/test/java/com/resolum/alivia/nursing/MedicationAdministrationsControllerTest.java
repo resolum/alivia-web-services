@@ -110,6 +110,7 @@ class MedicationAdministrationsControllerTest {
         mvc.perform(post(OUTCOMES_URL).principal(() -> "7").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"result\":\"OMITTED\",\"occurredAt\":\"2026-10-26T08:15:00\"}"))
                 .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("invalid_argument"))
                 .andExpect(jsonPath("$.detail").value("A reason is required when the medication is omitted."));
 
         verify(commandService, never()).handle(any());
@@ -120,12 +121,15 @@ class MedicationAdministrationsControllerTest {
     void malformedRequestsReturn400() throws Exception {
         mvc.perform(post(OUTCOMES_URL).principal(() -> "7").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"result\":\"TAKEN\",\"occurredAt\":\"2026-10-26T08:15:00\"}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("invalid_request"));
         mvc.perform(post(OUTCOMES_URL).principal(() -> "7").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"result\":\"ADMINISTERED\"}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("invalid_argument"));
         mvc.perform(get("/api/v1/medication-administrations/12-2026").principal(() -> "7"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("invalid_argument"));
 
         verify(commandService, never()).handle(any());
     }
@@ -138,7 +142,9 @@ class MedicationAdministrationsControllerTest {
 
         mvc.perform(post(OUTCOMES_URL).principal(() -> "7").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"result\":\"ADMINISTERED\",\"occurredAt\":\"2026-10-26T08:15:00\"}"))
-                .andExpect(status().isConflict());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("medication_outcome_already_recorded"))
+                .andExpect(jsonPath("$.errors").isArray());
     }
 
     @Test
@@ -152,7 +158,9 @@ class MedicationAdministrationsControllerTest {
 
         realMvc.perform(post(OUTCOMES_URL).principal(() -> "7").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"result\":\"ADMINISTERED\",\"occurredAt\":\"2026-10-26T08:15:00\"}"))
-                .andExpect(status().isConflict());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("medication_outcome_already_recorded"))
+                .andExpect(jsonPath("$.errors").isArray());
     }
 
     @Test
@@ -162,8 +170,12 @@ class MedicationAdministrationsControllerTest {
                 .thenThrow(new MedicationAdministrationAccessDeniedException(ID))
                 .thenThrow(new MedicationAdministrationNotFoundException(ID));
 
-        mvc.perform(get(URL).principal(() -> "30")).andExpect(status().isForbidden());
-        mvc.perform(get(URL).principal(() -> "7")).andExpect(status().isNotFound());
+        mvc.perform(get(URL).principal(() -> "30")).andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("medication_administration_access_denied"))
+                .andExpect(jsonPath("$.errors").isArray());
+        mvc.perform(get(URL).principal(() -> "7")).andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("medication_administration_not_found"))
+                .andExpect(jsonPath("$.errors").isArray());
     }
 
     private MockMvc mvcWith(MedicationAdministrationCommandService service) {
