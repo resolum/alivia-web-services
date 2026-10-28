@@ -8,6 +8,7 @@ import com.resolum.alivia.hcm.domain.model.aggregates.Employee;
 import com.resolum.alivia.hcm.domain.model.commands.CreateContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.CreateEmployeeCommand;
 import com.resolum.alivia.hcm.domain.model.commands.RenewContractCommand;
+import com.resolum.alivia.hcm.domain.model.commands.ActivateContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.TerminateContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.UpdateContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.UpdateEmployeeCommand;
@@ -33,6 +34,7 @@ import com.resolum.alivia.hcm.interfaces.rest.transform.ContractResourceAssemble
 import com.resolum.alivia.hcm.interfaces.rest.transform.EmployeeResourceAssembler;
 import com.resolum.alivia.profiles.interfaces.acl.ProfilesContextFacade;
 import com.resolum.alivia.profiles.interfaces.acl.ProfilesContextFacade.StaffProfileData;
+import com.resolum.alivia.hcm.interfaces.rest.DefaultBusiness;
 import com.resolum.alivia.shared.interfaces.rest.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -87,11 +89,11 @@ class HcmControllersTest {
         employeeQueries = mock(EmployeeQueryService.class);
         profiles = mock(ProfilesContextFacade.class);
         contractsMvc = MockMvcBuilders.standaloneSetup(new ContractsController(contractCommands, contractQueries,
-                        new ContractResourceAssembler(CLOCK), CLOCK))
+                        new ContractResourceAssembler(CLOCK), CLOCK, new DefaultBusiness(1L)))
                 .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         employeesMvc = MockMvcBuilders.standaloneSetup(new EmployeesController(employeeCommands, employeeQueries,
-                        new EmployeeResourceAssembler(profiles)))
+                        new EmployeeResourceAssembler(profiles), new DefaultBusiness(1L)))
                 .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
@@ -211,6 +213,18 @@ class HcmControllersTest {
                 .andExpect(jsonPath("$.eligible").value(false));
 
         verify(contractCommands).handle(new TerminateContractCommand(3L, 5L, 1L, 9L));
+    }
+
+    @Test
+    void activatesPendingContracts() throws Exception {
+        when(contractCommands.handle(any(ActivateContractCommand.class))).thenReturn(contract(ContractStatus.ACTIVE));
+
+        contractsMvc.perform(post("/api/v1/employees/3/contracts/5/activation").param("businessId", "1")
+                        .principal(ADMIN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+
+        verify(contractCommands).handle(new ActivateContractCommand(3L, 5L, 1L, 9L));
     }
 
     @Test

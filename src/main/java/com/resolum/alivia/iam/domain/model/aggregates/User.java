@@ -168,6 +168,24 @@ public class User extends AuditableAbstractAggregateRoot<User> {
     }
 
     /**
+     * Activates an invited account: its owner chose the password and, by using the link sent to
+     * the email address, also verified it.
+     *
+     * @param password    the hash of the chosen password
+     * @param activatedAt the moment of the activation, also taken as the terms acceptance
+     * @throws AccountNotPendingVerificationException if the account was already activated
+     */
+    public void activate(PasswordHash password, LocalDateTime activatedAt) {
+        if (password == null || activatedAt == null) {
+            throw new IllegalArgumentException("Password and activation time are required.");
+        }
+        verifyEmail();
+        this.password = password.value();
+        this.termsAcceptedAt = activatedAt;
+        this.failedAccessAttempts = 0;
+    }
+
+    /**
      * Checks that the account may open or renew a session. Accounts pending email
      * verification may sign in so the user is not blocked while offline.
      *

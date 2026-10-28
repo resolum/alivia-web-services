@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.util.Optional;
 import java.net.URI;
 
 /**
@@ -161,5 +162,10 @@ public class ExternalProfilesService {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /** Full name of a staff profile, shown to an invited person before they activate the account. */
+    public Optional<String> fetchStaffFullName(Long profileId) {
+        return profileId == null ? Optional.empty() : profilesContextFacade.fetchStaffProfileFullNameById(profileId);
     }
 }

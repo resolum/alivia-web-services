@@ -11,10 +11,10 @@ import jakarta.validation.constraints.Positive;
 import java.time.LocalDate;
 
 public record CreateEmployeeResource(
-        @NotNull @Positive Long businessId,
+        @Positive Long businessId,
         @NotBlank @Email String corporateEmail,
-        @NotBlank String photoUrl,
-        @NotBlank String photoPublicId,
+        String photoUrl,
+        String photoPublicId,
         @NotBlank String phoneNumber,
         @NotBlank String firstName,
         @NotBlank String lastName,
