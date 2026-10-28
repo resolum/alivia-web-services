@@ -22,7 +22,8 @@ public class CommunicationsContextFacadeImpl implements CommunicationsContextFac
             "verify-email", "Verifica tu cuenta de Alivia",
             "reset-password", "Restablece tu contraseña de Alivia",
             "set-password", "Crea tu contraseña de Alivia",
-            "welcome", "Te damos la bienvenida a Alivia");
+            "welcome", "Te damos la bienvenida a Alivia",
+            "account-invitation", "Bienvenido al equipo de Alivia · Activa tu cuenta");
 
     private final EmailTemplateRenderer templateRenderer;
     private final EmailSender emailSender;

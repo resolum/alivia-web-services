@@ -9,7 +9,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 public record CreateWorkScheduleResource(
-        @NotNull Long businessId,
+        Long businessId,
         @NotBlank @Size(max = 100) String name,
         @NotNull LocalDate startDate,
         LocalDate endDate,

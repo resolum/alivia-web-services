@@ -9,6 +9,7 @@ import com.resolum.alivia.hcm.domain.model.aggregates.Contract;
 import com.resolum.alivia.hcm.domain.model.aggregates.Employee;
 import com.resolum.alivia.hcm.domain.model.commands.CreateContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.RenewContractCommand;
+import com.resolum.alivia.hcm.domain.model.commands.ActivateContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.TerminateContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.UpdateContractCommand;
 import com.resolum.alivia.hcm.domain.model.entities.ContractVersion;
@@ -146,6 +147,18 @@ class ContractCommandServiceTest {
         var version = savedVersion();
         assertEquals(3, version.getVersion());
         assertEquals(ContractAction.RENEWED, version.getAction());
+    }
+
+    @Test
+    void activatesPendingContractAndRecordsVersion() {
+        var pending = existingContract(3L, 1L);
+        ReflectionTestUtils.setField(pending, "status", ContractStatus.PENDING);
+        when(contracts.findById(5L)).thenReturn(Optional.of(pending));
+
+        var contract = service.handle(new ActivateContractCommand(3L, 5L, 1L, 9L));
+
+        assertEquals(ContractStatus.ACTIVE, contract.getStatus());
+        assertEquals(ContractAction.ACTIVATED, savedVersion().getAction());
     }
 
     @Test

@@ -84,6 +84,18 @@ public class Contract extends AuditableAbstractAggregateRoot<Contract> {
         this.notes = normalize(notes);
     }
 
+    /** Puts a pending contract into force, as long as its period has not ended. */
+    public void activate(LocalDate today) {
+        ensureNotTerminated();
+        if (status != ContractStatus.PENDING) {
+            throw new IllegalArgumentException("Only pending contracts can be activated.");
+        }
+        if (endDate.isBefore(today)) {
+            throw new IllegalArgumentException("An expired contract cannot be activated; renew it instead.");
+        }
+        this.status = ContractStatus.ACTIVE;
+    }
+
     public void renew(ContractPeriod period) {
         ensureNotTerminated();
         if (period == null || !period.endDate().isAfter(endDate)) {

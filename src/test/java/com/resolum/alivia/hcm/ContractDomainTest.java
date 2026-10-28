@@ -46,6 +46,22 @@ class ContractDomainTest {
     }
 
     @Test
+    void activatesOnlyPendingContractsThatHaveNotEnded() {
+        var pending = contract(TODAY.minusMonths(1), TODAY.plusMonths(6), ContractStatus.PENDING);
+
+        pending.activate(TODAY);
+
+        assertEquals(ContractStatus.ACTIVE, pending.getStatus());
+        assertEquals(ContractViewStatus.ACTIVE, pending.viewStatus(TODAY));
+        assertThrows(IllegalArgumentException.class, () -> pending.activate(TODAY));
+        var expired = contract(TODAY.minusYears(1), TODAY.minusDays(1), ContractStatus.PENDING);
+        assertThrows(IllegalArgumentException.class, () -> expired.activate(TODAY));
+        var terminated = contract(TODAY, TODAY.plusMonths(6), ContractStatus.PENDING);
+        terminated.terminate();
+        assertThrows(ContractNotActive.class, () -> terminated.activate(TODAY));
+    }
+
+    @Test
     void detectsInclusivePeriodOverlap() {
         var first = new ContractPeriod(TODAY, TODAY.plusDays(10));
         var second = new ContractPeriod(TODAY.plusDays(10), TODAY.plusDays(20));

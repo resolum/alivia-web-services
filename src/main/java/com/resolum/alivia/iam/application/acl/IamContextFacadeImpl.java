@@ -2,9 +2,11 @@ package com.resolum.alivia.iam.application.acl;
 
 import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
 import com.resolum.alivia.iam.domain.model.aggregates.User;
+import com.resolum.alivia.iam.domain.model.commands.InviteCompanyUserCommand;
 import com.resolum.alivia.iam.domain.model.commands.SignUpCommand;
 import com.resolum.alivia.iam.domain.model.valueobjects.AccessRole;
 import com.resolum.alivia.iam.domain.repositories.UserRepository;
+import com.resolum.alivia.iam.domain.services.AccountActivationService;
 import com.resolum.alivia.iam.domain.services.UserCommandService;
 import com.resolum.alivia.iam.interfaces.acl.IamContextFacade;
 import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
@@ -29,6 +31,7 @@ public class IamContextFacadeImpl implements IamContextFacade {
 
     private final UserRepository userRepository;
     private final UserCommandService userCommandService;
+    private final AccountActivationService accountActivationService;
 
     /**
      * Creates the facade.
@@ -36,7 +39,9 @@ public class IamContextFacadeImpl implements IamContextFacade {
      * @param userRepository     the user persistence port
      * @param userCommandService the user command service
      */
-    public IamContextFacadeImpl(UserRepository userRepository, UserCommandService userCommandService) {
+    public IamContextFacadeImpl(UserRepository userRepository, UserCommandService userCommandService,
+                                AccountActivationService accountActivationService) {
+        this.accountActivationService = accountActivationService;
         this.userRepository = userRepository;
         this.userCommandService = userCommandService;
     }
@@ -155,6 +160,16 @@ public class IamContextFacadeImpl implements IamContextFacade {
                                    String dni, LocalDate birthDate) {
         return signUpUser(email, password, firstName, lastName, phoneNumber, role, businessId, null,
                 dni, birthDate);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Transactional
+    public Long inviteCompanyUser(String email, String fullName, String roleLabel, String role, Long profileId) {
+        return accountActivationService.handle(new InviteCompanyUserCommand(email, fullName, roleLabel,
+                parseRole(role), profileId)).getId();
     }
 
     /**
