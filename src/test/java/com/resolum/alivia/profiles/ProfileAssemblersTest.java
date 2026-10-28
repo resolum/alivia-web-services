@@ -10,9 +10,9 @@ import com.resolum.alivia.profiles.interfaces.rest.resources.*;
 import com.resolum.alivia.profiles.interfaces.rest.transform.*;
 import com.resolum.alivia.shared.domain.model.valueobjects.*;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -98,8 +98,9 @@ class ProfileAssemblersTest {
         var range = new TimeRange(LocalTime.of(8, 0), LocalTime.of(18, 0));
         var hours = new BusinessHours(List.of(new WeeklyPeriod(Set.of(DayOfWeek.MONDAY), range)));
 
+        var file = new MockMultipartFile("photo", "logo.png", "image/png", new byte[]{1, 2, 3});
         var resource = new CreateBusinessProfileResource(
-                "corp@alivia.com", "http://img.jpg", "img_1", "+51999888777",
+                "corp@alivia.com", file, "+51999888777",
                 "20123456789", "Alivia Lab", "Alivia Lab SAC", "Lab desc",
                 "Analisis", "+51911112222", hours, "Slogan", "support@alivia.com",
                 "Av. Arequipa 100", -12.07, -77.03, "place_1"
@@ -108,6 +109,8 @@ class ProfileAssemblersTest {
         var command = CreateBusinessProfileCommandFromResourceAssembler.toCommandFromResource(resource);
         assertEquals("corp@alivia.com", command.emailAddress());
         assertEquals("Alivia Lab", command.businessName());
+        assertNotNull(command.photoData());
+        assertEquals("logo.png", command.photoFileName());
     }
 
     @Test
@@ -117,8 +120,9 @@ class ProfileAssemblersTest {
         var range = new TimeRange(LocalTime.of(8, 0), LocalTime.of(18, 0));
         var hours = new BusinessHours(List.of(new WeeklyPeriod(Set.of(DayOfWeek.MONDAY), range)));
 
+        var file = new MockMultipartFile("photo", "logo.png", "image/png", new byte[]{1, 2, 3});
         var resource = new UpdateBusinessProfileResource(
-                "corp@alivia.com", "http://img.jpg", "img_1", "+51999888777",
+                "corp@alivia.com", file, "+51999888777",
                 "20123456789", "Alivia Lab", "Alivia Lab SAC", "Lab desc",
                 "Analisis", "+51911112222", hours, "Slogan", "support@alivia.com",
                 "Av. Arequipa 100", -12.07, -77.03, "place_1"
@@ -127,6 +131,7 @@ class ProfileAssemblersTest {
         var command = UpdateBusinessProfileCommandFromResourceAssembler.toCommandFromResource(10L, resource);
         assertEquals(10L, command.profileId());
         assertEquals("Alivia Lab", command.businessName());
+        assertNotNull(command.photoData());
     }
 
     @Test
@@ -173,28 +178,32 @@ class ProfileAssemblersTest {
     void createPersonProfileCommandFromResourceAssemblerMapsFields() throws Exception {
         invokePrivateConstructor(CreatePersonProfileCommandFromResourceAssembler.class);
 
+        var file = new MockMultipartFile("photo", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
         var resource = new CreatePersonProfileResource(
-                "juan@alivia.com", "http://img.jpg", "img_1", "51987654321",
+                "juan@alivia.com", file, "51987654321",
                 "Juan", "Perez", "12345678", LocalDate.of(1990, 5, 10)
         );
 
         var command = CreatePersonProfileCommandFromResourceAssembler.toCommandFromResource(resource);
         assertEquals("juan@alivia.com", command.emailAddress());
         assertEquals("Juan", command.firstName());
+        assertNotNull(command.photoData());
+        assertEquals("avatar.jpg", command.photoFileName());
     }
 
     @Test
     void updatePersonProfileCommandFromResourceAssemblerMapsFields() throws Exception {
         invokePrivateConstructor(UpdatePersonProfileCommandFromResourceAssembler.class);
 
+        var file = new MockMultipartFile("photo", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
         var resource = new UpdatePersonProfileResource(
-                "Juan", "Perez", LocalDate.of(1990, 5, 10), "51987654321",
-                "http://img.jpg", "img_1"
+                "Juan", "Perez", LocalDate.of(1990, 5, 10), "51987654321", file
         );
 
         var command = UpdatePersonProfileCommandFromResourceAssembler.toCommandFromResource(5L, resource);
         assertEquals(5L, command.profileId());
         assertEquals("Juan", command.firstName());
+        assertNotNull(command.photoData());
     }
 
     @Test
@@ -241,28 +250,61 @@ class ProfileAssemblersTest {
     void createStaffProfileCommandFromResourceAssemblerMapsFields() throws Exception {
         invokePrivateConstructor(CreateStaffProfileCommandFromResourceAssembler.class);
 
+        var file = new MockMultipartFile("photo", "nurse.jpg", "image/jpeg", new byte[]{1, 2, 3});
         var resource = new CreateStaffProfileResource(
-                "ana@alivia.com", "http://img.jpg", "img_1", "51987654321",
+                "ana@alivia.com", file, "51987654321",
                 "Ana", "Torres", "87654321", LocalDate.of(1988, 12, 1)
         );
 
         var command = CreateStaffProfileCommandFromResourceAssembler.toCommandFromResource(resource);
         assertEquals("ana@alivia.com", command.emailAddress());
         assertEquals("Ana", command.firstName());
+        assertNotNull(command.photoData());
+        assertEquals("nurse.jpg", command.photoFileName());
     }
 
     @Test
     void updateStaffProfileCommandFromResourceAssemblerMapsFields() throws Exception {
         invokePrivateConstructor(UpdateStaffProfileCommandFromResourceAssembler.class);
 
+        var file = new MockMultipartFile("photo", "nurse.jpg", "image/jpeg", new byte[]{1, 2, 3});
         var resource = new UpdateStaffProfileResource(
-                "Ana", "Torres", LocalDate.of(1988, 12, 1), "51987654321",
-                "http://img.jpg", "img_1"
+                "Ana", "Torres", LocalDate.of(1988, 12, 1), "51987654321", file
         );
 
         var command = UpdateStaffProfileCommandFromResourceAssembler.toCommandFromResource(7L, resource);
         assertEquals(7L, command.profileId());
         assertEquals("Ana", command.firstName());
+        assertNotNull(command.photoData());
+    }
+
+    @Test
+    void stringToBusinessHoursConverterConvertsJsonSuccessfully() {
+        var converter = new StringToBusinessHoursConverter();
+        assertNull(converter.convert(null));
+        assertNull(converter.convert("  "));
+
+        String json = """
+                {
+                  "periods": [
+                    {
+                      "days": ["MONDAY", "FRIDAY"],
+                      "range": {
+                        "start": "08:00",
+                        "end": "18:00"
+                      }
+                    }
+                  ]
+                }
+                """;
+        var result = converter.convert(json);
+        assertNotNull(result);
+        assertEquals(1, result.periods().size());
+        assertTrue(result.periods().get(0).days().contains(DayOfWeek.MONDAY));
+        assertEquals(LocalTime.of(8, 0), result.periods().get(0).range().start());
+        assertEquals(LocalTime.of(18, 0), result.periods().get(0).range().end());
+
+        assertThrows(IllegalArgumentException.class, () -> converter.convert("{invalid json}"));
     }
 
     @Test
