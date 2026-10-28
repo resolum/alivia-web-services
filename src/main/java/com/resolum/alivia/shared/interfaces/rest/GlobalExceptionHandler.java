@@ -27,9 +27,9 @@ import com.resolum.alivia.subscriptions.domain.exceptions.InvalidStripeWebhookSi
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentRejected;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.PlanNotFound;
-import com.resolum.alivia.support.domain.exceptions.AppointmentAlreadyExists;
-import com.resolum.alivia.support.domain.exceptions.AppointmentSlotTaken;
-import com.resolum.alivia.support.domain.exceptions.DraftNotReadyForAppointment;
+import com.resolum.alivia.operations.domain.exceptions.AppointmentAlreadyExists;
+import com.resolum.alivia.operations.domain.exceptions.AppointmentSlotTaken;
+import com.resolum.alivia.operations.domain.exceptions.DraftNotReadyForAppointment;
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
