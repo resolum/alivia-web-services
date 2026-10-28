@@ -95,6 +95,34 @@ class ExternalProfilesServiceTest {
     }
 
     @Test
+    @DisplayName("createStaffProfile catches EmailAddressAlreadyExistsException from facade")
+    void createStaffProfileCatchesEmailException() {
+        when(profilesContextFacade.existsStaffProfileByEmailAddress("admin@test.com")).thenReturn(false);
+        when(profilesContextFacade.existsStaffProfileByDni("12345678")).thenReturn(false);
+        when(profilesContextFacade.createStaffProfile(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new EmailAddressAlreadyExistsException(new EmailAddress("admin@test.com")));
+
+        assertThatThrownBy(() -> service.createStaffProfile(
+                "admin@test.com", null, null, "Carlos", "Mendoza", "12345678",
+                LocalDate.of(1985, 5, 20), "51987654321"))
+                .isInstanceOf(EmailAddressAlreadyExists.class);
+    }
+
+    @Test
+    @DisplayName("createStaffProfile catches DniAlreadyExistsException from facade")
+    void createStaffProfileCatchesDniException() {
+        when(profilesContextFacade.existsStaffProfileByEmailAddress("admin@test.com")).thenReturn(false);
+        when(profilesContextFacade.existsStaffProfileByDni("12345678")).thenReturn(false);
+        when(profilesContextFacade.createStaffProfile(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new DniAlreadyExistsException(new Dni("12345678")));
+
+        assertThatThrownBy(() -> service.createStaffProfile(
+                "admin@test.com", null, null, "Carlos", "Mendoza", "12345678",
+                LocalDate.of(1985, 5, 20), "51987654321"))
+                .isInstanceOf(DniAlreadyExists.class);
+    }
+
+    @Test
     @DisplayName("updateStaffProfile delegates successfully")
     void updateStaffProfileSuccess() {
         service.updateStaffProfile(10L, null, null, "Carlos Alberto", "Mendoza Ruiz",
@@ -125,6 +153,19 @@ class ExternalProfilesServiceTest {
     }
 
     @Test
+    @DisplayName("createBusinessProfile throws EmailAddressAlreadyExists when duplicate email")
+    void createBusinessProfileDuplicateEmailThrows() {
+        when(profilesContextFacade.existsBusinessProfileByEmailAddress("biz@test.com")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.createBusinessProfile(
+                null, null, "Clinica San Pablo", "San Pablo SAC", 20601234567L,
+                "Salud", "Descripcion", "biz@test.com", "5112345678",
+                "Av. El Derby 250", -12.0, -77.0, "place1",
+                null, "support@biz.com", "51987654321", "51987654321", "Eslogan"))
+                .isInstanceOf(EmailAddressAlreadyExists.class);
+    }
+
+    @Test
     @DisplayName("createBusinessProfile throws RucAlreadyExists when duplicate RUC")
     void createBusinessProfileDuplicateRucThrows() {
         when(profilesContextFacade.existsBusinessProfileByEmailAddress("biz@test.com")).thenReturn(false);
@@ -139,6 +180,86 @@ class ExternalProfilesServiceTest {
     }
 
     @Test
+    @DisplayName("createBusinessProfile throws BusinessNameAlreadyExists when duplicate name")
+    void createBusinessProfileDuplicateNameThrows() {
+        when(profilesContextFacade.existsBusinessProfileByEmailAddress("biz@test.com")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByRuc("20601234567")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByBusinessName("Clinica San Pablo")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.createBusinessProfile(
+                null, null, "Clinica San Pablo", "San Pablo SAC", 20601234567L,
+                "Salud", "Descripcion", "biz@test.com", "5112345678",
+                "Av. El Derby 250", -12.0, -77.0, "place1",
+                null, "support@biz.com", "51987654321", "51987654321", "Eslogan"))
+                .isInstanceOf(BusinessNameAlreadyExists.class);
+    }
+
+    @Test
+    @DisplayName("createBusinessProfile throws LegalNameAlreadyExists when duplicate legal name")
+    void createBusinessProfileDuplicateLegalNameThrows() {
+        when(profilesContextFacade.existsBusinessProfileByEmailAddress("biz@test.com")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByRuc("20601234567")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByBusinessName("Clinica San Pablo")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByLegalName("San Pablo SAC")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.createBusinessProfile(
+                null, null, "Clinica San Pablo", "San Pablo SAC", 20601234567L,
+                "Salud", "Descripcion", "biz@test.com", "5112345678",
+                "Av. El Derby 250", -12.0, -77.0, "place1",
+                null, "support@biz.com", "51987654321", "51987654321", "Eslogan"))
+                .isInstanceOf(LegalNameAlreadyExists.class);
+    }
+
+    @Test
+    @DisplayName("createBusinessProfile handles facade exceptions")
+    void createBusinessProfileFacadeExceptions() {
+        when(profilesContextFacade.existsBusinessProfileByEmailAddress("biz@test.com")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByRuc("20601234567")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByBusinessName("Clinica San Pablo")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByLegalName("San Pablo SAC")).thenReturn(false);
+
+        when(profilesContextFacade.createBusinessProfile(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new EmailAddressAlreadyExistsException(new EmailAddress("biz@test.com")));
+
+        assertThatThrownBy(() -> service.createBusinessProfile(
+                null, null, "Clinica San Pablo", "San Pablo SAC", 20601234567L,
+                "Salud", "Descripcion", "biz@test.com", "5112345678",
+                "Av. El Derby 250", -12.0, -77.0, "place1",
+                null, "support@biz.com", "51987654321", "51987654321", "Eslogan"))
+                .isInstanceOf(EmailAddressAlreadyExists.class);
+
+        when(profilesContextFacade.createBusinessProfile(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new RucAlreadyExistsException(new Ruc("20601234567")));
+
+        assertThatThrownBy(() -> service.createBusinessProfile(
+                null, null, "Clinica San Pablo", "San Pablo SAC", 20601234567L,
+                "Salud", "Descripcion", "biz@test.com", "5112345678",
+                "Av. El Derby 250", -12.0, -77.0, "place1",
+                null, "support@biz.com", "51987654321", "51987654321", "Eslogan"))
+                .isInstanceOf(RucAlreadyExists.class);
+
+        when(profilesContextFacade.createBusinessProfile(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new BusinessNameAlreadyExistsException(new BusinessName("Clinica San Pablo")));
+
+        assertThatThrownBy(() -> service.createBusinessProfile(
+                null, null, "Clinica San Pablo", "San Pablo SAC", 20601234567L,
+                "Salud", "Descripcion", "biz@test.com", "5112345678",
+                "Av. El Derby 250", -12.0, -77.0, "place1",
+                null, "support@biz.com", "51987654321", "51987654321", "Eslogan"))
+                .isInstanceOf(BusinessNameAlreadyExists.class);
+
+        when(profilesContextFacade.createBusinessProfile(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new LegalNameAlreadyExistsException(new LegalName("San Pablo SAC")));
+
+        assertThatThrownBy(() -> service.createBusinessProfile(
+                null, null, "Clinica San Pablo", "San Pablo SAC", 20601234567L,
+                "Salud", "Descripcion", "biz@test.com", "5112345678",
+                "Av. El Derby 250", -12.0, -77.0, "place1",
+                null, "support@biz.com", "51987654321", "51987654321", "Eslogan"))
+                .isInstanceOf(LegalNameAlreadyExists.class);
+    }
+
+    @Test
     @DisplayName("updateBusinessProfile delegates successfully")
     void updateBusinessProfileSuccess() {
         service.updateBusinessProfile(50L, null, null, "Clinica San Pablo", "San Pablo SAC",
@@ -149,8 +270,8 @@ class ExternalProfilesServiceTest {
     }
 
     @Test
-    @DisplayName("updateBusinessProfile translates BusinessNameAlreadyExistsException")
-    void updateBusinessProfileTranslatesNameConflict() {
+    @DisplayName("updateBusinessProfile translates BusinessNameAlreadyExistsException and LegalNameAlreadyExistsException")
+    void updateBusinessProfileTranslatesExceptions() {
         doThrow(new BusinessNameAlreadyExistsException(new BusinessName("Clinica San Pablo")))
                 .when(profilesContextFacade).updateBusinessProfile(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
 
@@ -158,5 +279,46 @@ class ExternalProfilesServiceTest {
                 "Salud", "Descripcion", "5112345678", null, "support@biz.com",
                 "51987654321", "51987654321", "Eslogan"))
                 .isInstanceOf(BusinessNameAlreadyExists.class);
+
+        doThrow(new LegalNameAlreadyExistsException(new LegalName("San Pablo SAC")))
+                .when(profilesContextFacade).updateBusinessProfile(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+
+        assertThatThrownBy(() -> service.updateBusinessProfile(50L, null, null, "Clinica San Pablo", "San Pablo SAC",
+                "Salud", "Descripcion", "5112345678", null, "support@biz.com",
+                "51987654321", "51987654321", "Eslogan"))
+                .isInstanceOf(LegalNameAlreadyExists.class);
+    }
+
+    @Test
+    @DisplayName("uploadPhoto falls back when storage service throws or returns null")
+    void uploadPhotoFallback() {
+        when(storageService.upload(any(), any())).thenThrow(new RuntimeException("Cloudinary network timeout"));
+
+        // invoking updateStaffProfile with photo to hit uploadPhoto catch block
+        service.updateStaffProfile(10L, new byte[]{1, 2}, "photo.png", "Carlos", "Mendoza",
+                LocalDate.of(1985, 5, 20), "51987654321");
+
+        verify(profilesContextFacade).updateStaffProfile(eq(10L), eq("Carlos"), eq("Mendoza"),
+                eq(LocalDate.of(1985, 5, 20)), eq("51987654321"), isNull(), isNull());
+    }
+
+    @Test
+    @DisplayName("parseBusinessHours handles invalid JSON by falling back to default")
+    void parseBusinessHoursFallbackOnInvalidJson() {
+        when(profilesContextFacade.existsBusinessProfileByEmailAddress("biz@test.com")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByRuc("20601234567")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByBusinessName("Clinica San Pablo")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByLegalName("San Pablo SAC")).thenReturn(false);
+        when(profilesContextFacade.createBusinessProfile(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(50L);
+
+        var result = service.createBusinessProfile(
+                null, null, "Clinica San Pablo", "San Pablo SAC", 20601234567L,
+                "Salud", "Descripcion", "biz@test.com", "5112345678",
+                "Av. El Derby 250", -12.0, -77.0, "place1",
+                "INVALID_JSON_HOURS", "support@biz.com", "51987654321", "51987654321", "Eslogan"
+        );
+
+        assertThat(result.businessProfileId()).isEqualTo(50L);
     }
 }

@@ -1,5 +1,8 @@
 package com.resolum.alivia.business.interfaces.rest.resources;
 
+import java.util.Arrays;
+import java.util.Objects;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -49,4 +52,46 @@ public record UpdateBusinessResource(
 
         @Schema(description = "Lema o eslogan comercial", example = "Cuidando tu bienestar cada día")
         String slogan
-) {}
+) {
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof UpdateBusinessResource that)) return false;
+        return Objects.equals(administratorId, that.administratorId)
+                && Arrays.equals(photoData, that.photoData)
+                && Objects.equals(photoFileName, that.photoFileName)
+                && Objects.equals(businessName, that.businessName)
+                && Objects.equals(legalName, that.legalName)
+                && Objects.equals(mainActivity, that.mainActivity)
+                && Objects.equals(description, that.description)
+                && Objects.equals(phoneNumber, that.phoneNumber)
+                && Objects.equals(businessHours, that.businessHours)
+                && Objects.equals(supportEmail, that.supportEmail)
+                && Objects.equals(emergencyPhone, that.emergencyPhone)
+                && Objects.equals(whatsappNum, that.whatsappNum)
+                && Objects.equals(slogan, that.slogan);
+    }
+
+    @Override
+    public int hashCode() {
+        return 31 * Objects.hash(administratorId, photoFileName, businessName, legalName, mainActivity, description, phoneNumber, businessHours, supportEmail, emergencyPhone, whatsappNum, slogan) + Arrays.hashCode(photoData);
+    }
+
+    @Override
+    public String toString() {
+        return "UpdateBusinessResource[" + "administratorId=" + administratorId
+                + ", " + "photoData=" + (photoData == null ? "null" : photoData.length + " bytes")
+                + ", " + "photoFileName=" + photoFileName
+                + ", " + "businessName=" + businessName
+                + ", " + "legalName=" + legalName
+                + ", " + "mainActivity=" + mainActivity
+                + ", " + "description=" + description
+                + ", " + "phoneNumber=" + phoneNumber
+                + ", " + "businessHours=" + businessHours
+                + ", " + "supportEmail=" + supportEmail
+                + ", " + "emergencyPhone=" + emergencyPhone
+                + ", " + "whatsappNum=" + whatsappNum
+                + ", " + "slogan=" + slogan + "]";
+    }
+}

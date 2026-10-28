@@ -1,5 +1,8 @@
 package com.resolum.alivia.business.interfaces.rest.resources;
 
+import java.util.Arrays;
+import java.util.Objects;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -45,4 +48,39 @@ public record CreateAdministratorResource(
 
         @Schema(description = "Correo electrónico personal de respaldo o recuperación", example = "carlos.mendoza.personal@gmail.com")
         String backupPersonalEmail
-) {}
+) {
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof CreateAdministratorResource that)) return false;
+        return Objects.equals(corporateEmail, that.corporateEmail)
+                && Objects.equals(password, that.password)
+                && Arrays.equals(photoData, that.photoData)
+                && Objects.equals(photoFileName, that.photoFileName)
+                && Objects.equals(firstName, that.firstName)
+                && Objects.equals(lastName, that.lastName)
+                && Objects.equals(dni, that.dni)
+                && Objects.equals(birthDate, that.birthDate)
+                && Objects.equals(phoneNumber, that.phoneNumber)
+                && Objects.equals(backupPersonalEmail, that.backupPersonalEmail);
+    }
+
+    @Override
+    public int hashCode() {
+        return 31 * Objects.hash(corporateEmail, password, photoFileName, firstName, lastName, dni, birthDate, phoneNumber, backupPersonalEmail) + Arrays.hashCode(photoData);
+    }
+
+    @Override
+    public String toString() {
+        return "CreateAdministratorResource[" + "corporateEmail=" + corporateEmail
+                + ", " + "photoData=" + (photoData == null ? "null" : photoData.length + " bytes")
+                + ", " + "photoFileName=" + photoFileName
+                + ", " + "firstName=" + firstName
+                + ", " + "lastName=" + lastName
+                + ", " + "dni=" + dni
+                + ", " + "birthDate=" + birthDate
+                + ", " + "phoneNumber=" + phoneNumber
+                + ", " + "backupPersonalEmail=" + backupPersonalEmail + "]";
+    }
+}
