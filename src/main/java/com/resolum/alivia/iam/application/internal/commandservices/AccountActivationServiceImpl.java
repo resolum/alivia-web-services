@@ -102,7 +102,9 @@ public class AccountActivationServiceImpl implements AccountActivationService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    // Token lookup takes a pessimistic write lock so activation cannot race with
+    // this inspection. PostgreSQL does not allow that lock in a read-only transaction.
+    @Transactional
     public AccountActivation handle(GetAccountActivationQuery query) {
         var user = pendingUser(query == null ? null : query.activationToken());
         var email = user.getEmail().email();
