@@ -20,7 +20,6 @@ public interface DeviceRepository extends JpaRepository<Device, Long> {
 
     Optional<Device> findDeviceByMacAddress(MacAddress macAddress);
 
-    boolean existsById(Long id);
+    Long countByBusinessId(BusinessId businessId);
 
-    Object findDeviceById(Long id);
 }

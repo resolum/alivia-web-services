@@ -19,4 +19,6 @@ public interface EdgeRepository extends JpaRepository<Edge,Long> {
 
     Optional<Edge> findEdgeByMacAddress(MacAddress macAddress);
 
+    Long countByBusinessId(BusinessId businessId);
+
 }
