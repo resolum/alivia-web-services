@@ -7,7 +7,7 @@ Flyway es el dueño del esquema. Las migraciones viven en
 
 | Elemento | Valor |
 |---|---|
-| Migración existente | `V1__baseline.sql` — esquema completo (24 tablas, 235 columnas, 29 `CHECK`, 9 claves foráneas, 45 índices) |
+| Migraciones existentes | `V1__baseline.sql` — esquema completo (24 tablas, 235 columnas, 234 constraints, 45 índices) · `V2__constraints_and_indexes.sql` — 19 claves foráneas y 11 índices |
 | `ddl-auto` en `dev` | `update` (Hibernate puede crear tablas que falten; úsalo solo en local) |
 | `ddl-auto` en `prod` | `validate` — Flyway crea el esquema y Hibernate solo lo comprueba al arrancar |
 | `ddl-auto` en `test` | El del perfil de pruebas; Flyway está deshabilitado (ver más abajo) |
@@ -16,6 +16,10 @@ Flyway es el dueño del esquema. Las migraciones viven en
 `V1` no es un marcador: contiene el DDL completo que Hibernate genera para las
 entidades JPA actuales. Se capturó con el procedimiento de la sección
 [Cómo se generó `V1`](#cómo-se-generó-v1).
+
+`V2` añade la integridad referencial y los índices de búsqueda que Hibernate no
+declara. La matriz completa, con lo que se añadió y lo que se dejó fuera a propósito,
+está en [`data-integrity.md`](data-integrity.md).
 
 ## Configuración
 
@@ -39,7 +43,7 @@ El DDL de las migraciones es de PostgreSQL (columnas `identity`, `jsonb`, `CHECK
 `ARRAY[...]`) y H2 no puede ejecutarlo. Por eso las pruebas construyen el esquema con
 Hibernate y la paridad de las migraciones se verifica contra PostgreSQL real, no en la
 suite. `FlywayMigrationTest` solo valida convenciones de los archivos (nombre, versión
-única, `V1` no vacío, ausencia de artefactos de `pg_dump`).
+única, `V1` no vacío, ausencia de artefactos de `pg_dump`) y que `V2` sea aditiva.
 
 ## Cómo se generó `V1`
 
@@ -93,7 +97,8 @@ En el log debe aparecer:
 
 ```
 Migrating schema "public" to version "1 - baseline"
-Successfully applied 1 migration to schema "public", now at version v1
+Migrating schema "public" to version "2 - constraints and indexes"
+Successfully applied 2 migrations to schema "public", now at version v2
 Started AliviaWebServicesApplication in ...
 ```
 
@@ -103,16 +108,19 @@ falla con `Schema validation: missing table [...]` o `missing column [...]`.
 ### Base existente (creada por Hibernate antes de Flyway)
 
 Es el caso de las bases que ya están desplegadas. Sobre una base con tablas y sin
-historial, el arranque debe registrar el baseline y no re-ejecutar `V1`:
+historial, el arranque debe registrar el baseline y aplicar solo las migraciones
+posteriores a `V1`:
 
 ```
 Creating Schema History table "public"."flyway_schema_history" with baseline ...
 Successfully baselined schema with version: 1
-Schema "public" is up to date. No migration necessary.
+Migrating schema "public" to version "2 - constraints and indexes"
+Successfully applied 1 migration to schema "public", now at version v2
 ```
 
 Con `ddl-auto=validate`, ese arranque además demuestra que el esquema existente coincide
-con las migraciones.
+con las migraciones. Si los datos existentes violan una FK nueva, `V2` falla y hay que
+corregir las filas huérfanas antes de desplegar.
 
 ### Segundo arranque
 
@@ -122,22 +130,28 @@ Schema "public" is up to date. No migration necessary.
 
 ### Resultado de la última verificación
 
-Ejecutada contra PostgreSQL 18.6 con el `V1` actual:
+Ejecutada contra PostgreSQL 18.6 con `V1` y `V2`:
 
 | Comprobación | Resultado |
 |---|---|
-| Base limpia + `validate` | ✅ 24 tablas creadas por Flyway, arranque correcto |
-| Base existente baselineada + `validate` | ✅ `BASELINE` en v1, sin migraciones pendientes |
+| Base limpia + `V1` + `V2` + `validate` | ✅ 24 tablas y 2 migraciones aplicadas, arranque correcto; `/actuator/health` 200 |
+| Base existente con datos (sin historial) + `V2` + `validate` | ✅ `BASELINE` en v1, aplica solo `V2`, arranque correcto, datos conservados (empleados, contratos y registros de actividad) |
+| Segundo arranque | ✅ `Schema "public" is up to date. No migration necessary.` |
+| `V2` sobre una base con una FK huérfana | ✅ falla con `violates foreign key constraint "fk_care_memberships_user"` en lugar de dejar la fila huérfana |
+| Claves foráneas (`pg_constraint`) | ✅ 28 (9 de `V1` + 19 de `V2`) |
+| Índices de esquema (`pg_indexes`, sin `flyway_schema_history`) | ✅ 56 (45 de `V1` + 11 de `V2`) |
 | Perfil `prod` sobre base limpia | ✅ migra, valida, arranca; `/actuator/health` 200 y `/v3/api-docs` 404 |
 | Perfil `prod` sobre base con deriva (columna borrada) | ✅ el arranque falla: `Schema validation: missing column [failed_access_attempts] in table [users]` |
 | Columnas (nombre, tipo, longitud, nulabilidad) | ✅ 235/235 idénticas a las de Hibernate |
-| Restricciones (`pg_constraint`) | ✅ 234/234 idénticas |
-| Índices (`pg_indexes`) | ✅ 45/45 idénticos |
-| `.\mvnw.cmd clean verify` | ✅ 847 pruebas, 0 fallos, 8 *skipped* |
+| Restricciones de `V1` (`pg_constraint`) | ✅ 234/234 idénticas |
+| Índices de `V1` (`pg_indexes`) | ✅ 45/45 idénticos |
+| `.\mvnw.cmd clean verify` | ✅ 848 pruebas, 0 fallos, 8 *skipped* |
 
 La prueba de deriva es la que justifica `validate` en producción: sin ella, Hibernate habría
 seguido arrancando con la columna ausente y el error aparecería en la primera consulta.
-
+La prueba de la FK huérfana es la que justifica que `V2` falle en lugar de aceptar datos
+inconsistentes. Las filas de paridad de `V1` y la prueba de deriva se conservan de las
+verificaciones de `P-480.2` y `P-464.2`: `V2` no modifica tablas, columnas ni tipos.
 
 ## Añadir una entidad nueva al esquema
 
@@ -160,7 +174,7 @@ Si usas `@Table(name = ...)` o `@Column(name = ...)` explícitos, el nombre es e
 Get-ChildItem src\main\resources\db\migration
 ```
 
-El siguiente número es el mayor existente + 1: `V2__add_devices.sql`, `V3__...`. Trae
+El siguiente número es el mayor existente + 1: `V3__add_devices.sql`, `V4__...`. Trae
 `develop` antes de crearlo. Si dos ramas crean el mismo `Vn`, la segunda se renombra al
 siguiente número libre antes de abrir el PR; nunca se reutiliza un número ya mergeado.
 
@@ -169,26 +183,26 @@ siguiente número libre antes de abrir el PR; nunca se reutiliza un número ya m
 Un archivo por cambio lógico, en PostgreSQL y con SQL estándar:
 
 ```sql
--- V2: registra los dispositivos instalados en cada hogar.
-create table household_devices (
-    id bigint generated by default as identity primary key,
-    created_at timestamp(6) not null,
-    updated_at timestamp(6) not null,
-    household_id varchar(255) not null,
-    device_type varchar(10) not null check (device_type in ('LIGHT', 'DOOR', 'WINDOW', 'CURTAIN')),
-    display_order integer not null check (display_order >= 0)
+-- V3: registra los dispositivos instalados en cada hogar.
+CREATE TABLE household_devices (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    created_at timestamp(6) NOT NULL,
+    updated_at timestamp(6) NOT NULL,
+    household_id varchar(255) NOT NULL,
+    device_type varchar(10) NOT NULL CHECK (device_type IN ('LIGHT', 'DOOR', 'WINDOW', 'CURTAIN')),
+    display_order integer NOT NULL CHECK (display_order >= 0)
 );
 
-alter table household_devices
-    add constraint fk_household_devices_subscription
-    foreign key (household_id) references subscriptions (active_household_id);
+ALTER TABLE household_devices
+    ADD CONSTRAINT fk_household_devices_subscription
+    FOREIGN KEY (household_id) REFERENCES subscriptions (active_household_id);
 
-create index idx_household_devices_subscription on household_devices (household_id);
+CREATE INDEX idx_household_devices_subscription ON household_devices USING btree (household_id);
 ```
 
 Convenciones:
 
-- `create table`, `alter table`, `create index` en minúsculas, como el resto de `V1`.
+- Las palabras clave van en mayúsculas, como en `V1` y `V2`.
 - Nombra explícitamente las restricciones e índices (`fk_...`, `uk_...`, `idx_...`); los
   nombres autogenerados de Hibernate (`uk4g8qw81...`) solo aparecen cuando no los fijas
   en la entidad, y son difíciles de rastrear.
