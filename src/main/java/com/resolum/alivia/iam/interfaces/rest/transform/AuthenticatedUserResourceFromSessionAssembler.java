@@ -28,7 +28,7 @@ public final class AuthenticatedUserResourceFromSessionAssembler {
                 session.expiresIn(),
                 new AuthenticatedUserResource.AccountResource(
                         user.getAccountId(), user.getEmail().email(),
-                        user.getAccessRole().name(), user.getStatus().name()),
+                        user.getAccessRole().name(), user.getStatus().name(), user.getProfileId()),
                 List.of("ROLE_" + user.getAccessRole().name()));
     }
 }
