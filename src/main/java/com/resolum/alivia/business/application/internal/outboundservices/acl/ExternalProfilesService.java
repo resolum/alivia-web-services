@@ -39,6 +39,10 @@ public class ExternalProfilesService {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
 
+    private static final List<WeeklyPeriod> DEFAULT_BUSINESS_HOURS = List.of(new WeeklyPeriod(
+            Set.of(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY),
+            new TimeRange(LocalTime.of(8, 0), LocalTime.of(18, 0))));
+
     private final ProfilesContextFacade profilesContextFacade;
     private final StorageService storageService;
     private final String defaultPhotoUrl;
@@ -69,23 +73,11 @@ public class ExternalProfilesService {
             throw new DniAlreadyExists(dni);
         }
 
-        String photoUrl = defaultPhotoUrl;
-        String photoPublicId = "default";
-        if (photoData != null && photoData.length > 0) {
-            try {
-                Map<String, String> uploaded = storageService.upload(photoData, photoFileName);
-                if (uploaded != null) {
-                    photoUrl = uploaded.getOrDefault("url", defaultPhotoUrl);
-                    photoPublicId = uploaded.getOrDefault("publicId", "default");
-                }
-            } catch (Exception e) {
-                log.warn("Photo upload failed, using default: {}", e.getMessage());
-            }
-        }
+        UploadedPhoto photo = uploadPhoto(photoData, photoFileName, defaultPhotoUrl, "default");
 
         try {
             Long profileId = profilesContextFacade.createStaffProfile(
-                    corporateEmail, photoUrl, photoPublicId, phoneNumber, firstName, lastName, dni, birthDate);
+                    corporateEmail, photo.url(), photo.publicId(), phoneNumber, firstName, lastName, dni, birthDate);
             return new StaffProfileId(profileId);
         } catch (EmailAddressAlreadyExistsException e) {
             throw new EmailAddressAlreadyExists(corporateEmail);
@@ -103,22 +95,10 @@ public class ExternalProfilesService {
             LocalDate birthDate,
             String phoneNumber) {
 
-        String photoUrl = null;
-        String photoPublicId = null;
-        if (photoData != null && photoData.length > 0) {
-            try {
-                Map<String, String> uploaded = storageService.upload(photoData, photoFileName);
-                if (uploaded != null) {
-                    photoUrl = uploaded.get("url");
-                    photoPublicId = uploaded.get("publicId");
-                }
-            } catch (Exception e) {
-                log.warn("Photo update upload failed: {}", e.getMessage());
-            }
-        }
+        UploadedPhoto photo = uploadPhoto(photoData, photoFileName, null, null);
 
         profilesContextFacade.updateStaffProfile(
-                staffProfileId, firstName, lastName, birthDate, phoneNumber, photoUrl, photoPublicId);
+                staffProfileId, firstName, lastName, birthDate, phoneNumber, photo.url(), photo.publicId());
     }
 
     public BusinessProfileId createBusinessProfile(
@@ -154,26 +134,14 @@ public class ExternalProfilesService {
             throw new LegalNameAlreadyExists(legalName);
         }
 
-        String photoUrl = defaultPhotoUrl;
-        String photoPublicId = "default";
-        if (photoData != null && photoData.length > 0) {
-            try {
-                Map<String, String> uploaded = storageService.upload(photoData, photoFileName);
-                if (uploaded != null) {
-                    photoUrl = uploaded.getOrDefault("url", defaultPhotoUrl);
-                    photoPublicId = uploaded.getOrDefault("publicId", "default");
-                }
-            } catch (Exception e) {
-                log.warn("Photo upload failed, using default: {}", e.getMessage());
-            }
-        }
-
+        UploadedPhoto photo = uploadPhoto(photoData, photoFileName, defaultPhotoUrl, "default");
         List<WeeklyPeriod> periods = parseBusinessHours(businessHours);
 
         try {
             Long profileId = profilesContextFacade.createBusinessProfile(
-                    emailAddress, photoUrl, photoPublicId, whatsappNum, String.valueOf(ruc),
-                    businessName, legalName, description, mainActivity, emergencyPhone != null ? emergencyPhone : phoneNumber,
+                    emailAddress, photo.url(), photo.publicId(), whatsappNum, String.valueOf(ruc),
+                    businessName, legalName, description, mainActivity,
+                    emergencyPhone != null ? emergencyPhone : phoneNumber,
                     periods, slogan, supportEmail, formattedAddress, latitude, longitude, placeId);
             return new BusinessProfileId(profileId);
         } catch (EmailAddressAlreadyExistsException e) {
@@ -202,25 +170,12 @@ public class ExternalProfilesService {
             String whatsappNum,
             String slogan) {
 
-        String photoUrl = null;
-        String photoPublicId = null;
-        if (photoData != null && photoData.length > 0) {
-            try {
-                Map<String, String> uploaded = storageService.upload(photoData, photoFileName);
-                if (uploaded != null) {
-                    photoUrl = uploaded.get("url");
-                    photoPublicId = uploaded.get("publicId");
-                }
-            } catch (Exception e) {
-                log.warn("Photo update upload failed: {}", e.getMessage());
-            }
-        }
-
+        UploadedPhoto photo = uploadPhoto(photoData, photoFileName, null, null);
         List<WeeklyPeriod> periods = parseBusinessHours(businessHours);
 
         try {
             profilesContextFacade.updateBusinessProfile(
-                    businessProfileId, photoUrl, photoPublicId, whatsappNum, businessName, legalName,
+                    businessProfileId, photo.url(), photo.publicId(), whatsappNum, businessName, legalName,
                     description, mainActivity, emergencyPhone != null ? emergencyPhone : phoneNumber,
                     periods, slogan, supportEmail);
         } catch (BusinessNameAlreadyExistsException e) {
@@ -230,20 +185,36 @@ public class ExternalProfilesService {
         }
     }
 
+    private UploadedPhoto uploadPhoto(byte[] photoData, String photoFileName, String fallbackUrl,
+            String fallbackPublicId) {
+        if (photoData != null && photoData.length > 0) {
+            try {
+                Map<String, String> uploaded = storageService.upload(photoData, photoFileName);
+                if (uploaded != null) {
+                    return new UploadedPhoto(
+                            uploaded.getOrDefault("url", fallbackUrl),
+                            uploaded.getOrDefault("publicId", fallbackPublicId));
+                }
+            } catch (Exception e) {
+                log.warn("Photo upload failed, using fallback: {}", e.getMessage());
+            }
+        }
+        return new UploadedPhoto(fallbackUrl, fallbackPublicId);
+    }
+
     private List<WeeklyPeriod> parseBusinessHours(String businessHoursStr) {
         if (businessHoursStr == null || businessHoursStr.isBlank()) {
-            return List.of(new WeeklyPeriod(
-                    Set.of(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY),
-                    new TimeRange(LocalTime.of(8, 0), LocalTime.of(18, 0))
-            ));
+            return DEFAULT_BUSINESS_HOURS;
         }
         try {
-            return OBJECT_MAPPER.readValue(businessHoursStr, new TypeReference<List<WeeklyPeriod>>() {});
+            return OBJECT_MAPPER.readValue(businessHoursStr, new TypeReference<List<WeeklyPeriod>>() {
+            });
         } catch (Exception e) {
-            return List.of(new WeeklyPeriod(
-                    Set.of(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY),
-                    new TimeRange(LocalTime.of(8, 0), LocalTime.of(18, 0))
-            ));
+            log.warn("Business hours parse failed, using default: {}", e.getMessage());
+            return DEFAULT_BUSINESS_HOURS;
         }
+    }
+
+    private record UploadedPhoto(String url, String publicId) {
     }
 }

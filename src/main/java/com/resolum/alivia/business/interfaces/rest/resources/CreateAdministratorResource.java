@@ -15,7 +15,7 @@ public record CreateAdministratorResource(
         String corporateEmail,
 
         @NotBlank(message = "Password cannot be blank")
-        @Schema(description = "Contraseña de acceso para la cuenta del administrador", example = "AdminSecure123!")
+        @Schema(description = "Contraseña de acceso para la cuenta del administrador")
         String password,
 
         @Schema(description = "Bytes del archivo de imagen para foto de perfil (opcional, codificado en base64 en JSON)", nullable = true)

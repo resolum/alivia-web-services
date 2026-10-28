@@ -226,11 +226,12 @@ public class ProfilesContextFacadeImpl implements ProfilesContextFacade {
         if (staffProfileRepository != null) {
             var staffProfile = staffProfileRepository.findById(profileId)
                     .orElseThrow(() -> new StaffProfileNotFoundException(profileId));
+            PhoneNumber phoneVo = (phoneNumber != null && !phoneNumber.isBlank()) ? new PhoneNumber(phoneNumber) : staffProfile.getPhoneNumber();
             Photo photo = (photoUrl != null && !photoUrl.isBlank()) ? new Photo(photoUrl, photoPublicId) : staffProfile.getPhoto();
             staffProfile.updatePersonalInformation(
                     new PersonName(firstName, lastName),
                     new BirthDate(birthDate),
-                    new PhoneNumber(phoneNumber),
+                    phoneVo,
                     photo
             );
             return staffProfileRepository.save(staffProfile).getId();
@@ -278,19 +279,22 @@ public class ProfilesContextFacadeImpl implements ProfilesContextFacade {
             }
             var hoursVo = businessHours != null ? new BusinessHours(businessHours) : null;
             var address = new Address(streetAddress, latitude, longitude, placeId);
+            PhoneNumber emergencyVo = (emergencyPhone != null && !emergencyPhone.isBlank()) ? new PhoneNumber(emergencyPhone) : null;
+            EmailAddress supportVo = (supportEmail != null && !supportEmail.isBlank()) ? new EmailAddress(supportEmail) : null;
+            PhoneNumber contactVo = (whatsappNum != null && !whatsappNum.isBlank()) ? new PhoneNumber(whatsappNum) : null;
             var businessProfile = new BusinessProfile(
                     emailVo,
                     new Photo(photoUrl, photoPublicId),
-                    new PhoneNumber(whatsappNum),
+                    contactVo,
                     rucVo,
                     bNameVo,
                     lNameVo,
                     description,
                     mainActivity,
-                    new PhoneNumber(emergencyPhone),
+                    emergencyVo,
                     hoursVo,
                     slogan,
-                    new EmailAddress(supportEmail),
+                    supportVo,
                     address
             );
             return businessProfileRepository.save(businessProfile).getId();
@@ -352,19 +356,22 @@ public class ProfilesContextFacadeImpl implements ProfilesContextFacade {
             var bNameVo = new BusinessName(businessName);
             var lNameVo = new LegalName(legalName);
             var hoursVo = businessHours != null ? new BusinessHours(businessHours) : existing.getBusinessHours();
+            PhoneNumber emergencyVo = (emergencyPhone != null && !emergencyPhone.isBlank()) ? new PhoneNumber(emergencyPhone) : existing.getBusinessPhone();
+            EmailAddress supportVo = (supportEmail != null && !supportEmail.isBlank()) ? new EmailAddress(supportEmail) : existing.getSupportEmail();
+            PhoneNumber contactVo = (whatsappNum != null && !whatsappNum.isBlank()) ? new PhoneNumber(whatsappNum) : existing.getPhoneNumber();
             existing.updateInformation(
                     bNameVo,
                     lNameVo,
                     description,
                     mainActivity,
-                    new PhoneNumber(emergencyPhone),
+                    emergencyVo,
                     hoursVo,
                     slogan,
-                    new EmailAddress(supportEmail),
+                    supportVo,
                     existing.getAddress()
             );
             Photo photo = (photoUrl != null && !photoUrl.isBlank()) ? new Photo(photoUrl, photoPublicId) : existing.getPhoto();
-            existing.updateContactInformation(new PhoneNumber(whatsappNum), photo);
+            existing.updateContactInformation(contactVo, photo);
             return businessProfileRepository.save(existing).getId();
         }
         return updateBusinessProfileWithPhoto(
@@ -412,7 +419,8 @@ public class ProfilesContextFacadeImpl implements ProfilesContextFacade {
         }
         try {
             return businessProfileRepository.existsByRuc(new Ruc(ruc));
-        } catch (Exception e) {
+        } catch (IllegalArgumentException e) {
+            log.debug("Validation failed: {}", e.getMessage());
             return false;
         }
     }
@@ -425,7 +433,8 @@ public class ProfilesContextFacadeImpl implements ProfilesContextFacade {
         }
         try {
             return businessProfileRepository.existsByBusinessName(new BusinessName(businessName));
-        } catch (Exception e) {
+        } catch (IllegalArgumentException e) {
+            log.debug("Validation failed: {}", e.getMessage());
             return false;
         }
     }
@@ -438,7 +447,8 @@ public class ProfilesContextFacadeImpl implements ProfilesContextFacade {
         }
         try {
             return businessProfileRepository.existsByLegalName(new LegalName(legalName));
-        } catch (Exception e) {
+        } catch (IllegalArgumentException e) {
+            log.debug("Validation failed: {}", e.getMessage());
             return false;
         }
     }

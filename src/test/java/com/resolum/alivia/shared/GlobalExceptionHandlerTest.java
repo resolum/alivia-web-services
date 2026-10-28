@@ -1,5 +1,15 @@
 package com.resolum.alivia.shared;
 
+import com.resolum.alivia.business.domain.exceptions.AdministratorNotFound;
+import com.resolum.alivia.business.domain.exceptions.BackupPersonalEmailAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.BusinessAlreadyExistsForAdministrator;
+import com.resolum.alivia.business.domain.exceptions.BusinessNameAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.BusinessNotFound;
+import com.resolum.alivia.business.domain.exceptions.DniAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.EmailAddressAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.LegalNameAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.RucAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.UnauthorizedAdministratorException;
 import com.resolum.alivia.hcm.domain.exceptions.ContractNotActive;
 import com.resolum.alivia.hcm.domain.exceptions.ContractNotFound;
 import com.resolum.alivia.hcm.domain.exceptions.ContractOverlap;
@@ -327,6 +337,51 @@ class GlobalExceptionHandlerTest {
         public ProblemDetail getBody() {
             return body;
         }
+    }
+
+    @Test
+    void businessExceptionsAreHandledWithAppropriateStatusAndCode() {
+        var handler = new GlobalExceptionHandler();
+
+        var bnf = handler.handleBusinessNotFound(new BusinessNotFound(1L));
+        assertThat(bnf.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
+        assertThat(bnf.getProperties()).containsEntry("code", "business_not_found");
+
+        var anf = handler.handleAdministratorNotFound(new AdministratorNotFound(2L));
+        assertThat(anf.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
+        assertThat(anf.getProperties()).containsEntry("code", "administrator_not_found");
+
+        var bae = handler.handleBusinessAlreadyExistsForAdministrator(new BusinessAlreadyExistsForAdministrator(1L));
+        assertThat(bae.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+        assertThat(bae.getProperties()).containsEntry("code", "business_already_exists_for_administrator");
+
+        var dae = handler.handleDniAlreadyExists(new DniAlreadyExists("12345678"));
+        assertThat(dae.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+        assertThat(dae.getProperties()).containsEntry("code", "dni_already_registered");
+
+        var eae = handler.handleEmailAddressAlreadyExists(new EmailAddressAlreadyExists("test@test.com"));
+        assertThat(eae.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+        assertThat(eae.getProperties()).containsEntry("code", "email_already_registered");
+
+        var bne = handler.handleBusinessNameAlreadyExists(new BusinessNameAlreadyExists("Clinica"));
+        assertThat(bne.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+        assertThat(bne.getProperties()).containsEntry("code", "business_name_already_exists");
+
+        var lne = handler.handleLegalNameAlreadyExists(new LegalNameAlreadyExists("Clinica SAC"));
+        assertThat(lne.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+        assertThat(lne.getProperties()).containsEntry("code", "legal_name_already_exists");
+
+        var rae = handler.handleRucAlreadyExists(new RucAlreadyExists(20601234567L));
+        assertThat(rae.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+        assertThat(rae.getProperties()).containsEntry("code", "ruc_already_exists");
+
+        var bpe = handler.handleBackupPersonalEmailAlreadyExists(new BackupPersonalEmailAlreadyExists("backup@test.com"));
+        assertThat(bpe.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+        assertThat(bpe.getProperties()).containsEntry("code", "backup_personal_email_already_exists");
+
+        var uae = handler.handleUnauthorizedAdministrator(new UnauthorizedAdministratorException("Unauthorized"));
+        assertThat(uae.getStatus()).isEqualTo(HttpStatus.FORBIDDEN.value());
+        assertThat(uae.getProperties()).containsEntry("code", "unauthorized_administrator");
     }
 
     @RestController
