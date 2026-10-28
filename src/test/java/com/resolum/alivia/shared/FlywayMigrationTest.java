@@ -75,6 +75,22 @@ class FlywayMigrationTest {
         });
     }
 
+    @Test
+    void v2OnlyAddsConstraintsAndIndexes() {
+        // V2 is additive by design: it must not create, drop or alter tables or columns,
+        // so it can be applied to a database that already holds data.
+        Path v2 = migrationFiles().stream()
+                .filter(file -> "2".equals(versionOf(file)))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("V2 is missing"));
+
+        String sql = read(v2).toUpperCase();
+        assertThat(sql).as("%s must add constraints and indexes", v2.getFileName())
+                .contains("ADD CONSTRAINT", "CREATE INDEX");
+        assertThat(sql).as("%s must not create or alter tables or columns", v2.getFileName())
+                .doesNotContain("CREATE TABLE", "DROP TABLE", "DROP COLUMN", "ALTER COLUMN", "TRUNCATE");
+    }
+
     private static List<Path> migrationFiles() {
         try (Stream<Path> files = Files.list(migrationDirectory())) {
             List<Path> migrations = new ArrayList<>(files
