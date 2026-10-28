@@ -119,7 +119,7 @@ class AdministratorsControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(resource)))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.title").value("backup_personal_email_already_exists"));
+                .andExpect(jsonPath("$.code").value("backup_personal_email_already_exists"));
     }
 
     @Test
@@ -167,7 +167,7 @@ class AdministratorsControllerTest {
 
         mockMvc.perform(get("/api/v1/administrators/999"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("administrator_not_found"));
+                .andExpect(jsonPath("$.code").value("administrator_not_found"));
     }
 
     @Test
@@ -189,6 +189,6 @@ class AdministratorsControllerTest {
 
         mockMvc.perform(get("/api/v1/administrators/by-user/999"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("administrator_not_found"));
+                .andExpect(jsonPath("$.code").value("administrator_not_found"));
     }
 }

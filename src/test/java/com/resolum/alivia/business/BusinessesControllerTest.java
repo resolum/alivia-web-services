@@ -139,7 +139,7 @@ class BusinessesControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(resource)))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.title").value("business_already_exists_for_administrator"));
+                .andExpect(jsonPath("$.code").value("business_already_exists_for_administrator"));
     }
 
     @Test
@@ -198,7 +198,7 @@ class BusinessesControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(resource)))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.title").value("unauthorized_administrator"));
+                .andExpect(jsonPath("$.code").value("unauthorized_administrator"));
     }
 
     @Test
@@ -221,7 +221,7 @@ class BusinessesControllerTest {
 
         mockMvc.perform(get("/api/v1/businesses/999"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("business_not_found"));
+                .andExpect(jsonPath("$.code").value("business_not_found"));
     }
 
     @Test
@@ -243,6 +243,6 @@ class BusinessesControllerTest {
 
         mockMvc.perform(get("/api/v1/businesses/by-administrator/999"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("business_not_found"));
+                .andExpect(jsonPath("$.code").value("business_not_found"));
     }
 }
