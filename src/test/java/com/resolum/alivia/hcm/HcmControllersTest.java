@@ -8,6 +8,7 @@ import com.resolum.alivia.hcm.domain.model.aggregates.Employee;
 import com.resolum.alivia.hcm.domain.model.commands.CreateContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.CreateEmployeeCommand;
 import com.resolum.alivia.hcm.domain.model.commands.RenewContractCommand;
+import com.resolum.alivia.hcm.domain.model.commands.ActivateContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.TerminateContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.UpdateContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.UpdateEmployeeCommand;
@@ -212,6 +213,18 @@ class HcmControllersTest {
                 .andExpect(jsonPath("$.eligible").value(false));
 
         verify(contractCommands).handle(new TerminateContractCommand(3L, 5L, 1L, 9L));
+    }
+
+    @Test
+    void activatesPendingContracts() throws Exception {
+        when(contractCommands.handle(any(ActivateContractCommand.class))).thenReturn(contract(ContractStatus.ACTIVE));
+
+        contractsMvc.perform(post("/api/v1/employees/3/contracts/5/activation").param("businessId", "1")
+                        .principal(ADMIN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+
+        verify(contractCommands).handle(new ActivateContractCommand(3L, 5L, 1L, 9L));
     }
 
     @Test

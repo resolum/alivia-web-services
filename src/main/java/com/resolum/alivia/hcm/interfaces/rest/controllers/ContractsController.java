@@ -1,5 +1,6 @@
 package com.resolum.alivia.hcm.interfaces.rest.controllers;
 
+import com.resolum.alivia.hcm.domain.model.commands.ActivateContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.CreateContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.RenewContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.TerminateContractCommand;
@@ -113,6 +114,15 @@ public class ContractsController {
         return assembler.toResource(commandService.handle(new UpdateContractCommand(employeeId,
                 contractId, businessId, resource.position(), resource.modality(), resource.weeklyHours(),
                 resource.startDate(), resource.endDate(), resource.notes(), actorId(principal))));
+    }
+
+    @PostMapping("/employees/{employeeId}/contracts/{contractId}/activation")
+    @Operation(summary = "Activar un contrato pendiente")
+    public ContractResource activate(@PathVariable Long employeeId, @PathVariable Long contractId,
+                                     @RequestParam(name = "businessId", required = false) Long requestedBusinessId, Principal principal) {
+        var businessId = defaultBusiness.resolve(requestedBusinessId);
+        return assembler.toResource(commandService.handle(new ActivateContractCommand(employeeId,
+                contractId, businessId, actorId(principal))));
     }
 
     @PostMapping(value = "/employees/{employeeId}/contracts/{contractId}/renewals",
