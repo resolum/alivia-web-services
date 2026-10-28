@@ -96,22 +96,42 @@ aunque ese repositorio todavía no se use desde un servicio de producción.
 
 ## Transacciones (P-482.2)
 
-Esta matriz deja la columna transaccional para `P-482.2`, que definirá los límites y
-la concurrencia. Operaciones que ya usan `@Transactional` y que la migración no cambia:
+Límites transaccionales de los servicios de comando. Todas las escrituras de un mismo
+comando se confirman o se revierten juntas; las consultas usan transacciones de solo
+lectura.
 
-- alta de empleado: perfil de personal + usuario IAM + fila `employees`;
-- contrato: alta/actualización/renovación/terminación + `contract_versions`;
-- horario: alta/actualización/activación/desactivación;
-- registro del resultado de medicación (la unicidad de `activity_logs` se traduce a 409).
+| Comando | Transacción | Tablas | Notas |
+|---|---|---|---|
+| IAM `UserCommandServiceImpl` (alta, verificación, reenvío, acceso, refresco y cierre de sesión) | `@Transactional` | `users`, `person_profiles`, `staff_profiles` | El alta es todo-o-nada; incluye la foto en Cloudinary y el correo de verificación (ver llamadas externas). |
+| Profiles `PersonProfileCommandServiceImpl`, `StaffProfileCommandServiceImpl`, `BusinessProfileCommandServiceImpl` | `@Transactional` | `person_profiles`, `staff_profiles`, `business_profiles` | Alta y actualización de un perfil. |
+| HCM `EmployeeCommandServiceImpl` (alta y actualización) | `@Transactional` | `employees`, `employee_change_logs`, `staff_profiles`, `users` | El alta encadena perfiles e IAM, incluido el correo de verificación de IAM; la actualización registra el historial de cambios. |
+| HCM `ContractCommandServiceImpl` (alta, actualización, renovación y terminación) | `@Transactional` | `contracts`, `contract_versions` | La prueba de rollback está en `ContractCommandServiceTransactionTest`. |
+| HCM `WorkScheduleCommandServiceImpl` (alta, actualización y desactivación) | `@Transactional` | `work_schedules`, `work_schedule_shifts` | Los turnos son parte del agregado. |
+| Subscriptions `PlanCommandServiceImpl` (semilla de planes) | `@Transactional` | `plans` y tablas hijas | Inserta cada plan una sola vez. |
+| Subscriptions `ConfigurationDraftService` (alta y reemplazo de habitaciones) | `@Transactional` | `configuration_drafts`, `configuration_draft_rooms` | `find` es de solo lectura. |
+| Nursing `MedicationAdministrationCommandServiceImpl` | `@Transactional` | `activity_logs` | La unicidad de `uk_activity_logs_assignment_date` se traduce a 409. |
+| Subscriptions `StripeWebhookEventHandler` | `@Transactional` | `stripe_webhook_events` | La verificación de firma es local; no hay HTTP. |
 
-Puntos que `P-482.2` debe revisar:
+Los servicios de consulta de HCM, IAM, Profiles, Subscriptions y Nursing usan
+`@Transactional(readOnly = true)`. En Nursing se añadió a `CareActivityQueryServiceImpl`
+y `MedicationAdministrationQueryServiceImpl`, que antes dependían del `EntityManager`
+abierto por OSIV para resolver colecciones perezosas.
+
+### Llamadas externas dentro de la transacción
+
+| Flujo | Llamada | Situación | Decisión |
+|---|---|---|---|
+| Alta de cuenta | Subida de foto a Cloudinary y envío SMTP | Dentro de la transacción de alta | Se mantiene para conservar el todo-o-nada. La foto se borra en `afterCompletion` si hay rollback. Mover el correo fuera exige un patrón de outbox o un envío posterior al commit con reintentos; **pendiente de autorización**. |
+| Pago de borrador | `prepare`, `preauthorize` y `status` llaman a Stripe | Dentro de `@Transactional` | Mantiene la conexión de base de datos durante la llamada HTTP. Se propone separar la lectura/escritura en transacciones cortas con `TransactionTemplate` y dejar la llamada a Stripe fuera; **pendiente de autorización**. |
+| Liberación de preautorizaciones | `releaseExpired` cancela en Stripe dentro del bucle transaccional | Dentro de `@Transactional` | Un fallo a mitad revierte las filas ya guardadas, pero no las cancelaciones ya enviadas a Stripe. Se propone procesar cada borrador en su propia transacción; **pendiente de autorización**. |
+
+### Concurrencia pendiente
 
 - `contract_versions.version` se calcula con `countByContractId + 1`; dos peticiones
   concurrentes sobre el mismo contrato pueden generar la misma versión. `V2` **no**
   convierte `idx_contract_version` en único porque el servicio aún no traduce esa
-  violación a 409.
-- `activity_logs` ya tiene `uk_activity_logs_assignment_date` y el servicio traduce
-  `DataIntegrityViolationException` a `MedicationOutcomeAlreadyRecordedException` (409).
+  violación a 409. Añadirlo requiere una migración `V3` y el mapeo del error;
+  **pendiente de decisión**.
 - Las FK nuevas no cambian el comportamiento normal; solo rechazan referencias huérfanas.
 
 ## Verificación
