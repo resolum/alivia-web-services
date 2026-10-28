@@ -9,11 +9,14 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.List;
 
 public interface ContractPersistenceRepository
         extends JpaRepository<Contract, Long>, JpaSpecificationExecutor<Contract> {
 
     boolean existsByCodeIgnoreCase(String code);
+
+    List<Contract> findByEmployeeId(Long employeeId);
 
     @Query("""
             select (count(c) > 0) from Contract c
