@@ -211,13 +211,12 @@ class ExternalProfilesServiceTest {
     }
 
     @Test
-    @DisplayName("createBusinessProfile handles facade exceptions")
-    void createBusinessProfileFacadeExceptions() {
+    @DisplayName("createBusinessProfile catches EmailAddressAlreadyExistsException from facade")
+    void createBusinessProfileCatchesEmailException() {
         when(profilesContextFacade.existsBusinessProfileByEmailAddress("biz@test.com")).thenReturn(false);
         when(profilesContextFacade.existsBusinessProfileByRuc("20601234567")).thenReturn(false);
         when(profilesContextFacade.existsBusinessProfileByBusinessName("Clinica San Pablo")).thenReturn(false);
         when(profilesContextFacade.existsBusinessProfileByLegalName("San Pablo SAC")).thenReturn(false);
-
         when(profilesContextFacade.createBusinessProfile(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenThrow(new EmailAddressAlreadyExistsException(new EmailAddress("biz@test.com")));
 
@@ -227,7 +226,15 @@ class ExternalProfilesServiceTest {
                 "Av. El Derby 250", -12.0, -77.0, "place1",
                 null, "support@biz.com", "51987654321", "51987654321", "Eslogan"))
                 .isInstanceOf(EmailAddressAlreadyExists.class);
+    }
 
+    @Test
+    @DisplayName("createBusinessProfile catches RucAlreadyExistsException from facade")
+    void createBusinessProfileCatchesRucException() {
+        when(profilesContextFacade.existsBusinessProfileByEmailAddress("biz@test.com")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByRuc("20601234567")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByBusinessName("Clinica San Pablo")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByLegalName("San Pablo SAC")).thenReturn(false);
         when(profilesContextFacade.createBusinessProfile(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenThrow(new RucAlreadyExistsException(new Ruc("20601234567")));
 
@@ -237,7 +244,15 @@ class ExternalProfilesServiceTest {
                 "Av. El Derby 250", -12.0, -77.0, "place1",
                 null, "support@biz.com", "51987654321", "51987654321", "Eslogan"))
                 .isInstanceOf(RucAlreadyExists.class);
+    }
 
+    @Test
+    @DisplayName("createBusinessProfile catches BusinessNameAlreadyExistsException from facade")
+    void createBusinessProfileCatchesBusinessNameException() {
+        when(profilesContextFacade.existsBusinessProfileByEmailAddress("biz@test.com")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByRuc("20601234567")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByBusinessName("Clinica San Pablo")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByLegalName("San Pablo SAC")).thenReturn(false);
         when(profilesContextFacade.createBusinessProfile(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenThrow(new BusinessNameAlreadyExistsException(new BusinessName("Clinica San Pablo")));
 
@@ -247,7 +262,15 @@ class ExternalProfilesServiceTest {
                 "Av. El Derby 250", -12.0, -77.0, "place1",
                 null, "support@biz.com", "51987654321", "51987654321", "Eslogan"))
                 .isInstanceOf(BusinessNameAlreadyExists.class);
+    }
 
+    @Test
+    @DisplayName("createBusinessProfile catches LegalNameAlreadyExistsException from facade")
+    void createBusinessProfileCatchesLegalNameException() {
+        when(profilesContextFacade.existsBusinessProfileByEmailAddress("biz@test.com")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByRuc("20601234567")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByBusinessName("Clinica San Pablo")).thenReturn(false);
+        when(profilesContextFacade.existsBusinessProfileByLegalName("San Pablo SAC")).thenReturn(false);
         when(profilesContextFacade.createBusinessProfile(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenThrow(new LegalNameAlreadyExistsException(new LegalName("San Pablo SAC")));
 
@@ -270,8 +293,8 @@ class ExternalProfilesServiceTest {
     }
 
     @Test
-    @DisplayName("updateBusinessProfile translates BusinessNameAlreadyExistsException and LegalNameAlreadyExistsException")
-    void updateBusinessProfileTranslatesExceptions() {
+    @DisplayName("updateBusinessProfile translates BusinessNameAlreadyExistsException")
+    void updateBusinessProfileTranslatesNameConflict() {
         doThrow(new BusinessNameAlreadyExistsException(new BusinessName("Clinica San Pablo")))
                 .when(profilesContextFacade).updateBusinessProfile(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
 
@@ -279,7 +302,11 @@ class ExternalProfilesServiceTest {
                 "Salud", "Descripcion", "5112345678", null, "support@biz.com",
                 "51987654321", "51987654321", "Eslogan"))
                 .isInstanceOf(BusinessNameAlreadyExists.class);
+    }
 
+    @Test
+    @DisplayName("updateBusinessProfile translates LegalNameAlreadyExistsException")
+    void updateBusinessProfileTranslatesLegalNameConflict() {
         doThrow(new LegalNameAlreadyExistsException(new LegalName("San Pablo SAC")))
                 .when(profilesContextFacade).updateBusinessProfile(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
 
