@@ -35,4 +35,11 @@ public class ExternalCommunicationsService {
     public void sendVerificationEmail(String email, String verificationLink) {
         communicationsContextFacade.sendEmail(email, "verify-email", Map.of("link", verificationLink));
     }
+
+    /** Invitation for new staff: the link opens the page where they create their password. */
+    public void sendAccountInvitationEmail(String email, String fullName, String roleLabel,
+                                           String activationLink, int expirationHours) {
+        communicationsContextFacade.sendEmail(email, "account-invitation", Map.of("name", fullName,
+                "role", roleLabel, "link", activationLink, "hours", String.valueOf(expirationHours)));
+    }
 }

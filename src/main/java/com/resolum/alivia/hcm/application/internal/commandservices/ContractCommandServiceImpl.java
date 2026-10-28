@@ -6,6 +6,7 @@ import com.resolum.alivia.hcm.domain.exceptions.EmployeeNotFound;
 import com.resolum.alivia.hcm.domain.exceptions.EmployeeNotInBusiness;
 import com.resolum.alivia.hcm.domain.model.aggregates.Contract;
 import com.resolum.alivia.hcm.domain.model.aggregates.Employee;
+import com.resolum.alivia.hcm.domain.model.commands.ActivateContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.CreateContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.RenewContractCommand;
 import com.resolum.alivia.hcm.domain.model.commands.TerminateContractCommand;
@@ -83,6 +84,17 @@ public class ContractCommandServiceImpl implements ContractCommandService {
         contract.update(command.position(), command.modality(), command.weeklyHours(), period, command.notes());
         contract = contracts.save(contract);
         recordVersion(contract, ContractAction.UPDATED, command.actorUserId());
+        return contract;
+    }
+
+    @Override
+    @Transactional
+    public Contract handle(ActivateContractCommand command) {
+        validateEmployee(command.employeeId(), command.businessId());
+        var contract = getOwned(command.employeeId(), command.contractId(), command.businessId());
+        contract.activate(LocalDate.now(clock));
+        contract = contracts.save(contract);
+        recordVersion(contract, ContractAction.ACTIVATED, command.actorUserId());
         return contract;
     }
 

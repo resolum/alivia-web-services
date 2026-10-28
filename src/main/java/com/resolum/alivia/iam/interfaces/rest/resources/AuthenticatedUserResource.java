@@ -41,7 +41,8 @@ public record AuthenticatedUserResource(
      * @param id     the account identifier
      * @param email  the account email address
      * @param role   the access role
-     * @param status the lifecycle status
+     * @param status    the lifecycle status
+     * @param profileId the profile identifier in the Profiles context, or {@code null} when the account has none
      */
     @Schema(name = "AuthenticatedAccount", description = "Cuenta autenticada")
     public record AccountResource(
@@ -55,7 +56,10 @@ public record AuthenticatedUserResource(
             String role,
 
             @Schema(description = "Estado de la cuenta", example = "ACTIVE")
-            String status
+            String status,
+
+            @Schema(description = "Identificador del perfil; null si la cuenta no tiene perfil", example = "1")
+            Long profileId
     ) {
     }
 }

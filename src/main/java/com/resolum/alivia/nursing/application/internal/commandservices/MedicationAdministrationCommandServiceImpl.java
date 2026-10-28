@@ -11,6 +11,7 @@ import com.resolum.alivia.nursing.domain.services.MedicationAdministrationQueryS
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -53,6 +54,7 @@ public class MedicationAdministrationCommandServiceImpl implements MedicationAdm
      * {@inheritDoc}
      */
     @Override
+    @Transactional
     public MedicationAdministration handle(RecordMedicationOutcomeCommand command) {
         log.debug("Handling record medication outcome command");
         var now = LocalDateTime.now(clock.withZone(AGENDA_ZONE));

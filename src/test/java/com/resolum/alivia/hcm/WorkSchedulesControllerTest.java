@@ -21,6 +21,7 @@ import com.resolum.alivia.hcm.domain.services.WorkScheduleCommandService;
 import com.resolum.alivia.hcm.domain.services.WorkScheduleQueryService;
 import com.resolum.alivia.hcm.interfaces.rest.controllers.WorkSchedulesController;
 import com.resolum.alivia.hcm.interfaces.rest.transform.WorkScheduleResourceAssembler;
+import com.resolum.alivia.hcm.interfaces.rest.DefaultBusiness;
 import com.resolum.alivia.shared.interfaces.rest.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -68,7 +69,7 @@ class WorkSchedulesControllerTest {
         commands = mock(WorkScheduleCommandService.class);
         queries = mock(WorkScheduleQueryService.class);
         mvc = MockMvcBuilders.standaloneSetup(new WorkSchedulesController(commands, queries,
-                        new WorkScheduleResourceAssembler(CLOCK)))
+                        new WorkScheduleResourceAssembler(CLOCK), new DefaultBusiness(1L)))
                 .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         when(queries.associatedContract(any())).thenReturn(Optional.of(contract()));
@@ -127,6 +128,25 @@ class WorkSchedulesControllerTest {
         assertEquals(EmployeeRole.TECH, captor.getValue().role());
         assertEquals(WorkScheduleViewStatus.ACTIVE, captor.getValue().status());
         assertEquals(5L, captor.getValue().contractId());
+    }
+
+    @Test
+    void usesTheDefaultBusinessWhenTheRequestNamesNone() throws Exception {
+        when(queries.handle(any(GetWorkSchedulesQuery.class))).thenReturn(new PageImpl<>(List.of()));
+        when(commands.handle(any(CreateWorkScheduleCommand.class))).thenReturn(schedule());
+
+        mvc.perform(get("/api/v1/work-schedules")).andExpect(status().isOk());
+        mvc.perform(post("/api/v1/employees/3/contracts/5/work-schedules").principal(ADMIN)
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY.replace("\"businessId\":1,", "")))
+                .andExpect(status().isCreated());
+
+        var query = ArgumentCaptor.forClass(GetWorkSchedulesQuery.class);
+        verify(queries).handle(query.capture());
+        assertEquals(1L, query.getValue().businessId());
+        var command = ArgumentCaptor.forClass(CreateWorkScheduleCommand.class);
+        verify(commands).handle(command.capture());
+        assertEquals(1L, command.getValue().businessId());
+        assertEquals(7L, new DefaultBusiness(1L).resolve(7L));
     }
 
     @Test

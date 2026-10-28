@@ -11,6 +11,7 @@ import com.resolum.alivia.hcm.domain.model.valueobjects.EmployeeRole;
 import com.resolum.alivia.hcm.domain.model.valueobjects.WorkScheduleViewStatus;
 import com.resolum.alivia.hcm.domain.services.WorkScheduleCommandService;
 import com.resolum.alivia.hcm.domain.services.WorkScheduleQueryService;
+import com.resolum.alivia.hcm.interfaces.rest.DefaultBusiness;
 import com.resolum.alivia.hcm.interfaces.rest.resources.*;
 import com.resolum.alivia.hcm.interfaces.rest.transform.WorkScheduleResourceAssembler;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,6 +25,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
 
+import java.util.Objects;
+
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 @RestController
@@ -31,13 +34,16 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Tag(name = "Horarios laborales", description = "Jornada semanal de los empleados según su contrato vigente")
 @PreAuthorize("hasRole('ADMINISTRATOR')")
 public class WorkSchedulesController {
+    private final DefaultBusiness defaultBusiness;
     private final WorkScheduleCommandService commandService;
     private final WorkScheduleQueryService queryService;
     private final WorkScheduleResourceAssembler assembler;
 
     public WorkSchedulesController(WorkScheduleCommandService commandService,
                                    WorkScheduleQueryService queryService,
-                                   WorkScheduleResourceAssembler assembler) {
+                                   WorkScheduleResourceAssembler assembler,
+                                   DefaultBusiness defaultBusiness) {
+        this.defaultBusiness = defaultBusiness;
         this.commandService = commandService;
         this.queryService = queryService;
         this.assembler = assembler;
@@ -48,23 +54,26 @@ public class WorkSchedulesController {
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Configurar el horario laboral dentro de un contrato")
     public WorkScheduleResource create(@PathVariable Long employeeId, @PathVariable Long contractId,
+                                       @RequestParam(name = "businessId", required = false) Long requestedBusinessId,
                                        @Valid @RequestBody CreateWorkScheduleResource resource,
                                        Principal principal) {
+        var businessId = defaultBusiness.resolve(requestedBusinessId);
         return toResource(commandService.handle(new CreateWorkScheduleCommand(employeeId, contractId,
-                resource.businessId(),
+                Objects.requireNonNullElse(resource.businessId(), businessId),
                 resource.name(), resource.startDate(), resource.endDate(), assembler.toShifts(resource.shifts()),
                 resource.draft(), actorId(principal))));
     }
 
     @GetMapping("/work-schedules")
     @Operation(summary = "Listar horarios laborales con filtros y paginación")
-    public WorkSchedulePageResource list(@RequestParam Long businessId,
+    public WorkSchedulePageResource list(@RequestParam(name = "businessId", required = false) Long requestedBusinessId,
                                          @RequestParam(required = false) Long employeeId,
                                          @RequestParam(required = false) Long contractId,
                                          @RequestParam(required = false) EmployeeRole role,
                                          @RequestParam(required = false) WorkScheduleViewStatus status,
                                          @RequestParam(required = false) String search,
                                          @PageableDefault(size = 8, sort = "id") Pageable pageable) {
+        var businessId = defaultBusiness.resolve(requestedBusinessId);
         var page = queryService.handle(new GetWorkSchedulesQuery(businessId, employeeId, contractId, role, status,
                 search, pageable));
         return new WorkSchedulePageResource(page.getContent().stream().map(this::toResource).toList(),
@@ -73,7 +82,8 @@ public class WorkSchedulesController {
 
     @GetMapping("/work-schedules/summary")
     @Operation(summary = "Consultar los totales de horarios configurados")
-    public WorkScheduleSummaryResource summary(@RequestParam Long businessId) {
+    public WorkScheduleSummaryResource summary(@RequestParam(name = "businessId", required = false) Long requestedBusinessId) {
+        var businessId = defaultBusiness.resolve(requestedBusinessId);
         var summary = queryService.handle(new GetWorkScheduleSummaryQuery(businessId));
         return new WorkScheduleSummaryResource(summary.totalSchedules(), summary.employeesWithSchedule(),
                 summary.averageWeeklyHours());
@@ -82,7 +92,8 @@ public class WorkSchedulesController {
     @GetMapping("/employees/{employeeId}/work-schedules/{workScheduleId}")
     @Operation(summary = "Consultar el detalle de un horario laboral")
     public WorkScheduleResource get(@PathVariable Long employeeId, @PathVariable Long workScheduleId,
-                                    @RequestParam Long businessId) {
+                                    @RequestParam(name = "businessId", required = false) Long requestedBusinessId) {
+        var businessId = defaultBusiness.resolve(requestedBusinessId);
         return toResource(queryService.handle(new GetWorkScheduleQuery(employeeId, workScheduleId, businessId)));
     }
 
@@ -90,9 +101,10 @@ public class WorkSchedulesController {
             consumes = APPLICATION_JSON_VALUE)
     @Operation(summary = "Modificar la vigencia y la jornada semanal de un horario")
     public WorkScheduleResource update(@PathVariable Long employeeId, @PathVariable Long workScheduleId,
-                                       @RequestParam Long businessId,
+                                       @RequestParam(name = "businessId", required = false) Long requestedBusinessId,
                                        @Valid @RequestBody UpdateWorkScheduleResource resource,
                                        Principal principal) {
+        var businessId = defaultBusiness.resolve(requestedBusinessId);
         return toResource(commandService.handle(new UpdateWorkScheduleCommand(employeeId, workScheduleId,
                 businessId, resource.name(), resource.startDate(), resource.endDate(),
                 assembler.toShifts(resource.shifts()), resource.draft(), actorId(principal))));
@@ -101,7 +113,8 @@ public class WorkSchedulesController {
     @PostMapping("/employees/{employeeId}/work-schedules/{workScheduleId}/deactivation")
     @Operation(summary = "Dar de baja un horario laboral sin eliminarlo")
     public WorkScheduleResource deactivate(@PathVariable Long employeeId, @PathVariable Long workScheduleId,
-                                           @RequestParam Long businessId, Principal principal) {
+                                           @RequestParam(name = "businessId", required = false) Long requestedBusinessId, Principal principal) {
+        var businessId = defaultBusiness.resolve(requestedBusinessId);
         return toResource(commandService.handle(new DeactivateWorkScheduleCommand(employeeId, workScheduleId,
                 businessId, actorId(principal))));
     }
