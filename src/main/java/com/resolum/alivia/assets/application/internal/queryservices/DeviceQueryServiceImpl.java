@@ -1,10 +1,7 @@
 package com.resolum.alivia.assets.application.internal.queryservices;
 
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
-import com.resolum.alivia.assets.domain.model.queries.ExistsDeviceByMacAddressQuery;
-import com.resolum.alivia.assets.domain.model.queries.GetAllDevicesByBusinessIdQuery;
-import com.resolum.alivia.assets.domain.model.queries.GetDevIceByIdQuery;
-import com.resolum.alivia.assets.domain.model.queries.GetDeviceByMacAddressQuery;
+import com.resolum.alivia.assets.domain.model.queries.*;
 import com.resolum.alivia.assets.domain.model.valueobjects.MacAddress;
 import com.resolum.alivia.assets.domain.services.DeviceQueryService;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceRepository;
@@ -43,6 +40,11 @@ public class DeviceQueryServiceImpl implements DeviceQueryService {
         var aux= new MacAddress(query.macAddress());
 
         return deviceRepository.findDeviceByMacAddress(aux);
+    }
+
+    @Override
+    public Long handle(GetDeviceCountByBusinessIdQuery query) {
+        return  deviceRepository.countByBusinessId(new BusinessId(query.businessId()));
     }
 
 }

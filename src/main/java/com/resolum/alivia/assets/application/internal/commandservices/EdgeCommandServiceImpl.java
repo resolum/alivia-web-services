@@ -4,6 +4,7 @@ import com.resolum.alivia.assets.application.internal.outboundservices.acl.Exter
 import com.resolum.alivia.assets.domain.exceptions.EdgeNotFound;
 import com.resolum.alivia.assets.domain.exceptions.MacAddressAlreadyExists;
 import com.resolum.alivia.assets.domain.model.aggregates.Edge;
+import com.resolum.alivia.assets.domain.model.commands.ChangeEdgeStatusCommand;
 import com.resolum.alivia.assets.domain.model.commands.RegisterEdgeCommand;
 import com.resolum.alivia.assets.domain.model.commands.UpdateEdgeCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.MacAddress;
@@ -53,5 +54,13 @@ public class EdgeCommandServiceImpl implements EdgeCommandService {
         }
         return edge.getId();
 
+    }
+
+    @Override
+    public Long handle(ChangeEdgeStatusCommand command) {
+        var edge = edgeRepository.findById(command.edgeId()).orElseThrow(()->new EdgeNotFound(command.edgeId()));
+        edge.updateAssetStatus(command.status());
+        edgeRepository.save(edge);
+        return edge.getId();
     }
 }

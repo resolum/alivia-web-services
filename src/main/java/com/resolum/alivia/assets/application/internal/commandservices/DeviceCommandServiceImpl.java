@@ -44,7 +44,10 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
     @Override
     public Long handle(ChangeDeviceStatusCommand command) {
-        return 0L;
+        var device= deviceRepository.findById(command.deviceId()).orElseThrow(()->new DeviceNotFound(command.deviceId()));
+        device.updateAssetStatus(command.status());
+        deviceRepository.save(device);
+        return device.getId();
     }
 
     @Override

@@ -1,10 +1,7 @@
 package com.resolum.alivia.assets.application.internal.queryservices;
 
 import com.resolum.alivia.assets.domain.model.aggregates.Edge;
-import com.resolum.alivia.assets.domain.model.queries.ExistsEdgeByMacAddressQuery;
-import com.resolum.alivia.assets.domain.model.queries.GetAllEdgesByBusinessIdQuery;
-import com.resolum.alivia.assets.domain.model.queries.GetEdgeByIdQuery;
-import com.resolum.alivia.assets.domain.model.queries.GetEdgeByMacAddressQuery;
+import com.resolum.alivia.assets.domain.model.queries.*;
 import com.resolum.alivia.assets.domain.model.valueobjects.MacAddress;
 import com.resolum.alivia.assets.domain.services.EdgeQueryService;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.EdgeRepository;
@@ -40,5 +37,10 @@ public class EdgeQueryServiceImpl implements EdgeQueryService {
     @Override
     public Optional<Edge> handle(GetEdgeByMacAddressQuery query) {
         return edgeRepository.findEdgeByMacAddress(new MacAddress(query.macAddress()));
+    }
+
+    @Override
+    public Long handle(GetEdgeCountByBusinessIdQuery query) {
+        return edgeRepository.countByBusinessId(new BusinessId(query.businessId()));
     }
 }
