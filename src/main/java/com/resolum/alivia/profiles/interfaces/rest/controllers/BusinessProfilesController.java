@@ -19,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
+import static org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE;
 
 @RestController
 @RequestMapping(value = "/api/v1/business-profiles", produces = APPLICATION_JSON_VALUE)
@@ -33,15 +34,15 @@ public class BusinessProfilesController {
         this.queryService = queryService;
     }
 
-    @PostMapping
+    @PostMapping(consumes = MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Crear perfil comercial")
+    @Operation(summary = "Crear perfil comercial (Multipart/form-data con archivo de logo/foto)")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Perfil comercial creado exitosamente"),
             @ApiResponse(responseCode = "400", description = "Datos de entrada inválidos"),
             @ApiResponse(responseCode = "409", description = "RUC, nombre comercial, razón social o email ya existente")
     })
-    public ResponseEntity<BusinessProfileResource> createBusinessProfile(@RequestBody CreateBusinessProfileResource resource) {
+    public ResponseEntity<BusinessProfileResource> createBusinessProfile(@ModelAttribute CreateBusinessProfileResource resource) {
         var command = CreateBusinessProfileCommandFromResourceAssembler.toCommandFromResource(resource);
         var profileId = commandService.handle(command);
         return queryService.handle(new GetBusinessProfileByIdQuery(profileId))
@@ -63,8 +64,8 @@ public class BusinessProfilesController {
         return ResponseEntity.ok(BusinessProfileResourceFromEntityAssembler.toResourceFromEntity(profile));
     }
 
-    @PutMapping("/{profileId}")
-    @Operation(summary = "Actualizar información comercial")
+    @PutMapping(value = "/{profileId}", consumes = MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Actualizar información comercial (Multipart/form-data con archivo de logo/foto)")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Perfil actualizado exitosamente"),
             @ApiResponse(responseCode = "404", description = "Perfil no encontrado"),
@@ -72,7 +73,7 @@ public class BusinessProfilesController {
     })
     public ResponseEntity<BusinessProfileResource> updateBusinessProfile(
             @PathVariable Long profileId,
-            @RequestBody UpdateBusinessProfileResource resource) {
+            @ModelAttribute UpdateBusinessProfileResource resource) {
         var command = UpdateBusinessProfileCommandFromResourceAssembler.toCommandFromResource(profileId, resource);
         var updatedId = commandService.handle(command);
         var profile = queryService.handle(new GetBusinessProfileByIdQuery(updatedId));
