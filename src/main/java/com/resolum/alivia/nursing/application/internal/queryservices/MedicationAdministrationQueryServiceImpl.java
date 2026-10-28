@@ -15,6 +15,7 @@ import com.resolum.alivia.nursing.domain.repositories.CareMembershipRepository;
 import com.resolum.alivia.nursing.domain.services.MedicationAdministrationQueryService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Set;
 
@@ -60,6 +61,7 @@ public class MedicationAdministrationQueryServiceImpl implements MedicationAdmin
      * {@inheritDoc}
      */
     @Override
+    @Transactional(readOnly = true)
     public MedicationAdministration handle(GetMedicationAdministrationQuery query) {
         var id = query.administrationId();
         log.debug("Handling get medication administration query for {}", id);
