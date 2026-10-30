@@ -11,8 +11,7 @@ public final class ProfileCommandValidator {
 
     public static void validateCreatePerson(
             String emailAddress,
-            String photoUrl,
-            String photoPublicId,
+            byte[] photoData,
             String phoneNumber,
             String firstName,
             String lastName,
@@ -21,11 +20,8 @@ public final class ProfileCommandValidator {
         if (emailAddress == null || emailAddress.isBlank()) {
             throw new IllegalArgumentException("Email address cannot be null or blank");
         }
-        if (photoUrl == null || photoUrl.isBlank()) {
-            throw new IllegalArgumentException("Photo URL cannot be null or blank");
-        }
-        if (photoPublicId == null || photoPublicId.isBlank()) {
-            throw new IllegalArgumentException("Photo public ID cannot be null or blank");
+        if (photoData == null || photoData.length == 0) {
+            throw new IllegalArgumentException("Photo data cannot be null or empty");
         }
         if (phoneNumber == null || phoneNumber.isBlank()) {
             throw new IllegalArgumentException("Phone number cannot be null or blank");
@@ -50,8 +46,7 @@ public final class ProfileCommandValidator {
             String lastName,
             LocalDate birthDate,
             String phoneNumber,
-            String photoUrl,
-            String photoPublicId) {
+            byte[] photoData) {
         if (profileId == null || profileId <= 0) {
             throw new IllegalArgumentException("Profile ID must be greater than 0");
         }
@@ -67,18 +62,11 @@ public final class ProfileCommandValidator {
         if (phoneNumber == null || phoneNumber.isBlank()) {
             throw new IllegalArgumentException("Phone number cannot be null or blank");
         }
-        if (photoUrl == null || photoUrl.isBlank()) {
-            throw new IllegalArgumentException("Photo URL cannot be null or blank");
-        }
-        if (photoPublicId == null || photoPublicId.isBlank()) {
-            throw new IllegalArgumentException("Photo public ID cannot be null or blank");
-        }
     }
 
     public static void validateBusinessFields(
             String emailAddress,
-            String photoUrl,
-            String photoPublicId,
+            byte[] photoData,
             String whatsappNum,
             String ruc,
             String businessName,
@@ -92,15 +80,13 @@ public final class ProfileCommandValidator {
             String streetAddress,
             Double latitude,
             Double longitude,
-            String placeId) {
+            String placeId,
+            boolean isUpdate) {
         if (emailAddress == null || emailAddress.isBlank()) {
             throw new IllegalArgumentException("Email address cannot be null or blank");
         }
-        if (photoUrl == null || photoUrl.isBlank()) {
-            throw new IllegalArgumentException("Photo URL cannot be null or blank");
-        }
-        if (photoPublicId == null || photoPublicId.isBlank()) {
-            throw new IllegalArgumentException("Photo public ID cannot be null or blank");
+        if (!isUpdate && (photoData == null || photoData.length == 0)) {
+            throw new IllegalArgumentException("Photo data cannot be null or empty");
         }
         if (whatsappNum == null || whatsappNum.isBlank()) {
             throw new IllegalArgumentException("Whatsapp number cannot be null or blank");

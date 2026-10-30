@@ -40,6 +40,7 @@ class ProfileCommandServicesTest {
     private StaffProfileCommandServiceImpl staffService;
 
     private BusinessHours defaultHours;
+    private final byte[] samplePhoto = new byte[]{1, 2, 3};
 
     @BeforeEach
     void setUp() {
@@ -60,7 +61,7 @@ class ProfileCommandServicesTest {
     @Test
     void createBusinessProfileSucceeds() {
         var cmd = new CreateBusinessProfileCommand(
-                "corp@alivia.com", "http://photo.jpg", "public_id", "51987654321",
+                "corp@alivia.com", samplePhoto, "photo.jpg", "51987654321",
                 "20123456789", "Alivia Clinic", "Alivia SAC", "Desc", "Salud",
                 "51987654322", defaultHours, "Slogan", "support@alivia.com",
                 "Av. Brasil 123", -12.05, -77.04, "place_1"
@@ -83,7 +84,7 @@ class ProfileCommandServicesTest {
     @Test
     void createBusinessProfileThrowsWhenEmailExists() {
         var cmd = new CreateBusinessProfileCommand(
-                "corp@alivia.com", "http://photo.jpg", "public_id", "51987654321",
+                "corp@alivia.com", samplePhoto, "photo.jpg", "51987654321",
                 "20123456789", "Alivia Clinic", "Alivia SAC", "Desc", "Salud",
                 "51987654322", defaultHours, "Slogan", "support@alivia.com",
                 "Av. Brasil 123", -12.05, -77.04, "place_1"
@@ -97,7 +98,7 @@ class ProfileCommandServicesTest {
     @Test
     void createBusinessProfileThrowsWhenRucExists() {
         var cmd = new CreateBusinessProfileCommand(
-                "corp@alivia.com", "http://photo.jpg", "public_id", "51987654321",
+                "corp@alivia.com", samplePhoto, "photo.jpg", "51987654321",
                 "20123456789", "Alivia Clinic", "Alivia SAC", "Desc", "Salud",
                 "51987654322", defaultHours, "Slogan", "support@alivia.com",
                 "Av. Brasil 123", -12.05, -77.04, "place_1"
@@ -112,7 +113,7 @@ class ProfileCommandServicesTest {
     @Test
     void createBusinessProfileThrowsWhenBusinessNameExists() {
         var cmd = new CreateBusinessProfileCommand(
-                "corp@alivia.com", "http://photo.jpg", "public_id", "51987654321",
+                "corp@alivia.com", samplePhoto, "photo.jpg", "51987654321",
                 "20123456789", "Alivia Clinic", "Alivia SAC", "Desc", "Salud",
                 "51987654322", defaultHours, "Slogan", "support@alivia.com",
                 "Av. Brasil 123", -12.05, -77.04, "place_1"
@@ -128,7 +129,7 @@ class ProfileCommandServicesTest {
     @Test
     void createBusinessProfileThrowsWhenLegalNameExists() {
         var cmd = new CreateBusinessProfileCommand(
-                "corp@alivia.com", "http://photo.jpg", "public_id", "51987654321",
+                "corp@alivia.com", samplePhoto, "photo.jpg", "51987654321",
                 "20123456789", "Alivia Clinic", "Alivia SAC", "Desc", "Salud",
                 "51987654322", defaultHours, "Slogan", "support@alivia.com",
                 "Av. Brasil 123", -12.05, -77.04, "place_1"
@@ -145,7 +146,7 @@ class ProfileCommandServicesTest {
     @Test
     void updateBusinessProfileSucceeds() {
         var cmd = new UpdateBusinessProfileCommand(
-                1L, "corp@alivia.com", "http://photo.jpg", "public_id", "51987654321",
+                1L, "corp@alivia.com", samplePhoto, "photo.jpg", "51987654321",
                 "20123456789", "Alivia Clinic Updated", "Alivia SAC", "Desc", "Salud",
                 "51987654322", defaultHours, "Slogan", "support@alivia.com",
                 "Av. Brasil 123", -12.05, -77.04, "place_1"
@@ -166,7 +167,7 @@ class ProfileCommandServicesTest {
     @Test
     void updateBusinessProfileThrowsWhenNotFound() {
         var cmd = new UpdateBusinessProfileCommand(
-                99L, "corp@alivia.com", "http://photo.jpg", "public_id", "51987654321",
+                99L, "corp@alivia.com", samplePhoto, "photo.jpg", "51987654321",
                 "20123456789", "Alivia Clinic Updated", "Alivia SAC", "Desc", "Salud",
                 "+51999111222", defaultHours, "Slogan", "support@alivia.com",
                 "Av. Brasil 123", -12.05, -77.04, "place_1"
@@ -181,7 +182,7 @@ class ProfileCommandServicesTest {
     @Test
     void createPersonProfileSucceeds() {
         var cmd = new CreatePersonProfileCommand(
-                "carlos@alivia.com", "http://photo.jpg", "photo_1", "51987654321",
+                "carlos@alivia.com", samplePhoto, "photo.jpg", "51987654321",
                 "Carlos", "Gomez", "12345678", LocalDate.of(1990, 5, 10)
         );
 
@@ -200,7 +201,7 @@ class ProfileCommandServicesTest {
     @Test
     void createPersonProfileThrowsWhenEmailExists() {
         var cmd = new CreatePersonProfileCommand(
-                "carlos@alivia.com", "http://photo.jpg", "photo_1", "51987654321",
+                "carlos@alivia.com", samplePhoto, "photo.jpg", "51987654321",
                 "Carlos", "Gomez", "12345678", LocalDate.of(1990, 5, 10)
         );
 
@@ -211,7 +212,7 @@ class ProfileCommandServicesTest {
     @Test
     void createPersonProfileThrowsWhenDniExists() {
         var cmd = new CreatePersonProfileCommand(
-                "carlos@alivia.com", "http://photo.jpg", "photo_1", "51987654321",
+                "carlos@alivia.com", samplePhoto, "photo.jpg", "51987654321",
                 "Carlos", "Gomez", "12345678", LocalDate.of(1990, 5, 10)
         );
 
@@ -224,7 +225,7 @@ class ProfileCommandServicesTest {
     void updatePersonProfileSucceeds() {
         var cmd = new UpdatePersonProfileCommand(
                 2L, "Carlos Alberto", "Gomez", LocalDate.of(1990, 5, 10),
-                "51987654321", "http://photo.jpg", "photo_1"
+                "51987654321", samplePhoto, "photo.jpg"
         );
 
         var existingProfile = mock(PersonProfile.class);
@@ -242,7 +243,7 @@ class ProfileCommandServicesTest {
     void updatePersonProfileThrowsWhenNotFound() {
         var cmd = new UpdatePersonProfileCommand(
                 88L, "Carlos", "Gomez", LocalDate.of(1990, 5, 10),
-                "51987654321", "http://photo.jpg", "photo_1"
+                "51987654321", samplePhoto, "photo.jpg"
         );
 
         when(personRepo.findById(88L)).thenReturn(Optional.empty());
@@ -254,7 +255,7 @@ class ProfileCommandServicesTest {
     @Test
     void createStaffProfileSucceeds() {
         var cmd = new CreateStaffProfileCommand(
-                "maria@alivia.com", "http://photo.jpg", "photo_1", "51987654321",
+                "maria@alivia.com", samplePhoto, "photo.jpg", "51987654321",
                 "Maria", "Rodriguez", "87654321", LocalDate.of(1992, 10, 5)
         );
 
@@ -273,7 +274,7 @@ class ProfileCommandServicesTest {
     @Test
     void createStaffProfileThrowsWhenEmailExists() {
         var cmd = new CreateStaffProfileCommand(
-                "maria@alivia.com", "http://photo.jpg", "photo_1", "51987654321",
+                "maria@alivia.com", samplePhoto, "photo.jpg", "51987654321",
                 "Maria", "Rodriguez", "87654321", LocalDate.of(1992, 10, 5)
         );
 
@@ -284,7 +285,7 @@ class ProfileCommandServicesTest {
     @Test
     void createStaffProfileThrowsWhenDniExists() {
         var cmd = new CreateStaffProfileCommand(
-                "maria@alivia.com", "http://photo.jpg", "photo_1", "51987654321",
+                "maria@alivia.com", samplePhoto, "photo.jpg", "51987654321",
                 "Maria", "Rodriguez", "87654321", LocalDate.of(1992, 10, 5)
         );
 
@@ -297,7 +298,7 @@ class ProfileCommandServicesTest {
     void updateStaffProfileSucceeds() {
         var cmd = new UpdateStaffProfileCommand(
                 3L, "Maria Elena", "Rodriguez", LocalDate.of(1992, 10, 5),
-                "51987654321", "http://photo.jpg", "photo_1"
+                "51987654321", samplePhoto, "photo.jpg"
         );
 
         var existingProfile = mock(StaffProfile.class);
@@ -315,10 +316,80 @@ class ProfileCommandServicesTest {
     void updateStaffProfileThrowsWhenNotFound() {
         var cmd = new UpdateStaffProfileCommand(
                 77L, "Maria", "Rodriguez", LocalDate.of(1992, 10, 5),
-                "51987654321", "http://photo.jpg", "photo_1"
+                "51987654321", samplePhoto, "photo.jpg"
         );
 
         when(staffRepo.findById(77L)).thenReturn(Optional.empty());
         assertThrows(StaffProfileNotFoundException.class, () -> staffService.handle(cmd));
+    }
+
+    @Test
+    void createPersonProfileWithPhotoDataUploadsViaStorageService() {
+        var storage = mock(com.resolum.alivia.shared.application.internal.outboundservices.storage.StorageService.class);
+        when(storage.upload(any(), any())).thenReturn(java.util.Map.of("url", "https://cloud.com/p.jpg", "public_id", "pub_123"));
+        var serviceWithStorage = new PersonProfileCommandServiceImpl(personRepo, storage);
+
+        when(personRepo.existsByEmailAddress(any())).thenReturn(false);
+        when(personRepo.existsByDni(any())).thenReturn(false);
+        var mockEntity = mock(PersonProfile.class);
+        when(mockEntity.getId()).thenReturn(55L);
+        when(personRepo.save(any(PersonProfile.class))).thenReturn(mockEntity);
+
+        var cmd = new CreatePersonProfileCommand(
+                "carlos@alivia.com", new byte[]{1, 2}, "avatar.png", "51987654321",
+                "Carlos", "Gomez", "12345678", LocalDate.of(1990, 5, 10)
+        );
+
+        var result = serviceWithStorage.handle(cmd);
+        assertEquals(55L, result);
+        verify(storage).upload(any(), eq("avatar.png"));
+    }
+
+    @Test
+    void createStaffProfileWithPhotoDataUploadsViaStorageService() {
+        var storage = mock(com.resolum.alivia.shared.application.internal.outboundservices.storage.StorageService.class);
+        when(storage.upload(any(), any())).thenReturn(java.util.Map.of("url", "https://cloud.com/s.jpg", "public_id", "pub_staff"));
+        var serviceWithStorage = new StaffProfileCommandServiceImpl(staffRepo, storage);
+
+        when(staffRepo.existsByEmailAddress(any())).thenReturn(false);
+        when(staffRepo.existsByDni(any())).thenReturn(false);
+        var mockEntity = mock(StaffProfile.class);
+        when(mockEntity.getId()).thenReturn(66L);
+        when(staffRepo.save(any(StaffProfile.class))).thenReturn(mockEntity);
+
+        var cmd = new CreateStaffProfileCommand(
+                "maria@alivia.com", new byte[]{3, 4}, "staff.png", "51987654321",
+                "Maria", "Rodriguez", "87654321", LocalDate.of(1992, 10, 5)
+        );
+
+        var result = serviceWithStorage.handle(cmd);
+        assertEquals(66L, result);
+        verify(storage).upload(any(), eq("staff.png"));
+    }
+
+    @Test
+    void createBusinessProfileWithPhotoDataUploadsViaStorageService() {
+        var storage = mock(com.resolum.alivia.shared.application.internal.outboundservices.storage.StorageService.class);
+        when(storage.upload(any(), any())).thenReturn(java.util.Map.of("url", "https://cloud.com/b.jpg", "public_id", "pub_biz"));
+        var serviceWithStorage = new BusinessProfileCommandServiceImpl(businessRepo, storage);
+
+        when(businessRepo.existsByEmailAddress(any())).thenReturn(false);
+        when(businessRepo.existsByRuc(any())).thenReturn(false);
+        when(businessRepo.existsByBusinessName(any())).thenReturn(false);
+        when(businessRepo.existsByLegalName(any())).thenReturn(false);
+        var mockEntity = mock(BusinessProfile.class);
+        when(mockEntity.getId()).thenReturn(77L);
+        when(businessRepo.save(any(BusinessProfile.class))).thenReturn(mockEntity);
+
+        var cmd = new CreateBusinessProfileCommand(
+                "corp@alivia.com", new byte[]{5, 6}, "logo.png", "51987654321",
+                "20123456789", "Alivia Clinic", "Alivia SAC", "Desc", "Salud",
+                "51987654322", defaultHours, "Slogan", "support@alivia.com",
+                "Av. Brasil 123", -12.05, -77.04, "place_1"
+        );
+
+        var result = serviceWithStorage.handle(cmd);
+        assertEquals(77L, result);
+        verify(storage).upload(any(), eq("logo.png"));
     }
 }

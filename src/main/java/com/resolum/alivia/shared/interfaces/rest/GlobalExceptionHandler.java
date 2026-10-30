@@ -9,6 +9,16 @@ import com.resolum.alivia.hcm.domain.exceptions.WorkScheduleNotEditable;
 import com.resolum.alivia.hcm.domain.exceptions.WorkScheduleNotFound;
 import com.resolum.alivia.hcm.domain.exceptions.WorkScheduleOutsideContract;
 import com.resolum.alivia.hcm.domain.exceptions.WorkScheduleOverlap;
+import com.resolum.alivia.business.domain.exceptions.AdministratorNotFound;
+import com.resolum.alivia.business.domain.exceptions.BackupPersonalEmailAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.BusinessAlreadyExistsForAdministrator;
+import com.resolum.alivia.business.domain.exceptions.BusinessNameAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.BusinessNotFound;
+import com.resolum.alivia.business.domain.exceptions.DniAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.EmailAddressAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.LegalNameAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.RucAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.UnauthorizedAdministratorException;
 import com.resolum.alivia.iam.domain.exceptions.AccountAlreadyVerifiedException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotActiveException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotFoundException;
@@ -228,6 +238,56 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleLegalNameAlreadyExists(LegalNameAlreadyExistsException exception) {
         return problem(HttpStatus.CONFLICT, "legal_name_already_exists",
                 "The legal name is already registered.", List.of());
+    }
+
+    @ExceptionHandler(BusinessNotFound.class)
+    public ProblemDetail handleBusinessNotFound(BusinessNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "business_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(AdministratorNotFound.class)
+    public ProblemDetail handleAdministratorNotFound(AdministratorNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "administrator_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(BusinessAlreadyExistsForAdministrator.class)
+    public ProblemDetail handleBusinessAlreadyExistsForAdministrator(BusinessAlreadyExistsForAdministrator exception) {
+        return problem(HttpStatus.CONFLICT, "business_already_exists_for_administrator", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(DniAlreadyExists.class)
+    public ProblemDetail handleDniAlreadyExists(DniAlreadyExists exception) {
+        return problem(HttpStatus.CONFLICT, "dni_already_registered", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(EmailAddressAlreadyExists.class)
+    public ProblemDetail handleEmailAddressAlreadyExists(EmailAddressAlreadyExists exception) {
+        return problem(HttpStatus.CONFLICT, "email_already_registered", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(BusinessNameAlreadyExists.class)
+    public ProblemDetail handleBusinessNameAlreadyExists(BusinessNameAlreadyExists exception) {
+        return problem(HttpStatus.CONFLICT, "business_name_already_exists", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(LegalNameAlreadyExists.class)
+    public ProblemDetail handleLegalNameAlreadyExists(LegalNameAlreadyExists exception) {
+        return problem(HttpStatus.CONFLICT, "legal_name_already_exists", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(RucAlreadyExists.class)
+    public ProblemDetail handleRucAlreadyExists(RucAlreadyExists exception) {
+        return problem(HttpStatus.CONFLICT, "ruc_already_exists", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(BackupPersonalEmailAlreadyExists.class)
+    public ProblemDetail handleBackupPersonalEmailAlreadyExists(BackupPersonalEmailAlreadyExists exception) {
+        return problem(HttpStatus.CONFLICT, "backup_personal_email_already_exists", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(UnauthorizedAdministratorException.class)
+    public ProblemDetail handleUnauthorizedAdministrator(UnauthorizedAdministratorException exception) {
+        return problem(HttpStatus.FORBIDDEN, "unauthorized_administrator", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(SignUpValidationException.class)

@@ -392,4 +392,52 @@ class ProfilesContextFacadeImplTest {
         assertTrue(facade.fetchBusinessProfileNameById(0L).isEmpty());
         assertTrue(facade.fetchBusinessProfileNameById(-3L).isEmpty());
     }
+
+    @Test
+    void fetchStaffProfileByIdReturnsStaffDataWhenPresent() {
+        var staff = new StaffProfile(
+                new EmailAddress("ana@example.com"),
+                new com.resolum.alivia.shared.domain.model.valueobjects.Photo("http://img", "pid"),
+                new com.resolum.alivia.shared.domain.model.valueobjects.PhoneNumber("51987654322"),
+                new PersonName("Ana", "Gomez"),
+                new Dni("12345678"),
+                new BirthDate(LocalDate.of(1990, 5, 20))
+        );
+        foundStaffProfile.set(staff);
+
+        var data = facade.fetchStaffProfileById(2L);
+        assertTrue(data.isPresent());
+        assertEquals("ana@example.com", data.get().emailAddress());
+        assertEquals("Ana", data.get().firstName());
+        assertEquals("Gomez", data.get().lastName());
+        assertEquals("12345678", data.get().dni());
+    }
+
+    @Test
+    void fetchStaffProfileByIdReturnsEmptyWhenNotFoundOrInvalid() {
+        foundStaffProfile.set(null);
+        assertTrue(facade.fetchStaffProfileById(null).isEmpty());
+        assertTrue(facade.fetchStaffProfileById(0L).isEmpty());
+        assertTrue(facade.fetchStaffProfileById(-1L).isEmpty());
+        assertTrue(facade.fetchStaffProfileById(99L).isEmpty());
+    }
+
+    @Test
+    void existsBusinessProfileByRucReturnsFalseForNullBlankOrEmpty() {
+        assertFalse(facade.existsBusinessProfileByRuc(null));
+        assertFalse(facade.existsBusinessProfileByRuc(""));
+        assertFalse(facade.existsBusinessProfileByRuc("invalid"));
+    }
+
+    @Test
+    void existsBusinessProfileByBusinessNameReturnsFalseForNullBlankOrEmpty() {
+        assertFalse(facade.existsBusinessProfileByBusinessName(null));
+        assertFalse(facade.existsBusinessProfileByBusinessName(""));
+    }
+
+    @Test
+    void existsBusinessProfileByLegalNameReturnsFalseForNullBlankOrEmpty() {
+        assertFalse(facade.existsBusinessProfileByLegalName(null));
+        assertFalse(facade.existsBusinessProfileByLegalName(""));
+    }
 }
