@@ -9,10 +9,14 @@ import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
 public interface BusinessProfileRepository extends JpaRepository<BusinessProfile, Long> {
     boolean existsByEmailAddress(EmailAddress emailAddress);
     boolean existsByRuc(Ruc ruc);
     boolean existsByBusinessName(BusinessName businessName);
     boolean existsByLegalName(LegalName legalName);
+
+    Optional<BusinessProfile> findByUserId(Long userId);
 }
