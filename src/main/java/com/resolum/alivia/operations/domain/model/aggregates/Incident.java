@@ -1,5 +1,6 @@
 package com.resolum.alivia.operations.domain.model.aggregates;
 
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotOpen;
 import com.resolum.alivia.operations.domain.model.valueobjects.Evidence;
 import com.resolum.alivia.operations.domain.model.valueobjects.IncidentSeverity;
 import com.resolum.alivia.operations.domain.model.valueobjects.IncidentStatus;
@@ -88,6 +89,17 @@ public class Incident extends AuditableAbstractAggregateRoot<Incident> {
             throw new IllegalArgumentException("An incident takes up to %d photos.".formatted(MAX_EVIDENCES));
         }
         evidences.add(evidence);
+    }
+
+    /** A maintenance visit was booked for it. */
+    public void scheduleMaintenance() {
+        if (status != IncidentStatus.OPEN) throw new IncidentNotOpen();
+        this.status = IncidentStatus.SCHEDULED;
+    }
+
+    /** Still waiting for attention: a new report of the same device would duplicate it. */
+    public boolean isPending() {
+        return status != IncidentStatus.RESOLVED;
     }
 
     public boolean isReportedBy(Long userId) {

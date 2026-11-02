@@ -8,12 +8,16 @@ import com.resolum.alivia.operations.domain.exceptions.AppointmentAlreadyExists;
 import com.resolum.alivia.operations.domain.exceptions.AppointmentSlotTaken;
 import com.resolum.alivia.operations.domain.exceptions.DraftNotReadyForAppointment;
 import com.resolum.alivia.operations.domain.exceptions.EvaluationRequiredForInstallation;
+import com.resolum.alivia.operations.domain.exceptions.IncidentAccessDenied;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotAllowed;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotFound;
 import com.resolum.alivia.operations.domain.exceptions.SlotUnavailable;
 import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderAlreadyExists;
 import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotFound;
 import com.resolum.alivia.operations.domain.exceptions.TechnicianNotEligible;
 import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
 import com.resolum.alivia.operations.domain.model.commands.AssignTechnicianCommand;
+import com.resolum.alivia.operations.domain.model.commands.CreateMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateTechnicalOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.ReassignTechnicianCommand;
 import com.resolum.alivia.operations.domain.model.commands.RecordInstallationResultCommand;
@@ -26,6 +30,7 @@ import com.resolum.alivia.operations.domain.model.valueobjects.TechnicianAvailab
 import com.resolum.alivia.operations.domain.services.AppointmentCommandService;
 import com.resolum.alivia.operations.domain.services.EvaluationSlotPlanner;
 import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.AppointmentRepository;
+import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.IncidentPersistenceRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,13 +48,16 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
     static final int ALTERNATIVES = 3;
 
     private final AppointmentRepository appointments;
+    private final IncidentPersistenceRepository incidents;
     private final ExternalHcmService hcm;
     private final ExternalSubscriptionsService subscriptions;
     private final Clock clock;
 
-    public AppointmentCommandServiceImpl(AppointmentRepository appointments, ExternalHcmService hcm,
-                                         ExternalSubscriptionsService subscriptions, Clock clock) {
+    public AppointmentCommandServiceImpl(AppointmentRepository appointments, IncidentPersistenceRepository incidents,
+                                         ExternalHcmService hcm, ExternalSubscriptionsService subscriptions,
+                                         Clock clock) {
         this.appointments = appointments;
+        this.incidents = incidents;
         this.hcm = hcm;
         this.subscriptions = subscriptions;
         this.clock = clock;
@@ -90,6 +98,9 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
         var serviceType = command.serviceType();
         var slot = command.slotId();
         if (serviceType == null || slot == null) throw new IllegalArgumentException("The service type and the block are required.");
+        if (serviceType == ServiceType.MAINTENANCE) {
+            throw new IllegalArgumentException("Maintenance visits are booked for an incident in /api/v1/maintenance-orders.");
+        }
         if (slot.window().duration().compareTo(serviceType.window()) != 0) {
             throw new IllegalArgumentException("An %s block lasts %d hours.".formatted(
                     serviceType.name().toLowerCase(), serviceType.window().toHours()));
@@ -176,6 +187,45 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
         var order = appointments.findById(command.orderId()).orElseThrow(() -> new TechnicalOrderNotFound(command.orderId()));
         order.recordInstallationResult(command.result(), command.notes());
         return appointments.saveAndFlush(order);
+    }
+
+    /**
+     * Books a maintenance visit for an open incident in a block with capacity, with the contact of the home's
+     * installation, and marks the incident as scheduled.
+     */
+    @Override
+    @Transactional
+    public Appointment handle(CreateMaintenanceOrderCommand command) {
+        var slot = command.slotId();
+        if (slot == null) throw new IllegalArgumentException("The block is required.");
+        var incident = incidents.findById(command.incidentId())
+                .orElseThrow(() -> new IncidentNotFound(command.incidentId()));
+        if (!command.administrator() && !incident.isReportedBy(command.userId())) throw new IncidentAccessDenied();
+        if (slot.window().duration().compareTo(ServiceType.MAINTENANCE.window()) != 0) {
+            throw new IllegalArgumentException("A maintenance block lasts %d hours."
+                    .formatted(ServiceType.MAINTENANCE.window().toHours()));
+        }
+        if (slot.date().isBefore(AppointmentQueryServiceImpl.firstBookableDate(clock))
+                || slot.date().isAfter(AppointmentQueryServiceImpl.lastBookableDate(ServiceType.MAINTENANCE, clock))) {
+            throw new IllegalArgumentException("A maintenance visit must be booked between tomorrow and the next %d days."
+                    .formatted(ServiceType.MAINTENANCE.daysAhead()));
+        }
+        incident.scheduleMaintenance();
+        var installation = appointments.findFirstByDraftIdAndServiceTypeAndStatus(incident.getDraftId(),
+                ServiceType.INSTALLATION, AppointmentStatus.COMPLETED).orElseThrow(IncidentNotAllowed::new);
+        var earliest = AppointmentQueryServiceImpl.firstBookableDate(clock);
+        var technician = candidates(slot.date(), slot.window(), null).stream().findFirst()
+                .orElseThrow(() -> new SlotUnavailable(alternatives(ServiceType.MAINTENANCE, earliest, slot)));
+        try {
+            var order = appointments.saveAndFlush(new Appointment(incident.getDraftId(), ServiceType.MAINTENANCE,
+                    incident.getId(), slot.date(), slot.window(), technician.technicianId(), technician.fullName(),
+                    installation.getContactName(), installation.getContactPhone(), installation.getDirections(),
+                    Instant.now(clock)));
+            incidents.save(incident);
+            return order;
+        } catch (DataIntegrityViolationException exception) {
+            throw new SlotUnavailable(alternatives(ServiceType.MAINTENANCE, earliest, slot));
+        }
     }
 
     private record Placement(SlotId slot, TechnicianAvailability technician) {

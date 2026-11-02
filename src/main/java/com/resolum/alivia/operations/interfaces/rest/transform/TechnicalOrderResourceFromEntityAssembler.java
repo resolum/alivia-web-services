@@ -19,7 +19,7 @@ public final class TechnicalOrderResourceFromEntityAssembler {
 
     public static TechnicalOrderResource toResourceFromEntity(Appointment order) {
         return new TechnicalOrderResource(order.getId(), order.getDraftId(), order.getServiceType().name(),
-                order.getStatus().name(), order.slotId().value(), order.getScheduledDate(),
+                order.getIncidentId(), order.getStatus().name(), order.slotId().value(), order.getScheduledDate(),
                 order.getStartTime().format(TIME), order.getEndTime().format(TIME), order.getTechnicianId(),
                 order.getTechnicianName(), order.getContactName(), order.getContactPhone(), order.getDirections(),
                 order.getInstallationResult() == null ? null : order.getInstallationResult().name(),

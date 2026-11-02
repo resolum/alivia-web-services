@@ -78,6 +78,21 @@ class IncidentTest {
     }
 
     @Test
+    void answersWithTheExistingIncidentWhenTheDeviceAlreadyHasOne() {
+        when(appointments.existsByDraftIdAndServiceTypeAndInstallationResult(any(), any(), any())).thenReturn(true);
+        var existing = new Incident(HOUSEHOLD, "draft", 5L, 10L, "Sin respuesta", IncidentSeverity.LOW);
+        org.springframework.test.util.ReflectionTestUtils.setField(existing, "id", 42L);
+        when(incidents.findFirstByHouseholdIdAndDeviceIdAndStatusIn(HOUSEHOLD, 5L,
+                java.util.List.of(IncidentStatus.OPEN, IncidentStatus.SCHEDULED))).thenReturn(Optional.of(existing));
+
+        var conflict = assertThrows(com.resolum.alivia.operations.domain.exceptions.IncidentAlreadyOpen.class,
+                () -> commands.handle(create(10L)));
+
+        assertEquals(42L, conflict.getIncidentId());
+        verify(incidents, never()).save(any());
+    }
+
+    @Test
     void keepsOnlySecureEvidenceOfTheReporter() {
         var incident = new Incident(HOUSEHOLD, "draft", 5L, 10L, "El micrófono no responde", IncidentSeverity.HIGH);
         when(incidents.findById(3L)).thenReturn(Optional.of(incident));
