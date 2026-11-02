@@ -61,7 +61,7 @@ class MaintenanceOrderTest {
         when(hcm.fetchTechniciansWorkingOn(any())).thenReturn(List.of(ANA));
         when(appointments.findByScheduledDateAndStatus(any(), eq(AppointmentStatus.SCHEDULED))).thenReturn(List.of());
         when(appointments.saveAndFlush(any(Appointment.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        incident = new Incident("h-1", "draft", 5L, 10L, "El micrófono no responde", IncidentSeverity.HIGH);
+        incident = new Incident("h-1", "draft", 5L, 10L, "El micrófono no responde", IncidentSeverity.HIGH, Instant.now(CLOCK));
         ReflectionTestUtils.setField(incident, "id", 3L);
         when(incidents.findById(3L)).thenReturn(Optional.of(incident));
         var installation = new Appointment("draft", ServiceType.INSTALLATION, TOMORROW.minusDays(10), range(8, 12), 7L,

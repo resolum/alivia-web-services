@@ -76,7 +76,8 @@ public class IncidentsController {
     }
 
     @GetMapping("/{incidentId}")
-    @Operation(summary = "Consultar una incidencia con sus evidencias")
+    @Operation(summary = "Consultar una incidencia con sus evidencias",
+            description = "Incluye el historial de estados con la fecha de cada paso.")
     public IncidentResource get(@PathVariable Long incidentId, Authentication authentication) {
         return queryService.handle(new GetIncidentByIdQuery(incidentId))
                 .filter(incident -> isAdministrator(authentication) || incident.isReportedBy(userIdOf(authentication)))

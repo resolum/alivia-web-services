@@ -4,6 +4,7 @@ import com.resolum.alivia.operations.domain.exceptions.IncidentNotOpen;
 import com.resolum.alivia.operations.domain.model.valueobjects.Evidence;
 import com.resolum.alivia.operations.domain.model.valueobjects.IncidentSeverity;
 import com.resolum.alivia.operations.domain.model.valueobjects.IncidentStatus;
+import com.resolum.alivia.operations.domain.model.valueobjects.IncidentStatusChange;
 import com.resolum.alivia.operations.domain.model.valueobjects.MaintenanceReport;
 import com.resolum.alivia.operations.domain.model.valueobjects.TestResult;
 import com.resolum.alivia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
@@ -20,6 +21,7 @@ import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import lombok.Getter;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -60,12 +62,16 @@ public class Incident extends AuditableAbstractAggregateRoot<Incident> {
     @CollectionTable(name = "support_incident_evidences", joinColumns = @JoinColumn(name = "incident_id"))
     @OrderColumn(name = "evidence_order")
     private List<Evidence> evidences = new ArrayList<>();
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "support_incident_status_history", joinColumns = @JoinColumn(name = "incident_id"))
+    @OrderColumn(name = "change_order")
+    private List<IncidentStatusChange> statusHistory = new ArrayList<>();
 
     protected Incident() {
     }
 
     public Incident(String householdId, String draftId, Long deviceId, Long reportedBy, String description,
-                    IncidentSeverity severity) {
+                    IncidentSeverity severity, Instant reportedAt) {
         if (householdId == null || householdId.isBlank()) throw new IllegalArgumentException("The household is required.");
         if (draftId == null || draftId.isBlank()) throw new IllegalArgumentException("The contracting request is required.");
         if (deviceId == null) throw new IllegalArgumentException("The device is required.");
@@ -80,7 +86,7 @@ public class Incident extends AuditableAbstractAggregateRoot<Incident> {
         this.reportedBy = reportedBy;
         this.description = description.trim();
         this.severity = severity;
-        this.status = IncidentStatus.OPEN;
+        moveTo(IncidentStatus.OPEN, reportedAt);
     }
 
     /** Keeps the secure reference of a photo; a resolved incident takes no more evidence. */
@@ -94,25 +100,31 @@ public class Incident extends AuditableAbstractAggregateRoot<Incident> {
     }
 
     /** A maintenance visit was booked for it. */
-    public void scheduleMaintenance() {
+    public void scheduleMaintenance(Instant scheduledAt) {
         if (status != IncidentStatus.OPEN) throw new IncidentNotOpen();
-        this.status = IncidentStatus.SCHEDULED;
+        moveTo(IncidentStatus.SCHEDULED, scheduledAt);
     }
 
     /**
      * Applies the result of a maintenance visit: a passed test resolves the incident; a failed one opens it
      * again so another visit can be booked.
      */
-    public void applyMaintenanceResult(MaintenanceReport report) {
+    public void applyMaintenanceResult(MaintenanceReport report, Instant recordedAt) {
         if (status != IncidentStatus.SCHEDULED) {
             throw new IllegalArgumentException("Only an incident with a scheduled visit takes its result.");
         }
         if (report.testResult() == TestResult.PASSED) {
-            this.status = IncidentStatus.RESOLVED;
             this.resolution = report.resolution();
+            moveTo(IncidentStatus.RESOLVED, recordedAt);
         } else {
-            this.status = IncidentStatus.OPEN;
+            moveTo(IncidentStatus.OPEN, recordedAt);
         }
+    }
+
+    private void moveTo(IncidentStatus next, Instant changedAt) {
+        if (changedAt == null) throw new IllegalArgumentException("The time of the change is required.");
+        this.status = next;
+        statusHistory.add(new IncidentStatusChange(next, changedAt));
     }
 
     /** Still waiting for attention: a new report of the same device would duplicate it. */
@@ -126,5 +138,9 @@ public class Incident extends AuditableAbstractAggregateRoot<Incident> {
 
     public List<Evidence> getEvidences() {
         return List.copyOf(evidences);
+    }
+
+    public List<IncidentStatusChange> getStatusHistory() {
+        return List.copyOf(statusHistory);
     }
 }

@@ -212,7 +212,7 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
             throw new IllegalArgumentException("A maintenance visit must be booked between tomorrow and the next %d days."
                     .formatted(ServiceType.MAINTENANCE.daysAhead()));
         }
-        incident.scheduleMaintenance();
+        incident.scheduleMaintenance(Instant.now(clock));
         var installation = appointments.findFirstByDraftIdAndServiceTypeAndStatus(incident.getDraftId(),
                 ServiceType.INSTALLATION, AppointmentStatus.COMPLETED).orElseThrow(IncidentNotAllowed::new);
         var earliest = AppointmentQueryServiceImpl.firstBookableDate(clock);
@@ -243,7 +243,7 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
         order.completeMaintenance(report);
         var incident = incidents.findById(order.getIncidentId())
                 .orElseThrow(() -> new IncidentNotFound(order.getIncidentId()));
-        incident.applyMaintenanceResult(report);
+        incident.applyMaintenanceResult(report, Instant.now(clock));
         incidents.save(incident);
         return appointments.saveAndFlush(order);
     }

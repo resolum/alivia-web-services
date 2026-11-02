@@ -1,5 +1,6 @@
 package com.resolum.alivia.operations;
 
+import java.time.Instant;
 import com.resolum.alivia.operations.domain.exceptions.IncidentAlreadyOpen;
 import com.resolum.alivia.operations.domain.exceptions.IncidentNotAllowed;
 import com.resolum.alivia.operations.domain.model.aggregates.Incident;
@@ -38,6 +39,8 @@ class IncidentsControllerTest {
     private static final UsernamePasswordAuthenticationToken FAMILY = new UsernamePasswordAuthenticationToken("10", null,
             List.of(new SimpleGrantedAuthority("ROLE_CAREGIVER")));
 
+    private static final Instant NOW = Instant.parse("2026-11-02T15:00:00Z");
+
     private IncidentCommandService commands;
     private IncidentQueryService queries;
     private AppointmentCommandService orders;
@@ -54,7 +57,7 @@ class IncidentsControllerTest {
 
     @Test
     void createsOpenIncidentsAndReportsDuplicatesAndIneligibleAccounts() throws Exception {
-        var incident = new Incident("h-1", "draft", 5L, 10L, "El micrófono no responde", IncidentSeverity.HIGH);
+        var incident = new Incident("h-1", "draft", 5L, 10L, "El micrófono no responde", IncidentSeverity.HIGH, NOW);
         ReflectionTestUtils.setField(incident, "id", 3L);
         when(commands.handle(any(CreateIncidentCommand.class)))
                 .thenReturn(incident).thenThrow(new IncidentAlreadyOpen(3L)).thenThrow(new IncidentNotAllowed());
@@ -74,10 +77,24 @@ class IncidentsControllerTest {
 
     @Test
     void hidesIncidentsOfOtherAccounts() throws Exception {
-        var incident = new Incident("h-1", "draft", 5L, 11L, "Falla", IncidentSeverity.LOW);
+        var incident = new Incident("h-1", "draft", 5L, 11L, "Falla", IncidentSeverity.LOW, NOW);
         when(queries.handle(new GetIncidentByIdQuery(3L))).thenReturn(Optional.of(incident));
 
         mvc.perform(get("/api/v1/support-incidents/3").principal(FAMILY)).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void showsTheTimelineOfTheIncident() throws Exception {
+        var incident = new Incident("h-1", "draft", 5L, 10L, "Falla", IncidentSeverity.LOW, NOW);
+        ReflectionTestUtils.setField(incident, "id", 3L);
+        incident.scheduleMaintenance(NOW.plusSeconds(3600));
+        when(queries.handle(new GetIncidentByIdQuery(3L))).thenReturn(Optional.of(incident));
+
+        mvc.perform(get("/api/v1/support-incidents/3").principal(FAMILY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.statusHistory.length()").value(2))
+                .andExpect(jsonPath("$.statusHistory[0].status").value("OPEN"))
+                .andExpect(jsonPath("$.statusHistory[1].status").value("SCHEDULED"));
     }
 
     @Test

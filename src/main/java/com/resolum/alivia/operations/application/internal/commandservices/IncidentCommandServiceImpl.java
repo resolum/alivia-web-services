@@ -60,7 +60,7 @@ public class IncidentCommandServiceImpl implements IncidentCommandService {
                     throw new IncidentAlreadyOpen(existing.getId());
                 });
         return incidents.save(new Incident(householdId, draftId, command.deviceId(), command.userId(),
-                command.description(), command.severity()));
+                command.description(), command.severity(), Instant.now(clock)));
     }
 
     @Override

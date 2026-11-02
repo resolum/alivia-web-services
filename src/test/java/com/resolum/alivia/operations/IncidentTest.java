@@ -80,7 +80,7 @@ class IncidentTest {
     @Test
     void answersWithTheExistingIncidentWhenTheDeviceAlreadyHasOne() {
         when(appointments.existsByDraftIdAndServiceTypeAndInstallationResult(any(), any(), any())).thenReturn(true);
-        var existing = new Incident(HOUSEHOLD, "draft", 5L, 10L, "Sin respuesta", IncidentSeverity.LOW);
+        var existing = new Incident(HOUSEHOLD, "draft", 5L, 10L, "Sin respuesta", IncidentSeverity.LOW, Instant.now(CLOCK));
         org.springframework.test.util.ReflectionTestUtils.setField(existing, "id", 42L);
         when(incidents.findFirstByHouseholdIdAndDeviceIdAndStatusIn(HOUSEHOLD, 5L,
                 java.util.List.of(IncidentStatus.OPEN, IncidentStatus.SCHEDULED))).thenReturn(Optional.of(existing));
@@ -94,7 +94,7 @@ class IncidentTest {
 
     @Test
     void keepsOnlySecureEvidenceOfTheReporter() {
-        var incident = new Incident(HOUSEHOLD, "draft", 5L, 10L, "El micrófono no responde", IncidentSeverity.HIGH);
+        var incident = new Incident(HOUSEHOLD, "draft", 5L, 10L, "El micrófono no responde", IncidentSeverity.HIGH, Instant.now(CLOCK));
         when(incidents.findById(3L)).thenReturn(Optional.of(incident));
 
         commands.handle(new AttachEvidenceCommand(3L, 10L, PHOTO, "incidents/p1"));
