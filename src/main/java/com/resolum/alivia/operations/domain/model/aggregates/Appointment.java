@@ -2,31 +2,47 @@ package com.resolum.alivia.operations.domain.model.aggregates;
 
 import com.resolum.alivia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
 import com.resolum.alivia.shared.domain.model.valueobjects.TimeRange;
+import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotScheduled;
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
+import com.resolum.alivia.operations.domain.model.valueobjects.AssignmentReason;
+import com.resolum.alivia.operations.domain.model.valueobjects.AssignmentRecord;
+import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
+import com.resolum.alivia.operations.domain.model.valueobjects.SlotId;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Pattern;
 
 /**
- * Technical evaluation visit that the family books after the card is preauthorized.
+ * Technical order: a visit of a technician to the home of a contracting request, either the technical
+ * evaluation or the installation.
  *
- * <p>Unlike the Operations diagram, where the administrator assigns a technician later, the technician is
- * chosen at booking time from the ones whose work schedule covers the window, so the family sees who
- * will visit them.</p>
+ * <p>Unlike the Operations diagram, where the administrator assigns a technician later, a technician is
+ * reserved when the order is created, from the ones whose work schedule covers the block, so the block
+ * never takes more orders than technicians. The administrator can then choose another eligible technician,
+ * and when the responsible one stops being available the backend reassigns the order. Every change is kept
+ * in {@code assignments}.</p>
  *
- * <p>The unique constraints stop two families that confirm at the same instant from taking the same
- * technician and window, and a draft from booking twice; the command service turns the violation into
- * {@code AppointmentSlotTaken}. They cover canceled rows too, which is fine while appointments cannot be
- * canceled.</p>
+ * <p>The unique constraints stop two orders that are confirmed at the same instant from taking the same
+ * technician and window, and a request from having two orders of the same kind; the command service turns
+ * the violation into {@code SlotUnavailable}. They cover canceled rows too, which is fine while orders
+ * cannot be canceled.</p>
  */
 @Entity
 @Table(name = "appointments", indexes = {
@@ -34,7 +50,7 @@ import java.util.regex.Pattern;
 }, uniqueConstraints = {
         @UniqueConstraint(name = "uk_appointments_technician_window",
                 columnNames = {"technician_id", "scheduled_date", "start_time"}),
-        @UniqueConstraint(name = "uk_appointments_draft", columnNames = "draft_id")
+        @UniqueConstraint(name = "uk_appointments_draft_service", columnNames = {"draft_id", "service_type"})
 })
 @Getter
 public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
@@ -42,6 +58,9 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
 
     @Column(name = "draft_id", nullable = false, length = 36)
     private String draftId;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "service_type", nullable = false, length = 16)
+    private ServiceType serviceType;
     @Column(name = "scheduled_date", nullable = false)
     private LocalDate scheduledDate;
     @Column(name = "start_time", nullable = false)
@@ -61,19 +80,30 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private AppointmentStatus status;
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "appointment_assignments", joinColumns = @JoinColumn(name = "appointment_id"))
+    @OrderColumn(name = "assignment_order")
+    private List<AssignmentRecord> assignments = new ArrayList<>();
 
     protected Appointment() {
     }
 
+    /** Technical evaluation booked by the family, with the technician of the window they chose. */
     public Appointment(String draftId, LocalDate scheduledDate, TimeRange window, Long technicianId,
                        String technicianName, String contactName, String contactPhone, String directions) {
+        this(draftId, ServiceType.EVALUATION, scheduledDate, window, technicianId, technicianName, contactName,
+                contactPhone, directions, Instant.now());
+    }
+
+    public Appointment(String draftId, ServiceType serviceType, LocalDate scheduledDate, TimeRange window,
+                       Long technicianId, String technicianName, String contactName, String contactPhone,
+                       String directions, Instant bookedAt) {
         if (draftId == null || draftId.isBlank()) throw new IllegalArgumentException("The configuration draft is required.");
+        if (serviceType == null) throw new IllegalArgumentException("The service type is required.");
         if (scheduledDate == null || window == null || window.crossesMidnight()) {
             throw new IllegalArgumentException("A date and a window within the day are required.");
         }
-        if (technicianId == null || technicianName == null || technicianName.isBlank()) {
-            throw new IllegalArgumentException("The visit needs a technician.");
-        }
+        requireTechnician(technicianId, technicianName);
         if (contactName == null || contactName.isBlank() || contactName.trim().length() > 100) {
             throw new IllegalArgumentException("The name of the person who receives the visit is required.");
         }
@@ -83,22 +113,84 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
             throw new IllegalArgumentException("Directions cannot exceed 300 characters.");
         }
         this.draftId = draftId;
+        this.serviceType = serviceType;
         this.scheduledDate = scheduledDate;
         this.startTime = window.start();
         this.endTime = window.end();
-        this.technicianId = technicianId;
-        this.technicianName = technicianName.trim();
         this.contactName = contactName.trim();
         this.contactPhone = phone;
         this.directions = directions == null || directions.isBlank() ? null : directions.trim();
         this.status = AppointmentStatus.SCHEDULED;
+        record(technicianId, technicianName, AssignmentReason.BOOKED, null, bookedAt);
+    }
+
+    /**
+     * Makes another technician responsible for the order, keeping its block. The caller checks first that
+     * the technician works the whole window and has no other visit in it.
+     */
+    public void assignTechnician(Long newTechnicianId, String newTechnicianName, String note, Instant at) {
+        requireScheduled();
+        requireTechnician(newTechnicianId, newTechnicianName);
+        if (newTechnicianId.equals(technicianId)) {
+            throw new IllegalArgumentException("The technician is already responsible for this order.");
+        }
+        record(newTechnicianId, newTechnicianName, AssignmentReason.ASSIGNED, note, at);
+    }
+
+    /**
+     * Replaces a technician who stopped being available. The order keeps its block when {@code slot} is the
+     * current one, or moves to {@code slot} when nobody else could take the current one.
+     */
+    public void reassign(SlotId slot, Long newTechnicianId, String newTechnicianName, String reason, Instant at) {
+        requireScheduled();
+        requireTechnician(newTechnicianId, newTechnicianName);
+        if (slot == null || slot.window().duration().compareTo(serviceType.window()) != 0) {
+            throw new IllegalArgumentException("The new block must have the length of the order's window.");
+        }
+        if (newTechnicianId.equals(technicianId) && slot.equals(slotId())) {
+            throw new IllegalArgumentException("The reassignment must change the technician or the block.");
+        }
+        this.scheduledDate = slot.date();
+        this.startTime = slot.window().start();
+        this.endTime = slot.window().end();
+        record(newTechnicianId, newTechnicianName, AssignmentReason.REASSIGNED, reason, at);
     }
 
     public TimeRange window() {
         return new TimeRange(startTime, endTime);
     }
 
+    public SlotId slotId() {
+        return new SlotId(scheduledDate, window());
+    }
+
     public boolean isAttendedBy(Long candidateTechnicianId) {
         return status == AppointmentStatus.SCHEDULED && technicianId.equals(candidateTechnicianId);
+    }
+
+    public List<AssignmentRecord> getAssignments() {
+        return List.copyOf(assignments);
+    }
+
+    private void record(Long newTechnicianId, String newTechnicianName, AssignmentReason reason, String note,
+                        Instant at) {
+        var name = newTechnicianName.trim();
+        var cleanNote = note == null || note.isBlank() ? null : note.trim();
+        assignments.add(new AssignmentRecord(newTechnicianId, name, scheduledDate, startTime, endTime, reason,
+                cleanNote, at));
+        this.technicianId = newTechnicianId;
+        this.technicianName = name;
+    }
+
+    private void requireScheduled() {
+        if (status != AppointmentStatus.SCHEDULED) {
+            throw new TechnicalOrderNotScheduled();
+        }
+    }
+
+    private static void requireTechnician(Long id, String name) {
+        if (id == null || name == null || name.isBlank()) {
+            throw new IllegalArgumentException("The visit needs a technician.");
+        }
     }
 }
