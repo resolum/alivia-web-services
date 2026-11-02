@@ -26,6 +26,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class StripeWebhookTest {
@@ -106,7 +107,8 @@ class StripeWebhookTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("Stripe-Signature", "t=1,v1=invalid")
                         .content(PAYLOAD))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("invalid_stripe_webhook_signature"));
 
         when(events.insertIfAbsent("evt_test", "setup_intent.succeeded", PAYLOAD))
                 .thenThrow(new IllegalStateException("database unavailable"));
@@ -114,7 +116,8 @@ class StripeWebhookTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("Stripe-Signature", signedHeader(PAYLOAD))
                         .content(PAYLOAD))
-                .andExpect(status().isInternalServerError());
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("stripe_webhook_processing_failed"));
     }
 
     private String signedHeader(String payload) throws Exception {

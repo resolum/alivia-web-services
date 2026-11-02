@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bienvenido al equipo de Alivia</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f6fb;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6fb;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background-color:#ffffff;border-radius:10px;">
+          <tr>
+            <td style="padding:28px 32px 12px;font-family:Arial,Helvetica,sans-serif;font-size:20px;font-weight:bold;color:#0c307a;">ALIVIA <span style="font-size:13px;font-weight:normal;color:#5d687a;">| Red Asistencial</span></td>
+          </tr>
+          <tr>
+            <td style="padding:12px 32px 28px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#26344d;">
+              <h1 style="margin:0 0 14px;font-size:21px;color:#0a2c69;">Hola {{name}},</h1>
+              <p style="margin:0 0 22px;">Has sido registrado como <strong>{{role}}</strong> en Alivia. Para empezar a usar la plataforma, activa tu cuenta y crea tu contraseña desde el enlace inferior.</p>
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="border-radius:8px;background-color:#0c307a;">
+                    <a href="{{link}}" style="display:inline-block;padding:13px 24px;font-weight:bold;color:#ffffff;text-decoration:none;">Activar mi cuenta y crear contraseña</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:22px 0 0;padding:10px 12px;border-radius:8px;background-color:#eef1ff;font-size:13px;color:#33415a;">Este enlace expira en {{hours}} horas.</p>
+              <p style="margin:18px 0 0;font-size:13px;color:#5d687a;">Si el botón no funciona, copia este enlace en tu navegador:<br><a href="{{link}}" style="color:#0c307a;word-break:break-all;">{{link}}</a></p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 32px 28px;border-top:1px solid #e4e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:#5d687a;">Alivia nunca te pedirá tu contraseña por correo. Si no esperabas esta invitación, ignora este mensaje.</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

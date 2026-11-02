@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Objects;
 import java.util.Set;
+
 @Embeddable
 public record WeeklyPeriod(Set<DayOfWeek> days, TimeRange range) {
 
@@ -20,8 +21,7 @@ public record WeeklyPeriod(Set<DayOfWeek> days, TimeRange range) {
 
         if (days.isEmpty()) {
             throw new IllegalArgumentException(
-                    "Days cannot be empty."
-            );
+                    "Days cannot be empty.");
         }
 
         days = Set.copyOf(days);

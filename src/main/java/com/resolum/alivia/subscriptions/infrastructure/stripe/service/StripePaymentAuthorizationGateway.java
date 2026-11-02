@@ -26,8 +26,13 @@ public class StripePaymentAuthorizationGateway implements PaymentAuthorizationGa
         if (secretKey.isBlank()) throw new PreauthorizationUnavailable("Stripe no está configurado.");
         var params = PaymentIntentCreateParams.builder().setCustomer(customerId)
                 .setPaymentMethod(paymentMethodId).setAmount(amountInCents).setCurrency(currency.toLowerCase())
+                .addPaymentMethodType("card")
                 .setCaptureMethod(PaymentIntentCreateParams.CaptureMethod.MANUAL)
-                .setConfirm(true).setOffSession(true).addExpand("latest_charge").build();
+                .setConfirm(true)
+                .setDescription("Preautorización temporal de contratación Alivia")
+                .putMetadata("alivia_operation", "contract_preauthorization")
+                .putMetadata("alivia_request_id", key.toString())
+                .addExpand("latest_charge").build();
         try {
             var intent = new StripeClient(secretKey).paymentIntents().create(params,
                     RequestOptions.builder().setIdempotencyKey("preauthorization-" + key).build());
