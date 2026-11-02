@@ -2,6 +2,7 @@ package com.resolum.alivia.operations.infrastructure.persistence.jpa.repositorie
 
 import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
+import com.resolum.alivia.operations.domain.model.valueobjects.InstallationResult;
 import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -18,5 +19,8 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
     Optional<Appointment> findFirstByDraftIdAndServiceTypeAndStatus(String draftId, ServiceType serviceType,
                                                                     AppointmentStatus status);
 
-    List<Appointment> findByDraftIdInAndStatus(Collection<String> draftIds, AppointmentStatus status);
+    boolean existsByDraftIdAndServiceTypeAndInstallationResult(String draftId, ServiceType serviceType,
+                                                               InstallationResult installationResult);
+
+    List<Appointment> findByDraftIdInAndStatusIn(Collection<String> draftIds, Collection<AppointmentStatus> statuses);
 }

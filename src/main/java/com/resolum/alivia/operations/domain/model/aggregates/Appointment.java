@@ -6,6 +6,7 @@ import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotSchedule
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
 import com.resolum.alivia.operations.domain.model.valueobjects.AssignmentReason;
 import com.resolum.alivia.operations.domain.model.valueobjects.AssignmentRecord;
+import com.resolum.alivia.operations.domain.model.valueobjects.InstallationResult;
 import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
 import com.resolum.alivia.operations.domain.model.valueobjects.SlotId;
 import jakarta.persistence.CollectionTable;
@@ -80,6 +81,11 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private AppointmentStatus status;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "installation_result", length = 16)
+    private InstallationResult installationResult;
+    @Column(name = "completion_notes", length = 300)
+    private String completionNotes;
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "appointment_assignments", joinColumns = @JoinColumn(name = "appointment_id"))
     @OrderColumn(name = "assignment_order")
@@ -154,6 +160,22 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
         this.startTime = slot.window().start();
         this.endTime = slot.window().end();
         record(newTechnicianId, newTechnicianName, AssignmentReason.REASSIGNED, reason, at);
+    }
+
+    /**
+     * Closes an installation visit with its result. An approved installation puts the home in service, which
+     * is the condition for the family to report incidents.
+     */
+    public void recordInstallationResult(InstallationResult result, String notes) {
+        requireScheduled();
+        if (serviceType != ServiceType.INSTALLATION) {
+            throw new IllegalArgumentException("Only installation orders record an installation result.");
+        }
+        if (result == null) throw new IllegalArgumentException("The installation result is required.");
+        if (notes != null && notes.length() > 300) throw new IllegalArgumentException("Notes cannot exceed 300 characters.");
+        this.installationResult = result;
+        this.completionNotes = notes == null || notes.isBlank() ? null : notes.trim();
+        this.status = AppointmentStatus.COMPLETED;
     }
 
     public TimeRange window() {

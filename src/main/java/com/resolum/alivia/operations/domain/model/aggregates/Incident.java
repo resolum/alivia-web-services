@@ -1,4 +1,100 @@
 package com.resolum.alivia.operations.domain.model.aggregates;
 
-public class Incident {
+import com.resolum.alivia.operations.domain.model.valueobjects.Evidence;
+import com.resolum.alivia.operations.domain.model.valueobjects.IncidentSeverity;
+import com.resolum.alivia.operations.domain.model.valueobjects.IncidentStatus;
+import com.resolum.alivia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
+import jakarta.persistence.Table;
+import lombok.Getter;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * A failure that a family reports on a device of a home in service.
+ *
+ * <p>Only the account that holds the active subscription of the household can report it, and only once its
+ * installation was approved; the command service checks both before creating the incident. The draft id
+ * links the incident to the technical orders of that contracting request.</p>
+ */
+@Entity
+@Table(name = "support_incidents", indexes = {
+        @Index(name = "idx_support_incidents_household_device_status", columnList = "household_id,device_id,status")
+})
+@Getter
+public class Incident extends AuditableAbstractAggregateRoot<Incident> {
+    public static final int MAX_EVIDENCES = 5;
+
+    @Column(name = "household_id", nullable = false, length = 36)
+    private String householdId;
+    @Column(name = "draft_id", nullable = false, length = 36)
+    private String draftId;
+    @Column(name = "device_id", nullable = false)
+    private Long deviceId;
+    @Column(name = "reported_by", nullable = false)
+    private Long reportedBy;
+    @Column(nullable = false, length = 500)
+    private String description;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private IncidentSeverity severity;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private IncidentStatus status;
+    @Column(length = 500)
+    private String resolution;
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "support_incident_evidences", joinColumns = @JoinColumn(name = "incident_id"))
+    @OrderColumn(name = "evidence_order")
+    private List<Evidence> evidences = new ArrayList<>();
+
+    protected Incident() {
+    }
+
+    public Incident(String householdId, String draftId, Long deviceId, Long reportedBy, String description,
+                    IncidentSeverity severity) {
+        if (householdId == null || householdId.isBlank()) throw new IllegalArgumentException("The household is required.");
+        if (draftId == null || draftId.isBlank()) throw new IllegalArgumentException("The contracting request is required.");
+        if (deviceId == null) throw new IllegalArgumentException("The device is required.");
+        if (reportedBy == null) throw new IllegalArgumentException("The reporting account is required.");
+        if (description == null || description.isBlank() || description.trim().length() > 500) {
+            throw new IllegalArgumentException("Describe the failure in up to 500 characters.");
+        }
+        if (severity == null) throw new IllegalArgumentException("The severity is required.");
+        this.householdId = householdId.trim();
+        this.draftId = draftId;
+        this.deviceId = deviceId;
+        this.reportedBy = reportedBy;
+        this.description = description.trim();
+        this.severity = severity;
+        this.status = IncidentStatus.OPEN;
+    }
+
+    /** Keeps the secure reference of a photo; a resolved incident takes no more evidence. */
+    public void attachEvidence(Evidence evidence) {
+        if (evidence == null) throw new IllegalArgumentException("The evidence is required.");
+        if (status == IncidentStatus.RESOLVED) throw new IllegalArgumentException("A resolved incident takes no more evidence.");
+        if (evidences.size() >= MAX_EVIDENCES) {
+            throw new IllegalArgumentException("An incident takes up to %d photos.".formatted(MAX_EVIDENCES));
+        }
+        evidences.add(evidence);
+    }
+
+    public boolean isReportedBy(Long userId) {
+        return reportedBy.equals(userId);
+    }
+
+    public List<Evidence> getEvidences() {
+        return List.copyOf(evidences);
+    }
 }

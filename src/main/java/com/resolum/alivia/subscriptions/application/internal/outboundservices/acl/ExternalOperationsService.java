@@ -17,13 +17,17 @@ public class ExternalOperationsService {
         this.operationsContextFacade = operationsContextFacade;
     }
 
-    /** Stage of each request with a scheduled technical order; the others stay in request and payment. */
+    /**
+     * Stage of each request with a technical order; an approved installation completes the hiring. The others
+     * stay in request and payment.
+     */
     public Map<String, HiringStage> fetchTechnicalStages(Collection<String> draftIds) {
         return operationsContextFacade.fetchScheduledVisitsOfDrafts(draftIds).entrySet().stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, entry -> toStage(entry.getValue().serviceType())));
+                .collect(Collectors.toMap(Map.Entry::getKey, entry -> toStage(entry.getValue())));
     }
 
-    private static HiringStage toStage(String serviceType) {
-        return "INSTALLATION".equals(serviceType) ? HiringStage.INSTALLATION : HiringStage.TECHNICAL_EVALUATION;
+    private static HiringStage toStage(OperationsContextFacade.ScheduledVisit visit) {
+        if (visit.installationApproved()) return HiringStage.COMPLETED;
+        return "INSTALLATION".equals(visit.serviceType()) ? HiringStage.INSTALLATION : HiringStage.TECHNICAL_EVALUATION;
     }
 }

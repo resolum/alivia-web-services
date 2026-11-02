@@ -36,8 +36,9 @@ class HiringStageFromOperationsTest {
         var evaluated = draft();
         var installing = draft();
         var waiting = draft();
+        var done = draft();
         var drafts = mock(ConfigurationDraftRepository.class);
-        when(drafts.findAll(any(Sort.class))).thenReturn(List.of(evaluated, installing, waiting));
+        when(drafts.findAll(any(Sort.class))).thenReturn(List.of(evaluated, installing, waiting, done));
         var plans = mock(PlanQueryService.class);
         var plan = mock(Plan.class);
         when(plan.getName()).thenReturn("Plan Base");
@@ -46,8 +47,9 @@ class HiringStageFromOperationsTest {
                 BigDecimal.valueOf(99), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.valueOf(99)));
         var facade = mock(OperationsContextFacade.class);
         when(facade.fetchScheduledVisitsOfDrafts(any())).thenReturn(Map.of(
-                evaluated.getId(), new ScheduledVisit("EVALUATION", LocalDate.of(2026, 11, 5)),
-                installing.getId(), new ScheduledVisit("INSTALLATION", LocalDate.of(2026, 11, 9))));
+                evaluated.getId(), new ScheduledVisit("EVALUATION", LocalDate.of(2026, 11, 5), false),
+                installing.getId(), new ScheduledVisit("INSTALLATION", LocalDate.of(2026, 11, 9), false),
+                done.getId(), new ScheduledVisit("INSTALLATION", LocalDate.of(2026, 11, 3), true)));
         var service = new HiringRequestQueryServiceImpl(drafts, plans, new ExternalOperationsService(facade));
 
         var stages = service.handle(new GetHiringRequestsQuery(null)).stream()
@@ -56,6 +58,7 @@ class HiringStageFromOperationsTest {
         assertEquals(HiringStage.TECHNICAL_EVALUATION, stages.get(evaluated.getId()));
         assertEquals(HiringStage.INSTALLATION, stages.get(installing.getId()));
         assertEquals(HiringStage.REQUEST_AND_PAYMENT, stages.get(waiting.getId()));
+        assertEquals(HiringStage.COMPLETED, stages.get(done.getId()));
         assertEquals(1, service.handle(new GetHiringRequestsQuery(HiringStage.INSTALLATION)).size());
     }
 

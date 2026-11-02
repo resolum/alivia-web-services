@@ -16,6 +16,7 @@ import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
 import com.resolum.alivia.operations.domain.model.commands.AssignTechnicianCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateTechnicalOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.ReassignTechnicianCommand;
+import com.resolum.alivia.operations.domain.model.commands.RecordInstallationResultCommand;
 import com.resolum.alivia.operations.domain.model.commands.ScheduleAppointmentCommand;
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
 import com.resolum.alivia.operations.domain.model.valueobjects.AvailableBlock;
@@ -167,6 +168,14 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
         } catch (DataIntegrityViolationException exception) {
             throw new SlotUnavailable(alternatives(order.getServiceType(), earliestFor(order), order.slotId()));
         }
+    }
+
+    @Override
+    @Transactional
+    public Appointment handle(RecordInstallationResultCommand command) {
+        var order = appointments.findById(command.orderId()).orElseThrow(() -> new TechnicalOrderNotFound(command.orderId()));
+        order.recordInstallationResult(command.result(), command.notes());
+        return appointments.saveAndFlush(order);
     }
 
     private record Placement(SlotId slot, TechnicianAvailability technician) {

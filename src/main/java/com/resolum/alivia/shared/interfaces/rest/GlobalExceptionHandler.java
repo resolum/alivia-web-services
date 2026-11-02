@@ -31,6 +31,9 @@ import com.resolum.alivia.operations.domain.exceptions.AppointmentAlreadyExists;
 import com.resolum.alivia.operations.domain.exceptions.AppointmentSlotTaken;
 import com.resolum.alivia.operations.domain.exceptions.DraftNotReadyForAppointment;
 import com.resolum.alivia.operations.domain.exceptions.EvaluationRequiredForInstallation;
+import com.resolum.alivia.operations.domain.exceptions.IncidentAccessDenied;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotAllowed;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotFound;
 import com.resolum.alivia.operations.domain.exceptions.SlotUnavailable;
 import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderAlreadyExists;
 import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotFound;
@@ -114,6 +117,21 @@ public class GlobalExceptionHandler {
         problem.setProperty("alternatives", exception.getAlternatives().stream()
                 .map(TechnicalOrderResourceFromEntityAssembler::toResourceFromBlock).toList());
         return problem;
+    }
+
+    @ExceptionHandler(IncidentNotAllowed.class)
+    public ProblemDetail handleIncidentNotAllowed(IncidentNotAllowed exception) {
+        return problem(HttpStatus.FORBIDDEN, "incident_not_allowed", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(IncidentAccessDenied.class)
+    public ProblemDetail handleIncidentAccessDenied(IncidentAccessDenied exception) {
+        return problem(HttpStatus.FORBIDDEN, "incident_access_denied", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(IncidentNotFound.class)
+    public ProblemDetail handleIncidentNotFound(IncidentNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "incident_not_found", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(TechnicalOrderNotFound.class)
