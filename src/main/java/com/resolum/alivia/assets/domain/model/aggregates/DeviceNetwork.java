@@ -1,5 +1,6 @@
 package com.resolum.alivia.assets.domain.model.aggregates;
 
+import com.resolum.alivia.assets.domain.model.valueobjects.NetworkStatus;
 import com.resolum.alivia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
 import com.resolum.alivia.shared.domain.model.valueobjects.BusinessId;
 import com.resolum.alivia.shared.domain.model.valueobjects.InstallationId;
@@ -17,6 +18,8 @@ public class DeviceNetwork extends AuditableAbstractAggregateRoot<DeviceNetwork>
     @Embedded
     @JoinColumn(name = "installation_id")
     private InstallationId installationId;
+    @Enumerated(EnumType.STRING)
+    private NetworkStatus networkStatus;
    @OneToOne
    @JoinColumn(name = "microphone_edge")
     private Edge microphoneEdge;
@@ -46,23 +49,36 @@ public class DeviceNetwork extends AuditableAbstractAggregateRoot<DeviceNetwork>
        this.microphoneEdge= microphoneEdge;
        this.microphone= microphone;
        this.actuators=actuators;
+       this.networkStatus=  NetworkStatus.ACTIVE;
    }
 
    void addActuatorEdge(Edge actuatorEdge){
 
-    if (this.actuatorEdge ==null){
-
+    if (this.actuatorEdge ==null && networkStatus== NetworkStatus.ACTIVE){
+     this.actuatorEdge= actuatorEdge;
     }
 
+    else {
+        throw new IllegalStateException("Actuator edge already exists or network is not active.");
+    }
    }
    void addMicrophoneEdge(Edge microphoneEdge){
 
+        if (this.microphoneEdge ==null && networkStatus== NetworkStatus.ACTIVE){
+            this.microphoneEdge= microphoneEdge;
+        }
+        else {
+            throw new IllegalStateException("Microphone edge already exists or network is not active.");
+        }
    }
 
 
     void removeEdge(Long edgeId) {}
 
-   void removeDevice(Long deviceId){}
+   void removeDevice(Long deviceId){
+
+
+   }
 
 
 }
