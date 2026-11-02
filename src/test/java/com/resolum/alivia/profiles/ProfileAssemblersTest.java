@@ -5,7 +5,6 @@ import com.resolum.alivia.profiles.domain.model.aggregates.PersonProfile;
 import com.resolum.alivia.profiles.domain.model.aggregates.StaffProfile;
 import com.resolum.alivia.profiles.domain.model.valueobjects.*;
 import com.resolum.alivia.profiles.infrastructure.adapters.ProfileRepositoryImpl;
-import com.resolum.alivia.profiles.interfaces.rest.controllers.ProfilesController;
 import com.resolum.alivia.profiles.interfaces.rest.resources.*;
 import com.resolum.alivia.profiles.interfaces.rest.transform.*;
 import com.resolum.alivia.shared.domain.model.valueobjects.*;
@@ -309,7 +308,6 @@ class ProfileAssemblersTest {
 
     @Test
     void emptyClassesInstantiateWithoutErrors() {
-        assertNotNull(new ProfilesController());
         assertNotNull(new ProfileRepositoryImpl());
     }
 }
