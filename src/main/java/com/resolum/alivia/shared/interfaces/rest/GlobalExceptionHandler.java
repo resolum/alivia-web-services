@@ -46,8 +46,13 @@ import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailab
 import com.resolum.alivia.profiles.domain.exceptions.BusinessNameAlreadyExistsException;
 import com.resolum.alivia.profiles.domain.exceptions.BusinessProfileNotFoundException;
 import com.resolum.alivia.profiles.domain.exceptions.DniAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.DniNotEditableException;
 import com.resolum.alivia.profiles.domain.exceptions.EmailAddressAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.EmailNotEditableException;
+import com.resolum.alivia.profiles.domain.exceptions.HouseholdAccessDeniedException;
+import com.resolum.alivia.profiles.domain.exceptions.HouseholdNotFoundException;
 import com.resolum.alivia.profiles.domain.exceptions.LegalNameAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.OwnProfileNotFoundException;
 import com.resolum.alivia.profiles.domain.exceptions.PersonProfileNotFoundException;
 import com.resolum.alivia.profiles.domain.exceptions.RucAlreadyExistsException;
 import com.resolum.alivia.profiles.domain.exceptions.StaffProfileNotFoundException;
@@ -139,6 +144,36 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleBusinessProfileNotFound(BusinessProfileNotFoundException exception) {
         return problem(HttpStatus.NOT_FOUND, "business_profile_not_found",
                 "The business profile does not exist.", List.of());
+    }
+
+    @ExceptionHandler(OwnProfileNotFoundException.class)
+    public ProblemDetail handleOwnProfileNotFound(OwnProfileNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, "profile_not_found",
+                exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(EmailNotEditableException.class)
+    public ProblemDetail handleEmailNotEditable(EmailNotEditableException exception) {
+        return problem(HttpStatus.BAD_REQUEST, "email_not_editable",
+                exception.getMessage(), List.of(new ApiFieldError("email", "email_not_editable")));
+    }
+
+    @ExceptionHandler(DniNotEditableException.class)
+    public ProblemDetail handleDniNotEditable(DniNotEditableException exception) {
+        return problem(HttpStatus.BAD_REQUEST, "dni_not_editable",
+                exception.getMessage(), List.of(new ApiFieldError("dni", "dni_not_editable")));
+    }
+
+    @ExceptionHandler(HouseholdNotFoundException.class)
+    public ProblemDetail handleHouseholdNotFound(HouseholdNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, "household_not_found",
+                exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(HouseholdAccessDeniedException.class)
+    public ProblemDetail handleHouseholdAccessDenied(HouseholdAccessDeniedException exception) {
+        return problem(HttpStatus.FORBIDDEN, "household_access_denied",
+                exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(EmployeeNotInBusiness.class)
