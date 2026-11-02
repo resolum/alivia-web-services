@@ -16,6 +16,7 @@ import com.resolum.alivia.profiles.domain.exceptions.RucAlreadyExistsException;
 import com.resolum.alivia.profiles.domain.exceptions.StaffProfileNotFoundException;
 import com.resolum.alivia.profiles.domain.model.aggregates.BusinessProfile;
 import com.resolum.alivia.profiles.domain.model.aggregates.PersonProfile;
+import com.resolum.alivia.profiles.domain.model.aggregates.Profile;
 import com.resolum.alivia.profiles.domain.model.aggregates.StaffProfile;
 import com.resolum.alivia.profiles.domain.model.commands.CreateBusinessProfileCommand;
 import com.resolum.alivia.profiles.domain.model.commands.CreatePersonProfileCommand;
@@ -53,6 +54,7 @@ import com.resolum.alivia.shared.domain.model.valueobjects.Address;
 import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import com.resolum.alivia.shared.domain.model.valueobjects.PhoneNumber;
 import com.resolum.alivia.shared.domain.model.valueobjects.Photo;
+import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
 import com.resolum.alivia.shared.domain.model.valueobjects.WeeklyPeriod;
 
 import lombok.extern.slf4j.Slf4j;
@@ -123,6 +125,18 @@ public class ProfilesContextFacadeImpl implements ProfilesContextFacade {
     public Long createPersonProfile(String emailAddress, String photoUrl, String photoPublicId,
                                     String phoneNumber, String firstName, String lastName,
                                     String dni, LocalDate birthDate) {
+        return createPersonProfile(null, emailAddress, photoUrl, photoPublicId, phoneNumber,
+                firstName, lastName, dni, birthDate);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Transactional
+    public Long createPersonProfile(Long userId, String emailAddress, String photoUrl, String photoPublicId,
+                                    String phoneNumber, String firstName, String lastName,
+                                    String dni, LocalDate birthDate) {
         log.info("Creating person profile via ACL for email: {}", emailAddress);
         if (personProfileRepository != null) {
             var emailVo = new EmailAddress(emailAddress);
@@ -141,8 +155,10 @@ public class ProfilesContextFacadeImpl implements ProfilesContextFacade {
                     dniVo,
                     new BirthDate(birthDate)
             );
+            linkToUser(personProfile, userId);
             return personProfileRepository.save(personProfile).getId();
         }
+        // The fallback runs only when Profiles has no persistence repositories, so it cannot link the user.
         return createPersonProfileWithPhoto(
                 emailAddress, new byte[]{1}, "default.jpg", phoneNumber, firstName, lastName, dni, birthDate);
     }
@@ -168,6 +184,18 @@ public class ProfilesContextFacadeImpl implements ProfilesContextFacade {
     public Long createStaffProfile(String emailAddress, String photoUrl, String photoPublicId,
                                    String phoneNumber, String firstName, String lastName,
                                    String dni, LocalDate birthDate) {
+        return createStaffProfile(null, emailAddress, photoUrl, photoPublicId, phoneNumber,
+                firstName, lastName, dni, birthDate);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Transactional
+    public Long createStaffProfile(Long userId, String emailAddress, String photoUrl, String photoPublicId,
+                                   String phoneNumber, String firstName, String lastName,
+                                   String dni, LocalDate birthDate) {
         log.info("Creating staff profile via ACL for email: {}", emailAddress);
         if (staffProfileRepository != null) {
             var emailVo = new EmailAddress(emailAddress);
@@ -186,8 +214,10 @@ public class ProfilesContextFacadeImpl implements ProfilesContextFacade {
                     dniVo,
                     new BirthDate(birthDate)
             );
+            linkToUser(staffProfile, userId);
             return staffProfileRepository.save(staffProfile).getId();
         }
+        // The fallback runs only when Profiles has no persistence repositories, so it cannot link the user.
         return createStaffProfileWithPhoto(
                 emailAddress, new byte[]{1}, "default.jpg", phoneNumber, firstName, lastName, dni, birthDate);
     }
@@ -203,6 +233,12 @@ public class ProfilesContextFacadeImpl implements ProfilesContextFacade {
         Long profileId = staffProfileCommandService.handle(command);
         log.info("Staff profile created via ACL with id: {}", profileId);
         return profileId;
+    }
+
+    private static void linkToUser(Profile profile, Long userId) {
+        if (userId != null) {
+            profile.linkToUser(new UserId(userId));
+        }
     }
 
     @Override

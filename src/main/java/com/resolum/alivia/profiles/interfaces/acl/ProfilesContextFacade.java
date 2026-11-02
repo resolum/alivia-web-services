@@ -20,7 +20,26 @@ public interface ProfilesContextFacade {
     }
 
     /**
-     * Creates a new person profile.
+     * Creates a new person profile linked to an IAM user.
+     *
+     * @param userId        the IAM user that owns the profile, or {@code null} when the profile
+     *                      is not created from a user registration
+     * @param emailAddress  the person's email address
+     * @param photoUrl      the photo URL
+     * @param photoPublicId the photo public identifier
+     * @param phoneNumber   the contact phone number
+     * @param firstName     the first name
+     * @param lastName      the last name
+     * @param dni           the national identity document number
+     * @param birthDate     the birth date
+     * @return the identifier of the created person profile
+     */
+    Long createPersonProfile(Long userId, String emailAddress, String photoUrl, String photoPublicId,
+                             String phoneNumber, String firstName, String lastName,
+                             String dni, LocalDate birthDate);
+
+    /**
+     * Creates a new person profile without an IAM user.
      *
      * @param emailAddress  the person's email address
      * @param photoUrl      the photo URL
@@ -41,7 +60,26 @@ public interface ProfilesContextFacade {
                                      String dni, LocalDate birthDate);
 
     /**
-     * Creates a new staff profile.
+     * Creates a new staff profile linked to an IAM user.
+     *
+     * @param userId        the IAM user that owns the profile, or {@code null} when the profile
+     *                      is not created from a user registration
+     * @param emailAddress  the staff member's email address
+     * @param photoUrl      the photo URL
+     * @param photoPublicId the photo public identifier
+     * @param phoneNumber   the contact phone number
+     * @param firstName     the first name
+     * @param lastName      the last name
+     * @param dni           the national identity document number
+     * @param birthDate     the birth date
+     * @return the identifier of the created staff profile
+     */
+    Long createStaffProfile(Long userId, String emailAddress, String photoUrl, String photoPublicId,
+                            String phoneNumber, String firstName, String lastName,
+                            String dni, LocalDate birthDate);
+
+    /**
+     * Creates a new staff profile without an IAM user.
      *
      * @param emailAddress  the staff member's email address
      * @param photoUrl      the photo URL
