@@ -22,5 +22,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
     boolean existsByDraftIdAndServiceTypeAndInstallationResult(String draftId, ServiceType serviceType,
                                                                InstallationResult installationResult);
 
+    List<Appointment> findByIncidentIdInOrderByScheduledDateAscStartTimeAsc(Collection<Long> incidentIds);
+
     List<Appointment> findByDraftIdInAndStatusIn(Collection<String> draftIds, Collection<AppointmentStatus> statuses);
 }

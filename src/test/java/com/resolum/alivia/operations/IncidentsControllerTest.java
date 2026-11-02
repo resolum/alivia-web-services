@@ -1,6 +1,13 @@
 package com.resolum.alivia.operations;
 
+import java.time.LocalTime;
+import java.time.LocalDate;
 import java.time.Instant;
+import com.resolum.alivia.shared.domain.model.valueobjects.TimeRange;
+import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
+import com.resolum.alivia.operations.domain.model.queries.GetMaintenanceOrdersByIncidentIdsQuery;
+import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
+import com.resolum.alivia.operations.domain.services.AppointmentQueryService;
 import com.resolum.alivia.operations.domain.exceptions.IncidentAlreadyOpen;
 import com.resolum.alivia.operations.domain.exceptions.IncidentNotAllowed;
 import com.resolum.alivia.operations.domain.model.aggregates.Incident;
@@ -44,6 +51,7 @@ class IncidentsControllerTest {
     private IncidentCommandService commands;
     private IncidentQueryService queries;
     private AppointmentCommandService orders;
+    private AppointmentQueryService appointmentQueries;
     private MockMvc mvc;
 
     @BeforeEach
@@ -51,7 +59,8 @@ class IncidentsControllerTest {
         commands = mock(IncidentCommandService.class);
         queries = mock(IncidentQueryService.class);
         orders = mock(AppointmentCommandService.class);
-        mvc = MockMvcBuilders.standaloneSetup(new IncidentsController(commands, queries), new MaintenanceOrdersController(orders))
+        appointmentQueries = mock(AppointmentQueryService.class);
+        mvc = MockMvcBuilders.standaloneSetup(new IncidentsController(commands, queries, appointmentQueries), new MaintenanceOrdersController(orders))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
 
@@ -84,17 +93,22 @@ class IncidentsControllerTest {
     }
 
     @Test
-    void showsTheTimelineOfTheIncident() throws Exception {
+    void showsTheTimelineAndTheVisitsOfTheIncident() throws Exception {
         var incident = new Incident("h-1", "draft", 5L, 10L, "Falla", IncidentSeverity.LOW, NOW);
         ReflectionTestUtils.setField(incident, "id", 3L);
         incident.scheduleMaintenance(NOW.plusSeconds(3600));
+        var visit = new Appointment("draft", ServiceType.MAINTENANCE, 3L, LocalDate.of(2026, 11, 3),
+                new TimeRange(LocalTime.of(8, 0), LocalTime.of(10, 0)), 7L, "Ana Pérez", "María", "984123456", null, NOW);
         when(queries.handle(new GetIncidentByIdQuery(3L))).thenReturn(Optional.of(incident));
+        when(appointmentQueries.handle(new GetMaintenanceOrdersByIncidentIdsQuery(List.of(3L)))).thenReturn(List.of(visit));
 
         mvc.perform(get("/api/v1/support-incidents/3").principal(FAMILY))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SCHEDULED"))
                 .andExpect(jsonPath("$.statusHistory.length()").value(2))
-                .andExpect(jsonPath("$.statusHistory[0].status").value("OPEN"))
-                .andExpect(jsonPath("$.statusHistory[1].status").value("SCHEDULED"));
+                .andExpect(jsonPath("$.statusHistory[1].status").value("SCHEDULED"))
+                .andExpect(jsonPath("$.visits[0].technicianName").value("Ana Pérez"))
+                .andExpect(jsonPath("$.visits[0].scheduledDate").value("2026-11-03"));
     }
 
     @Test
