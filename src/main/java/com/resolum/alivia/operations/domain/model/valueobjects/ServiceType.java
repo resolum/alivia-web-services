@@ -10,11 +10,13 @@ import java.time.Duration;
  * a morning or an afternoon, so it books four hours.</p>
  *
  * <p>{@code daysAhead} is how far ahead the order can be booked, counted from tomorrow. The evaluation
- * must happen while the card hold lasts (seven days); the installation follows it, within two weeks.</p>
+ * must happen while the card hold lasts (seven days); the installation follows it, within two weeks. A
+ * maintenance visit attends an incident of a home in service, so it is booked within the next week.</p>
  */
 public enum ServiceType {
     EVALUATION(Duration.ofHours(2), 7),
-    INSTALLATION(Duration.ofHours(4), 14);
+    INSTALLATION(Duration.ofHours(4), 14),
+    MAINTENANCE(Duration.ofHours(2), 7);
 
     private final Duration window;
     private final int daysAhead;

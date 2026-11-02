@@ -15,6 +15,7 @@ import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus
 import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
 import com.resolum.alivia.operations.domain.model.valueobjects.TechnicianAvailability;
 import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.AppointmentRepository;
+import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.IncidentPersistenceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -47,7 +48,7 @@ class AppointmentServicesTest {
         appointments = mock(AppointmentRepository.class);
         hcm = mock(ExternalHcmService.class);
         subscriptions = mock(ExternalSubscriptionsService.class);
-        commands = new AppointmentCommandServiceImpl(appointments, hcm, subscriptions, CLOCK);
+        commands = new AppointmentCommandServiceImpl(appointments, mock(IncidentPersistenceRepository.class), hcm, subscriptions, CLOCK);
         queries = new AppointmentQueryServiceImpl(appointments, hcm, CLOCK);
         when(hcm.fetchTechniciansWorkingOn(any())).thenReturn(List.of());
         when(hcm.fetchTechniciansWorkingOn(TOMORROW)).thenReturn(List.of(ANA));

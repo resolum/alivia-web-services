@@ -3,6 +3,7 @@ package com.resolum.alivia.operations.application.internal.queryservices;
 import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalHcmService;
 import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
 import com.resolum.alivia.operations.domain.model.queries.GetAvailableSlotsQuery;
+import com.resolum.alivia.operations.domain.model.queries.GetMaintenanceOrdersByIncidentIdsQuery;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalAvailabilityQuery;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalOrderByIdQuery;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalOrdersQuery;
@@ -71,6 +72,13 @@ public class AppointmentQueryServiceImpl implements AppointmentQueryService {
                 .filter(order -> query.draftId() == null || order.getDraftId().equals(query.draftId()))
                 .sorted(Comparator.comparing(Appointment::getScheduledDate).thenComparing(Appointment::getStartTime))
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Appointment> handle(GetMaintenanceOrdersByIncidentIdsQuery query) {
+        if (query.incidentIds() == null || query.incidentIds().isEmpty()) return List.of();
+        return appointments.findByIncidentIdInOrderByScheduledDateAscStartTimeAsc(query.incidentIds());
     }
 
     @Override

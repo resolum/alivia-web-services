@@ -6,11 +6,14 @@ import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotSchedule
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
 import com.resolum.alivia.operations.domain.model.valueobjects.AssignmentReason;
 import com.resolum.alivia.operations.domain.model.valueobjects.AssignmentRecord;
+import com.resolum.alivia.operations.domain.model.valueobjects.InstallationResult;
+import com.resolum.alivia.operations.domain.model.valueobjects.MaintenanceReport;
 import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
 import com.resolum.alivia.operations.domain.model.valueobjects.SlotId;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -39,18 +42,21 @@ import java.util.regex.Pattern;
  * and when the responsible one stops being available the backend reassigns the order. Every change is kept
  * in {@code assignments}.</p>
  *
- * <p>The unique constraints stop two orders that are confirmed at the same instant from taking the same
- * technician and window, and a request from having two orders of the same kind; the command service turns
- * the violation into {@code SlotUnavailable}. They cover canceled rows too, which is fine while orders
- * cannot be canceled.</p>
+ * <p>A maintenance order attends an incident of a home in service ({@code incidentId}); evaluation and
+ * installation orders have none.</p>
+ *
+ * <p>The unique constraint stops two orders that are confirmed at the same instant from taking the same
+ * technician and window; the command service turns the violation into {@code SlotUnavailable}. It covers
+ * canceled rows too, which is fine while orders cannot be canceled. A request may have several maintenance
+ * orders over time, so the command service checks that it has a single scheduled order of each contracting
+ * kind.</p>
  */
 @Entity
 @Table(name = "appointments", indexes = {
         @Index(name = "idx_appointments_date_status", columnList = "scheduled_date,status")
 }, uniqueConstraints = {
         @UniqueConstraint(name = "uk_appointments_technician_window",
-                columnNames = {"technician_id", "scheduled_date", "start_time"}),
-        @UniqueConstraint(name = "uk_appointments_draft_service", columnNames = {"draft_id", "service_type"})
+                columnNames = {"technician_id", "scheduled_date", "start_time"})
 })
 @Getter
 public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
@@ -61,6 +67,8 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
     @Enumerated(EnumType.STRING)
     @Column(name = "service_type", nullable = false, length = 16)
     private ServiceType serviceType;
+    @Column(name = "incident_id")
+    private Long incidentId;
     @Column(name = "scheduled_date", nullable = false)
     private LocalDate scheduledDate;
     @Column(name = "start_time", nullable = false)
@@ -80,6 +88,13 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private AppointmentStatus status;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "installation_result", length = 16)
+    private InstallationResult installationResult;
+    @Column(name = "completion_notes", length = 300)
+    private String completionNotes;
+    @Embedded
+    private MaintenanceReport maintenanceReport;
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "appointment_assignments", joinColumns = @JoinColumn(name = "appointment_id"))
     @OrderColumn(name = "assignment_order")
@@ -98,8 +113,18 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
     public Appointment(String draftId, ServiceType serviceType, LocalDate scheduledDate, TimeRange window,
                        Long technicianId, String technicianName, String contactName, String contactPhone,
                        String directions, Instant bookedAt) {
+        this(draftId, serviceType, null, scheduledDate, window, technicianId, technicianName, contactName,
+                contactPhone, directions, bookedAt);
+    }
+
+    public Appointment(String draftId, ServiceType serviceType, Long incidentId, LocalDate scheduledDate,
+                       TimeRange window, Long technicianId, String technicianName, String contactName,
+                       String contactPhone, String directions, Instant bookedAt) {
         if (draftId == null || draftId.isBlank()) throw new IllegalArgumentException("The configuration draft is required.");
         if (serviceType == null) throw new IllegalArgumentException("The service type is required.");
+        if ((serviceType == ServiceType.MAINTENANCE) != (incidentId != null)) {
+            throw new IllegalArgumentException("Only maintenance orders attend an incident, and they always do.");
+        }
         if (scheduledDate == null || window == null || window.crossesMidnight()) {
             throw new IllegalArgumentException("A date and a window within the day are required.");
         }
@@ -114,6 +139,7 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
         }
         this.draftId = draftId;
         this.serviceType = serviceType;
+        this.incidentId = incidentId;
         this.scheduledDate = scheduledDate;
         this.startTime = window.start();
         this.endTime = window.end();
@@ -154,6 +180,36 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
         this.startTime = slot.window().start();
         this.endTime = slot.window().end();
         record(newTechnicianId, newTechnicianName, AssignmentReason.REASSIGNED, reason, at);
+    }
+
+    /**
+     * Closes an installation visit with its result. An approved installation puts the home in service, which
+     * is the condition for the family to report incidents.
+     */
+    public void recordInstallationResult(InstallationResult result, String notes) {
+        requireScheduled();
+        if (serviceType != ServiceType.INSTALLATION) {
+            throw new IllegalArgumentException("Only installation orders record an installation result.");
+        }
+        if (result == null) throw new IllegalArgumentException("The installation result is required.");
+        if (notes != null && notes.length() > 300) throw new IllegalArgumentException("Notes cannot exceed 300 characters.");
+        this.installationResult = result;
+        this.completionNotes = notes == null || notes.isBlank() ? null : notes.trim();
+        this.status = AppointmentStatus.COMPLETED;
+    }
+
+    /**
+     * Closes a maintenance visit with the technician's report. The report is validated before anything
+     * changes, so a report without its test result leaves the order scheduled.
+     */
+    public void completeMaintenance(MaintenanceReport report) {
+        requireScheduled();
+        if (serviceType != ServiceType.MAINTENANCE) {
+            throw new IllegalArgumentException("Only maintenance orders record a maintenance report.");
+        }
+        if (report == null) throw new IllegalArgumentException("The maintenance report is required.");
+        this.maintenanceReport = report;
+        this.status = AppointmentStatus.COMPLETED;
     }
 
     public TimeRange window() {

@@ -4,6 +4,7 @@ import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotFound;
 import com.resolum.alivia.operations.domain.model.commands.AssignTechnicianCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateTechnicalOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.ReassignTechnicianCommand;
+import com.resolum.alivia.operations.domain.model.commands.RecordInstallationResultCommand;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalOrderByIdQuery;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalOrdersQuery;
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
@@ -13,6 +14,7 @@ import com.resolum.alivia.operations.domain.services.AppointmentCommandService;
 import com.resolum.alivia.operations.domain.services.AppointmentQueryService;
 import com.resolum.alivia.operations.interfaces.rest.resources.AssignTechnicianResource;
 import com.resolum.alivia.operations.interfaces.rest.resources.CreateTechnicalOrderResource;
+import com.resolum.alivia.operations.interfaces.rest.resources.InstallationResultResource;
 import com.resolum.alivia.operations.interfaces.rest.resources.ReassignTechnicianResource;
 import com.resolum.alivia.operations.interfaces.rest.resources.TechnicalOrderResource;
 import com.resolum.alivia.operations.interfaces.rest.transform.TechnicalOrderResourceFromEntityAssembler;
@@ -95,6 +97,16 @@ public class TechnicalOrdersController {
     public TechnicalOrderResource reassign(@PathVariable Long orderId,
                                            @Valid @RequestBody ReassignTechnicianResource resource) {
         var order = commandService.handle(new ReassignTechnicianCommand(orderId, resource.reason()));
+        return TechnicalOrderResourceFromEntityAssembler.toResourceFromEntity(order);
+    }
+
+    @PostMapping(value = "/{orderId}/installation-result", consumes = APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'TECHNICIAN')")
+    @Operation(summary = "Cerrar la orden de instalación como aprobada o rechazada",
+            description = "Una instalación aprobada deja el hogar en servicio: desde entonces la familia puede reportar incidencias.")
+    public TechnicalOrderResource recordInstallationResult(@PathVariable Long orderId,
+                                                           @Valid @RequestBody InstallationResultResource resource) {
+        var order = commandService.handle(new RecordInstallationResultCommand(orderId, resource.result(), resource.notes()));
         return TechnicalOrderResourceFromEntityAssembler.toResourceFromEntity(order);
     }
 }

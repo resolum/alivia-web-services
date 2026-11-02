@@ -2,6 +2,7 @@ package com.resolum.alivia.operations.domain.services;
 
 import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
 import com.resolum.alivia.operations.domain.model.queries.GetAvailableSlotsQuery;
+import com.resolum.alivia.operations.domain.model.queries.GetMaintenanceOrdersByIncidentIdsQuery;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalAvailabilityQuery;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalOrderByIdQuery;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalOrdersQuery;
@@ -19,4 +20,6 @@ public interface AppointmentQueryService {
     List<Appointment> handle(GetTechnicalOrdersQuery query);
 
     Optional<Appointment> handle(GetTechnicalOrderByIdQuery query);
+
+    List<Appointment> handle(GetMaintenanceOrdersByIncidentIdsQuery query);
 }

@@ -3,9 +3,11 @@ package com.resolum.alivia.operations.interfaces.rest.transform;
 import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
 import com.resolum.alivia.operations.domain.model.valueobjects.AssignmentRecord;
 import com.resolum.alivia.operations.domain.model.valueobjects.AvailableBlock;
+import com.resolum.alivia.operations.domain.model.valueobjects.MaintenanceReport;
 import com.resolum.alivia.operations.domain.model.valueobjects.SlotId;
 import com.resolum.alivia.shared.domain.model.valueobjects.TimeRange;
 import com.resolum.alivia.operations.interfaces.rest.resources.AssignmentRecordResource;
+import com.resolum.alivia.operations.interfaces.rest.resources.MaintenanceReportResource;
 import com.resolum.alivia.operations.interfaces.rest.resources.TechnicalAvailabilityResource;
 import com.resolum.alivia.operations.interfaces.rest.resources.TechnicalOrderResource;
 
@@ -19,9 +21,11 @@ public final class TechnicalOrderResourceFromEntityAssembler {
 
     public static TechnicalOrderResource toResourceFromEntity(Appointment order) {
         return new TechnicalOrderResource(order.getId(), order.getDraftId(), order.getServiceType().name(),
-                order.getStatus().name(), order.slotId().value(), order.getScheduledDate(),
+                order.getIncidentId(), order.getStatus().name(), order.slotId().value(), order.getScheduledDate(),
                 order.getStartTime().format(TIME), order.getEndTime().format(TIME), order.getTechnicianId(),
                 order.getTechnicianName(), order.getContactName(), order.getContactPhone(), order.getDirections(),
+                order.getInstallationResult() == null ? null : order.getInstallationResult().name(),
+                toResource(order.getMaintenanceReport()),
                 order.getAssignments().stream().map(TechnicalOrderResourceFromEntityAssembler::toResource).toList());
     }
 
@@ -29,6 +33,11 @@ public final class TechnicalOrderResourceFromEntityAssembler {
         var slot = block.slotId();
         return new TechnicalAvailabilityResource(slot.value(), block.serviceType().name(), slot.date(),
                 slot.window().start().format(TIME), slot.window().end().format(TIME), block.capacity());
+    }
+
+    private static MaintenanceReportResource toResource(MaintenanceReport report) {
+        return report == null ? null : new MaintenanceReportResource(report.diagnosis(), report.maintenancePerformed(),
+                report.testResult().name(), report.resolution());
     }
 
     private static AssignmentRecordResource toResource(AssignmentRecord record) {

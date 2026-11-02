@@ -25,15 +25,15 @@ class OperationsContextFacadeTest {
     void reportsTheFurthestScheduledVisitOfEachRequest() {
         var appointments = mock(AppointmentRepository.class);
         var ids = List.of("a", "b", "c");
-        when(appointments.findByDraftIdInAndStatus(ids, AppointmentStatus.SCHEDULED)).thenReturn(List.of(
+        when(appointments.findByDraftIdInAndStatusIn(ids, List.of(AppointmentStatus.SCHEDULED, AppointmentStatus.COMPLETED))).thenReturn(List.of(
                 order("a", ServiceType.EVALUATION, DAY, 8), order("b", ServiceType.INSTALLATION, DAY.plusDays(2), 8),
                 order("b", ServiceType.EVALUATION, DAY, 10)));
         var facade = new OperationsContextFacadeImpl(appointments);
 
         var visits = facade.fetchScheduledVisitsOfDrafts(ids);
 
-        assertEquals(Map.of("a", new ScheduledVisit("EVALUATION", DAY),
-                "b", new ScheduledVisit("INSTALLATION", DAY.plusDays(2))), visits);
+        assertEquals(Map.of("a", new ScheduledVisit("EVALUATION", DAY, false),
+                "b", new ScheduledVisit("INSTALLATION", DAY.plusDays(2), false)), visits);
         assertTrue(facade.fetchScheduledVisitsOfDrafts(List.of()).isEmpty());
     }
 
