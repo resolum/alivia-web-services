@@ -83,7 +83,7 @@ class IncidentTest {
         var existing = new Incident(HOUSEHOLD, "draft", 5L, 10L, "Sin respuesta", IncidentSeverity.LOW, Instant.now(CLOCK));
         org.springframework.test.util.ReflectionTestUtils.setField(existing, "id", 42L);
         when(incidents.findFirstByHouseholdIdAndDeviceIdAndStatusIn(HOUSEHOLD, 5L,
-                java.util.List.of(IncidentStatus.OPEN, IncidentStatus.SCHEDULED))).thenReturn(Optional.of(existing));
+                java.util.List.of(IncidentStatus.OPEN, IncidentStatus.SCHEDULED, IncidentStatus.IN_PROGRESS))).thenReturn(Optional.of(existing));
 
         var conflict = assertThrows(com.resolum.alivia.operations.domain.exceptions.IncidentAlreadyOpen.class,
                 () -> commands.handle(create(10L)));

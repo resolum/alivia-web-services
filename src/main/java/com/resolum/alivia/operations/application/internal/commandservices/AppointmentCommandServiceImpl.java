@@ -14,11 +14,13 @@ import com.resolum.alivia.operations.domain.exceptions.IncidentNotFound;
 import com.resolum.alivia.operations.domain.exceptions.SlotUnavailable;
 import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderAlreadyExists;
 import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotFound;
+import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotScheduled;
 import com.resolum.alivia.operations.domain.exceptions.TechnicianNotEligible;
 import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
 import com.resolum.alivia.operations.domain.model.commands.AssignTechnicianCommand;
 import com.resolum.alivia.operations.domain.model.commands.CompleteMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateMaintenanceOrderCommand;
+import com.resolum.alivia.operations.domain.model.commands.StartMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateTechnicalOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.ReassignTechnicianCommand;
 import com.resolum.alivia.operations.domain.model.commands.RecordInstallationResultCommand;
@@ -228,6 +230,25 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
         } catch (DataIntegrityViolationException exception) {
             throw new SlotUnavailable(alternatives(ServiceType.MAINTENANCE, earliest, slot));
         }
+    }
+
+    /**
+     * The technician arrived for a scheduled maintenance visit: its incident moves to IN_PROGRESS. The order
+     * stays scheduled until its report is recorded.
+     */
+    @Override
+    @Transactional
+    public Appointment handle(StartMaintenanceOrderCommand command) {
+        var order = appointments.findById(command.orderId()).orElseThrow(() -> new TechnicalOrderNotFound(command.orderId()));
+        if (order.getServiceType() != ServiceType.MAINTENANCE) {
+            throw new IllegalArgumentException("Only maintenance orders are attended for an incident.");
+        }
+        if (order.getStatus() != AppointmentStatus.SCHEDULED) throw new TechnicalOrderNotScheduled();
+        var incident = incidents.findById(order.getIncidentId())
+                .orElseThrow(() -> new IncidentNotFound(order.getIncidentId()));
+        incident.startAttention(Instant.now(clock));
+        incidents.save(incident);
+        return order;
     }
 
     /**

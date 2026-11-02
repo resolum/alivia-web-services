@@ -2,6 +2,7 @@ package com.resolum.alivia.operations.interfaces.rest.controllers;
 
 import com.resolum.alivia.operations.domain.model.commands.CompleteMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateMaintenanceOrderCommand;
+import com.resolum.alivia.operations.domain.model.commands.StartMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.valueobjects.SlotId;
 import com.resolum.alivia.operations.domain.services.AppointmentCommandService;
 import com.resolum.alivia.operations.interfaces.rest.resources.CompleteMaintenanceOrderResource;
@@ -43,6 +44,16 @@ public class MaintenanceOrdersController {
         var order = commandService.handle(new CreateMaintenanceOrderCommand(resource.incidentId(),
                 SlotId.parse(resource.slotId()), IncidentsController.userIdOf(authentication),
                 IncidentsController.isAdministrator(authentication)));
+        return TechnicalOrderResourceFromEntityAssembler.toResourceFromEntity(order);
+    }
+
+    @PostMapping("/{orderId}/start")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'TECHNICIAN')")
+    @Operation(summary = "Iniciar la atención de la visita de mantenimiento",
+            description = "El técnico llegó al hogar: la incidencia pasa a IN_PROGRESS (En atención). Solo una "
+                    + "orden de mantenimiento SCHEDULED de una incidencia SCHEDULED; si no, responde 409.")
+    public TechnicalOrderResource start(@PathVariable Long orderId) {
+        var order = commandService.handle(new StartMaintenanceOrderCommand(orderId));
         return TechnicalOrderResourceFromEntityAssembler.toResourceFromEntity(order);
     }
 

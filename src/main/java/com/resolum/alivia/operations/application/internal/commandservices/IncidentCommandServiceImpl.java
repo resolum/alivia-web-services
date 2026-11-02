@@ -24,7 +24,8 @@ import java.util.List;
 
 @Service
 public class IncidentCommandServiceImpl implements IncidentCommandService {
-    private static final List<IncidentStatus> PENDING = List.of(IncidentStatus.OPEN, IncidentStatus.SCHEDULED);
+    private static final List<IncidentStatus> PENDING = List.of(IncidentStatus.OPEN, IncidentStatus.SCHEDULED,
+            IncidentStatus.IN_PROGRESS);
 
     private final IncidentPersistenceRepository incidents;
     private final AppointmentRepository appointments;

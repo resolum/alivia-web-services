@@ -85,8 +85,8 @@ public class IncidentsController {
 
     @GetMapping("/{incidentId}")
     @Operation(summary = "Consultar una incidencia para darle seguimiento",
-            description = "Incluye sus evidencias, el historial de estados con fecha (OPEN, SCHEDULED, RESOLVED) "
-                    + "y las visitas de mantenimiento con su técnico.")
+            description = "Incluye sus evidencias, el historial de estados con fecha (OPEN, SCHEDULED, IN_PROGRESS, "
+                    + "RESOLVED) y las visitas de mantenimiento con su técnico.")
     public IncidentResource get(@PathVariable Long incidentId, Authentication authentication) {
         var incident = queryService.handle(new GetIncidentByIdQuery(incidentId))
                 .filter(found -> isAdministrator(authentication) || found.isReportedBy(userIdOf(authentication)))

@@ -34,6 +34,7 @@ import com.resolum.alivia.operations.domain.exceptions.EvaluationRequiredForInst
 import com.resolum.alivia.operations.domain.exceptions.IncidentAccessDenied;
 import com.resolum.alivia.operations.domain.exceptions.IncidentAlreadyOpen;
 import com.resolum.alivia.operations.domain.exceptions.IncidentNotOpen;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotScheduled;
 import com.resolum.alivia.operations.domain.exceptions.IncidentNotAllowed;
 import com.resolum.alivia.operations.domain.exceptions.IncidentNotFound;
 import com.resolum.alivia.operations.domain.exceptions.SlotUnavailable;
@@ -141,6 +142,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IncidentNotOpen.class)
     public ProblemDetail handleIncidentNotOpen(IncidentNotOpen exception) {
         return problem(HttpStatus.CONFLICT, "incident_not_open", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(IncidentNotScheduled.class)
+    public ProblemDetail handleIncidentNotScheduled(IncidentNotScheduled exception) {
+        return problem(HttpStatus.CONFLICT, "incident_not_scheduled", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(IncidentNotFound.class)

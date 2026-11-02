@@ -1,5 +1,9 @@
 package com.resolum.alivia.operations;
 
+import com.resolum.alivia.operations.domain.model.valueobjects.IncidentStatusChange;
+import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotScheduled;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotScheduled;
+import com.resolum.alivia.operations.domain.model.commands.StartMaintenanceOrderCommand;
 import com.resolum.alivia.operations.application.internal.commandservices.AppointmentCommandServiceImpl;
 import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalHcmService;
 import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalSubscriptionsService;
@@ -134,6 +138,27 @@ class MaintenanceOrderTest {
         assertEquals("Micrófono reemplazado y probado", incident.getResolution());
         assertEquals(TestResult.PASSED, second.getMaintenanceReport().testResult());
         assertThrows(IllegalArgumentException.class, () -> new MaintenanceReport("d", "m", TestResult.PASSED, " "));
+    }
+
+    @Test
+    void startsTheAttentionOfAScheduledVisitAndKeepsTheTimeline() {
+        var order = commands.handle(new CreateMaintenanceOrderCommand(3L, SLOT, 10L, false));
+        ReflectionTestUtils.setField(order, "id", 8L);
+        when(appointments.findById(8L)).thenReturn(Optional.of(order));
+
+        commands.handle(new StartMaintenanceOrderCommand(8L));
+        assertEquals(IncidentStatus.IN_PROGRESS, incident.getStatus());
+        assertEquals(AppointmentStatus.SCHEDULED, order.getStatus());
+        assertThrows(IncidentNotScheduled.class, () -> commands.handle(new StartMaintenanceOrderCommand(8L)));
+
+        commands.handle(new CompleteMaintenanceOrderCommand(8L, "Cable suelto", "Se reconectó", TestResult.PASSED,
+                "Micrófono funcionando"));
+        assertEquals(IncidentStatus.RESOLVED, incident.getStatus());
+        assertEquals(List.of(IncidentStatus.OPEN, IncidentStatus.SCHEDULED, IncidentStatus.IN_PROGRESS,
+                        IncidentStatus.RESOLVED),
+                incident.getStatusHistory().stream().map(IncidentStatusChange::status).toList());
+        assertTrue(incident.getStatusHistory().stream().allMatch(change -> change.changedAt().equals(Instant.now(CLOCK))));
+        assertThrows(TechnicalOrderNotScheduled.class, () -> commands.handle(new StartMaintenanceOrderCommand(8L)));
     }
 
     @Test

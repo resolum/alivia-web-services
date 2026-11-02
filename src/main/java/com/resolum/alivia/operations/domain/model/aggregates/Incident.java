@@ -1,6 +1,7 @@
 package com.resolum.alivia.operations.domain.model.aggregates;
 
 import com.resolum.alivia.operations.domain.exceptions.IncidentNotOpen;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotScheduled;
 import com.resolum.alivia.operations.domain.model.valueobjects.Evidence;
 import com.resolum.alivia.operations.domain.model.valueobjects.IncidentSeverity;
 import com.resolum.alivia.operations.domain.model.valueobjects.IncidentStatus;
@@ -105,12 +106,18 @@ public class Incident extends AuditableAbstractAggregateRoot<Incident> {
         moveTo(IncidentStatus.SCHEDULED, scheduledAt);
     }
 
+    /** The technician arrived for the scheduled visit and started attending it. */
+    public void startAttention(Instant startedAt) {
+        if (status != IncidentStatus.SCHEDULED) throw new IncidentNotScheduled();
+        moveTo(IncidentStatus.IN_PROGRESS, startedAt);
+    }
+
     /**
      * Applies the result of a maintenance visit: a passed test resolves the incident; a failed one opens it
      * again so another visit can be booked.
      */
     public void applyMaintenanceResult(MaintenanceReport report, Instant recordedAt) {
-        if (status != IncidentStatus.SCHEDULED) {
+        if (status != IncidentStatus.SCHEDULED && status != IncidentStatus.IN_PROGRESS) {
             throw new IllegalArgumentException("Only an incident with a scheduled visit takes its result.");
         }
         if (report.testResult() == TestResult.PASSED) {
