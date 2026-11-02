@@ -7,11 +7,13 @@ import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus
 import com.resolum.alivia.operations.domain.model.valueobjects.AssignmentReason;
 import com.resolum.alivia.operations.domain.model.valueobjects.AssignmentRecord;
 import com.resolum.alivia.operations.domain.model.valueobjects.InstallationResult;
+import com.resolum.alivia.operations.domain.model.valueobjects.MaintenanceReport;
 import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
 import com.resolum.alivia.operations.domain.model.valueobjects.SlotId;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -91,6 +93,8 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
     private InstallationResult installationResult;
     @Column(name = "completion_notes", length = 300)
     private String completionNotes;
+    @Embedded
+    private MaintenanceReport maintenanceReport;
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "appointment_assignments", joinColumns = @JoinColumn(name = "appointment_id"))
     @OrderColumn(name = "assignment_order")
@@ -191,6 +195,20 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
         if (notes != null && notes.length() > 300) throw new IllegalArgumentException("Notes cannot exceed 300 characters.");
         this.installationResult = result;
         this.completionNotes = notes == null || notes.isBlank() ? null : notes.trim();
+        this.status = AppointmentStatus.COMPLETED;
+    }
+
+    /**
+     * Closes a maintenance visit with the technician's report. The report is validated before anything
+     * changes, so a report without its test result leaves the order scheduled.
+     */
+    public void completeMaintenance(MaintenanceReport report) {
+        requireScheduled();
+        if (serviceType != ServiceType.MAINTENANCE) {
+            throw new IllegalArgumentException("Only maintenance orders record a maintenance report.");
+        }
+        if (report == null) throw new IllegalArgumentException("The maintenance report is required.");
+        this.maintenanceReport = report;
         this.status = AppointmentStatus.COMPLETED;
     }
 

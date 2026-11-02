@@ -4,6 +4,8 @@ import com.resolum.alivia.operations.domain.exceptions.IncidentNotOpen;
 import com.resolum.alivia.operations.domain.model.valueobjects.Evidence;
 import com.resolum.alivia.operations.domain.model.valueobjects.IncidentSeverity;
 import com.resolum.alivia.operations.domain.model.valueobjects.IncidentStatus;
+import com.resolum.alivia.operations.domain.model.valueobjects.MaintenanceReport;
+import com.resolum.alivia.operations.domain.model.valueobjects.TestResult;
 import com.resolum.alivia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
@@ -95,6 +97,22 @@ public class Incident extends AuditableAbstractAggregateRoot<Incident> {
     public void scheduleMaintenance() {
         if (status != IncidentStatus.OPEN) throw new IncidentNotOpen();
         this.status = IncidentStatus.SCHEDULED;
+    }
+
+    /**
+     * Applies the result of a maintenance visit: a passed test resolves the incident; a failed one opens it
+     * again so another visit can be booked.
+     */
+    public void applyMaintenanceResult(MaintenanceReport report) {
+        if (status != IncidentStatus.SCHEDULED) {
+            throw new IllegalArgumentException("Only an incident with a scheduled visit takes its result.");
+        }
+        if (report.testResult() == TestResult.PASSED) {
+            this.status = IncidentStatus.RESOLVED;
+            this.resolution = report.resolution();
+        } else {
+            this.status = IncidentStatus.OPEN;
+        }
     }
 
     /** Still waiting for attention: a new report of the same device would duplicate it. */

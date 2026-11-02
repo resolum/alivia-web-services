@@ -17,6 +17,7 @@ import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotFound;
 import com.resolum.alivia.operations.domain.exceptions.TechnicianNotEligible;
 import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
 import com.resolum.alivia.operations.domain.model.commands.AssignTechnicianCommand;
+import com.resolum.alivia.operations.domain.model.commands.CompleteMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateTechnicalOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.ReassignTechnicianCommand;
@@ -24,6 +25,7 @@ import com.resolum.alivia.operations.domain.model.commands.RecordInstallationRes
 import com.resolum.alivia.operations.domain.model.commands.ScheduleAppointmentCommand;
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
 import com.resolum.alivia.operations.domain.model.valueobjects.AvailableBlock;
+import com.resolum.alivia.operations.domain.model.valueobjects.MaintenanceReport;
 import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
 import com.resolum.alivia.operations.domain.model.valueobjects.SlotId;
 import com.resolum.alivia.operations.domain.model.valueobjects.TechnicianAvailability;
@@ -226,6 +228,24 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
         } catch (DataIntegrityViolationException exception) {
             throw new SlotUnavailable(alternatives(ServiceType.MAINTENANCE, earliest, slot));
         }
+    }
+
+    /**
+     * Records the diagnosis, the maintenance and the test of a visit. A passed test resolves the incident; a
+     * failed one opens it again. Without the test result nothing changes and the order stays scheduled.
+     */
+    @Override
+    @Transactional
+    public Appointment handle(CompleteMaintenanceOrderCommand command) {
+        var order = appointments.findById(command.orderId()).orElseThrow(() -> new TechnicalOrderNotFound(command.orderId()));
+        var report = new MaintenanceReport(command.diagnosis(), command.maintenancePerformed(), command.testResult(),
+                command.resolution());
+        order.completeMaintenance(report);
+        var incident = incidents.findById(order.getIncidentId())
+                .orElseThrow(() -> new IncidentNotFound(order.getIncidentId()));
+        incident.applyMaintenanceResult(report);
+        incidents.save(incident);
+        return appointments.saveAndFlush(order);
     }
 
     private record Placement(SlotId slot, TechnicianAvailability technician) {

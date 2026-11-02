@@ -1,8 +1,10 @@
 package com.resolum.alivia.operations.interfaces.rest.controllers;
 
+import com.resolum.alivia.operations.domain.model.commands.CompleteMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.valueobjects.SlotId;
 import com.resolum.alivia.operations.domain.services.AppointmentCommandService;
+import com.resolum.alivia.operations.interfaces.rest.resources.CompleteMaintenanceOrderResource;
 import com.resolum.alivia.operations.interfaces.rest.resources.CreateMaintenanceOrderResource;
 import com.resolum.alivia.operations.interfaces.rest.resources.TechnicalOrderResource;
 import com.resolum.alivia.operations.interfaces.rest.transform.TechnicalOrderResourceFromEntityAssembler;
@@ -10,7 +12,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -39,6 +43,18 @@ public class MaintenanceOrdersController {
         var order = commandService.handle(new CreateMaintenanceOrderCommand(resource.incidentId(),
                 SlotId.parse(resource.slotId()), IncidentsController.userIdOf(authentication),
                 IncidentsController.isAdministrator(authentication)));
+        return TechnicalOrderResourceFromEntityAssembler.toResourceFromEntity(order);
+    }
+
+    @PostMapping(value = "/{orderId}/completion", consumes = APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'TECHNICIAN')")
+    @Operation(summary = "Registrar diagnóstico, mantenimiento, prueba y resolución",
+            description = "Sin resultado de prueba responde 400 y la orden sigue abierta. Si la prueba pasa, la "
+                    + "incidencia queda RESOLVED; si falla, vuelve a OPEN para programar otra visita.")
+    public TechnicalOrderResource complete(@PathVariable Long orderId,
+                                           @Valid @RequestBody CompleteMaintenanceOrderResource resource) {
+        var order = commandService.handle(new CompleteMaintenanceOrderCommand(orderId, resource.diagnosis(),
+                resource.maintenancePerformed(), resource.testResult(), resource.resolution()));
         return TechnicalOrderResourceFromEntityAssembler.toResourceFromEntity(order);
     }
 }

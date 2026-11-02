@@ -8,5 +8,6 @@ public record TechnicalOrderResource(Long id, String draftId, String serviceType
                                      LocalDate date, String startTime, String endTime, Long technicianId,
                                      String technicianName, String contactName, String contactPhone,
                                      String directions, String installationResult,
+                                     MaintenanceReportResource maintenanceReport,
                                      List<AssignmentRecordResource> assignments) {
 }

@@ -8,12 +8,15 @@ import com.resolum.alivia.operations.domain.exceptions.IncidentNotOpen;
 import com.resolum.alivia.operations.domain.exceptions.SlotUnavailable;
 import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
 import com.resolum.alivia.operations.domain.model.aggregates.Incident;
+import com.resolum.alivia.operations.domain.model.commands.CompleteMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateTechnicalOrderCommand;
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
 import com.resolum.alivia.operations.domain.model.valueobjects.IncidentSeverity;
 import com.resolum.alivia.operations.domain.model.valueobjects.IncidentStatus;
 import com.resolum.alivia.operations.domain.model.valueobjects.InstallationResult;
+import com.resolum.alivia.operations.domain.model.valueobjects.MaintenanceReport;
+import com.resolum.alivia.operations.domain.model.valueobjects.TestResult;
 import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
 import com.resolum.alivia.operations.domain.model.valueobjects.SlotId;
 import com.resolum.alivia.operations.domain.model.valueobjects.TechnicianAvailability;
@@ -102,6 +105,35 @@ class MaintenanceOrderTest {
                 new SlotId(TOMORROW, range(8, 12)), 10L, false)));
         assertThrows(IllegalArgumentException.class, () -> commands.handle(new CreateTechnicalOrderCommand("draft",
                 ServiceType.MAINTENANCE, SLOT, "María", "984123456", null)));
+    }
+
+    @Test
+    void resolvesTheIncidentWhenTheTestPassesAndReopensItWhenItFails() {
+        var order = commands.handle(new CreateMaintenanceOrderCommand(3L, SLOT, 10L, false));
+        ReflectionTestUtils.setField(order, "id", 8L);
+        when(appointments.findById(8L)).thenReturn(Optional.of(order));
+
+        var missingTest = assertThrows(IllegalArgumentException.class, () -> commands.handle(
+                new CompleteMaintenanceOrderCommand(8L, "Micrófono desconectado", "Se reconectó", null, null)));
+        assertTrue(missingTest.getMessage().contains("test result"));
+        assertEquals(AppointmentStatus.SCHEDULED, order.getStatus());
+        assertEquals(IncidentStatus.SCHEDULED, incident.getStatus());
+
+        commands.handle(new CompleteMaintenanceOrderCommand(8L, "Micrófono desconectado", "Se reconectó el cable",
+                TestResult.FAILED, null));
+        assertEquals(AppointmentStatus.COMPLETED, order.getStatus());
+        assertEquals(IncidentStatus.OPEN, incident.getStatus());
+
+        var second = commands.handle(new CreateMaintenanceOrderCommand(3L, new SlotId(TOMORROW, range(10, 12)), 10L, false));
+        ReflectionTestUtils.setField(second, "id", 9L);
+        when(appointments.findById(9L)).thenReturn(Optional.of(second));
+        commands.handle(new CompleteMaintenanceOrderCommand(9L, "Placa dañada", "Se cambió el micrófono",
+                TestResult.PASSED, " Micrófono reemplazado y probado "));
+
+        assertEquals(IncidentStatus.RESOLVED, incident.getStatus());
+        assertEquals("Micrófono reemplazado y probado", incident.getResolution());
+        assertEquals(TestResult.PASSED, second.getMaintenanceReport().testResult());
+        assertThrows(IllegalArgumentException.class, () -> new MaintenanceReport("d", "m", TestResult.PASSED, " "));
     }
 
     @Test
