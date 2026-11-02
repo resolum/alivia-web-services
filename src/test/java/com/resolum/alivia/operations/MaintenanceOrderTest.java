@@ -1,29 +1,33 @@
 package com.resolum.alivia.operations;
 
-import com.resolum.alivia.operations.domain.model.valueobjects.IncidentStatusChange;
-import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotScheduled;
-import com.resolum.alivia.operations.domain.exceptions.IncidentNotScheduled;
-import com.resolum.alivia.operations.domain.model.commands.StartMaintenanceOrderCommand;
 import com.resolum.alivia.operations.application.internal.commandservices.AppointmentCommandServiceImpl;
 import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalHcmService;
 import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalSubscriptionsService;
 import com.resolum.alivia.operations.domain.exceptions.IncidentAccessDenied;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotAllowed;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotFound;
 import com.resolum.alivia.operations.domain.exceptions.IncidentNotOpen;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotScheduled;
 import com.resolum.alivia.operations.domain.exceptions.SlotUnavailable;
+import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotFound;
+import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotScheduled;
 import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
 import com.resolum.alivia.operations.domain.model.aggregates.Incident;
 import com.resolum.alivia.operations.domain.model.commands.CompleteMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateTechnicalOrderCommand;
+import com.resolum.alivia.operations.domain.model.commands.RecordInstallationResultCommand;
+import com.resolum.alivia.operations.domain.model.commands.StartMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
 import com.resolum.alivia.operations.domain.model.valueobjects.IncidentSeverity;
 import com.resolum.alivia.operations.domain.model.valueobjects.IncidentStatus;
+import com.resolum.alivia.operations.domain.model.valueobjects.IncidentStatusChange;
 import com.resolum.alivia.operations.domain.model.valueobjects.InstallationResult;
 import com.resolum.alivia.operations.domain.model.valueobjects.MaintenanceReport;
-import com.resolum.alivia.operations.domain.model.valueobjects.TestResult;
 import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
 import com.resolum.alivia.operations.domain.model.valueobjects.SlotId;
 import com.resolum.alivia.operations.domain.model.valueobjects.TechnicianAvailability;
+import com.resolum.alivia.operations.domain.model.valueobjects.TestResult;
 import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.AppointmentRepository;
 import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.IncidentPersistenceRepository;
 import com.resolum.alivia.shared.domain.model.valueobjects.TimeRange;
@@ -159,6 +163,44 @@ class MaintenanceOrderTest {
                 incident.getStatusHistory().stream().map(IncidentStatusChange::status).toList());
         assertTrue(incident.getStatusHistory().stream().allMatch(change -> change.changedAt().equals(Instant.now(CLOCK))));
         assertThrows(TechnicalOrderNotScheduled.class, () -> commands.handle(new StartMaintenanceOrderCommand(8L)));
+    }
+
+    @Test
+    void rejectsVisitsOutsideTheMaintenanceRulesAndHomesWithoutInstallation() {
+        assertThrows(IllegalArgumentException.class, () -> commands.handle(new CreateMaintenanceOrderCommand(3L, null, 10L, false)));
+        assertThrows(IncidentNotFound.class, () -> commands.handle(new CreateMaintenanceOrderCommand(4L, SLOT, 10L, false)));
+        assertThrows(IllegalArgumentException.class, () -> commands.handle(new CreateMaintenanceOrderCommand(3L,
+                new SlotId(TOMORROW.minusDays(1), range(8, 10)), 10L, false)));
+        assertThrows(IllegalArgumentException.class, () -> commands.handle(new CreateMaintenanceOrderCommand(3L,
+                new SlotId(TOMORROW.plusDays(30), range(8, 10)), 10L, false)));
+        when(appointments.findFirstByDraftIdAndServiceTypeAndStatus("draft", ServiceType.INSTALLATION,
+                AppointmentStatus.COMPLETED)).thenReturn(Optional.empty());
+        assertThrows(IncidentNotAllowed.class, () -> commands.handle(new CreateMaintenanceOrderCommand(3L, SLOT, 10L, false)));
+    }
+
+    @Test
+    void startsOnlyMaintenanceOrdersThatExist() {
+        var installation = new Appointment("draft", ServiceType.INSTALLATION, TOMORROW, range(8, 12), 7L, "Ana Pérez",
+                "María", "984123456", null, Instant.now(CLOCK));
+        when(appointments.findById(5L)).thenReturn(Optional.of(installation));
+        assertThrows(IllegalArgumentException.class, () -> commands.handle(new StartMaintenanceOrderCommand(5L)));
+        assertThrows(TechnicalOrderNotFound.class, () -> commands.handle(new StartMaintenanceOrderCommand(6L)));
+        assertThrows(TechnicalOrderNotFound.class, () -> commands.handle(new CompleteMaintenanceOrderCommand(6L, "d", "m",
+                TestResult.FAILED, null)));
+    }
+
+    @Test
+    void recordsTheResultOfAnInstallationOrder() {
+        var installation = new Appointment("draft", ServiceType.INSTALLATION, TOMORROW, range(8, 12), 7L, "Ana Pérez",
+                "María", "984123456", null, Instant.now(CLOCK));
+        when(appointments.findById(5L)).thenReturn(Optional.of(installation));
+
+        var order = commands.handle(new RecordInstallationResultCommand(5L, InstallationResult.APPROVED, " Todo conectado "));
+
+        assertEquals(AppointmentStatus.COMPLETED, order.getStatus());
+        assertEquals("Todo conectado", order.getCompletionNotes());
+        assertThrows(TechnicalOrderNotFound.class, () -> commands.handle(new RecordInstallationResultCommand(6L,
+                InstallationResult.APPROVED, null)));
     }
 
     @Test
