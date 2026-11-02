@@ -12,6 +12,7 @@ import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
 import com.resolum.alivia.operations.domain.model.commands.ScheduleAppointmentCommand;
 import com.resolum.alivia.operations.domain.model.queries.GetAvailableSlotsQuery;
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
+import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
 import com.resolum.alivia.operations.domain.model.valueobjects.TechnicianAvailability;
 import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.AppointmentRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -80,7 +81,7 @@ class AppointmentServicesTest {
     void rejectsDraftsWithoutPaymentOrAlreadyScheduled() {
         assertThrows(DraftNotReadyForAppointment.class, () -> commands.handle(command(TOMORROW, 10, 7L)));
         when(subscriptions.isReadyForEvaluation("draft")).thenReturn(true);
-        when(appointments.existsByDraftIdAndStatus("draft", AppointmentStatus.SCHEDULED)).thenReturn(true);
+        when(appointments.existsByDraftIdAndServiceTypeAndStatus("draft", ServiceType.EVALUATION, AppointmentStatus.SCHEDULED)).thenReturn(true);
         assertThrows(AppointmentAlreadyExists.class, () -> commands.handle(command(TOMORROW, 10, 7L)));
     }
 

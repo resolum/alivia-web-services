@@ -30,6 +30,13 @@ import com.resolum.alivia.subscriptions.domain.exceptions.PlanNotFound;
 import com.resolum.alivia.operations.domain.exceptions.AppointmentAlreadyExists;
 import com.resolum.alivia.operations.domain.exceptions.AppointmentSlotTaken;
 import com.resolum.alivia.operations.domain.exceptions.DraftNotReadyForAppointment;
+import com.resolum.alivia.operations.domain.exceptions.EvaluationRequiredForInstallation;
+import com.resolum.alivia.operations.domain.exceptions.SlotUnavailable;
+import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderAlreadyExists;
+import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotFound;
+import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotScheduled;
+import com.resolum.alivia.operations.domain.exceptions.TechnicianNotEligible;
+import com.resolum.alivia.operations.interfaces.rest.transform.TechnicalOrderResourceFromEntityAssembler;
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
@@ -99,6 +106,39 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({AppointmentSlotTaken.class, AppointmentAlreadyExists.class, DraftNotReadyForAppointment.class})
     public ProblemDetail handleAppointmentConflict(RuntimeException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
+    @ExceptionHandler(SlotUnavailable.class)
+    public ProblemDetail handleSlotUnavailable(SlotUnavailable exception) {
+        var problem = problem(HttpStatus.CONFLICT, "slot_unavailable", exception.getMessage(), List.of());
+        problem.setProperty("alternatives", exception.getAlternatives().stream()
+                .map(TechnicalOrderResourceFromEntityAssembler::toResourceFromBlock).toList());
+        return problem;
+    }
+
+    @ExceptionHandler(TechnicalOrderNotFound.class)
+    public ProblemDetail handleTechnicalOrderNotFound(TechnicalOrderNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "technical_order_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(TechnicianNotEligible.class)
+    public ProblemDetail handleTechnicianNotEligible(TechnicianNotEligible exception) {
+        return problem(HttpStatus.CONFLICT, "technician_not_eligible", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(TechnicalOrderAlreadyExists.class)
+    public ProblemDetail handleTechnicalOrderAlreadyExists(TechnicalOrderAlreadyExists exception) {
+        return problem(HttpStatus.CONFLICT, "technical_order_already_exists", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(EvaluationRequiredForInstallation.class)
+    public ProblemDetail handleEvaluationRequired(EvaluationRequiredForInstallation exception) {
+        return problem(HttpStatus.CONFLICT, "evaluation_required", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(TechnicalOrderNotScheduled.class)
+    public ProblemDetail handleTechnicalOrderNotScheduled(TechnicalOrderNotScheduled exception) {
+        return problem(HttpStatus.CONFLICT, "technical_order_not_scheduled", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(ConfigurationDraftNotFound.class)
