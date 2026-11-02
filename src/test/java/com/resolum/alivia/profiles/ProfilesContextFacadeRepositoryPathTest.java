@@ -122,6 +122,20 @@ class ProfilesContextFacadeRepositoryPathTest {
     }
 
     @Test
+    void createPersonProfileLinksTheIamUser() {
+        when(personRepository.existsByEmailAddress(any())).thenReturn(false);
+        when(personRepository.existsByDni(any())).thenReturn(false);
+        when(personRepository.save(any(PersonProfile.class))).thenAnswer(inv -> withId(inv.getArgument(0), 7L));
+
+        facade.createPersonProfile(42L, "p@example.com", "http://img", "pid", "51987654321",
+                "Juan", "Perez", "87654321", BIRTH);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(PersonProfile.class);
+        verify(personRepository).save(captor.capture());
+        assertThat(captor.getValue().getUserId()).isEqualTo(42L);
+    }
+
+    @Test
     void createPersonProfileRejectsDuplicates() {
         when(personRepository.existsByEmailAddress(any())).thenReturn(true);
         assertThatThrownBy(() -> facade.createPersonProfile("p@example.com", "http://img", "pid",
@@ -147,6 +161,20 @@ class ProfilesContextFacadeRepositoryPathTest {
                 "Ana", "Gomez", "12345678", BIRTH);
 
         assertThat(id).isEqualTo(8L);
+    }
+
+    @Test
+    void createStaffProfileLinksTheIamUser() {
+        when(staffRepository.existsByEmailAddress(any())).thenReturn(false);
+        when(staffRepository.existsByDni(any())).thenReturn(false);
+        when(staffRepository.save(any(StaffProfile.class))).thenAnswer(inv -> withId(inv.getArgument(0), 8L));
+
+        facade.createStaffProfile(43L, "s@example.com", "http://img", "pid", "51987654321",
+                "Ana", "Gomez", "12345678", BIRTH);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(StaffProfile.class);
+        verify(staffRepository).save(captor.capture());
+        assertThat(captor.getValue().getUserId()).isEqualTo(43L);
     }
 
     @Test
