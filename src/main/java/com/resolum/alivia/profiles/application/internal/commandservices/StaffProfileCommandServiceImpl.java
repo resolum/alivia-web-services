@@ -42,6 +42,10 @@ public class StaffProfileCommandServiceImpl implements StaffProfileCommandServic
     @Transactional
     @Override
     public Long handle(CreateStaffProfileCommand command) {
+        if (command == null) {
+            throw new IllegalArgumentException("CreateStaffProfileCommand cannot be null");
+        }
+
         var emailAddress = new EmailAddress(command.emailAddress());
         if (staffProfileRepository.existsByEmailAddress(emailAddress)) {
             throw new EmailAddressAlreadyExistsException(emailAddress);
@@ -73,6 +77,10 @@ public class StaffProfileCommandServiceImpl implements StaffProfileCommandServic
     @Transactional
     @Override
     public Long handle(UpdateStaffProfileCommand command) {
+        if (command == null) {
+            throw new IllegalArgumentException("UpdateStaffProfileCommand cannot be null");
+        }
+
         var staffProfile = staffProfileRepository.findById(command.profileId())
                 .orElseThrow(() -> new StaffProfileNotFoundException(command.profileId()));
 

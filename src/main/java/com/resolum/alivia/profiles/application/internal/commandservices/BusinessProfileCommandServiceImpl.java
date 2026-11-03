@@ -45,6 +45,10 @@ public class BusinessProfileCommandServiceImpl implements BusinessProfileCommand
     @Transactional
     @Override
     public Long handle(CreateBusinessProfileCommand command) {
+        if (command == null) {
+            throw new IllegalArgumentException("CreateBusinessProfileCommand cannot be null");
+        }
+
         var emailAddress = new EmailAddress(command.emailAddress());
         if (businessProfileRepository.existsByEmailAddress(emailAddress)) {
             throw new EmailAddressAlreadyExistsException(emailAddress);
@@ -99,6 +103,10 @@ public class BusinessProfileCommandServiceImpl implements BusinessProfileCommand
     @Transactional
     @Override
     public Long handle(UpdateBusinessProfileCommand command) {
+        if (command == null) {
+            throw new IllegalArgumentException("UpdateBusinessProfileCommand cannot be null");
+        }
+
         var businessProfile = businessProfileRepository.findById(command.profileId())
                 .orElseThrow(() -> new BusinessProfileNotFoundException(command.profileId()));
 
