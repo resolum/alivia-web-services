@@ -24,6 +24,8 @@ public interface CaregiverMembershipCommandService {
      *         when the caregiver has no person profile
      * @throws com.resolum.alivia.nursing.domain.exceptions.CaregiverAlreadyLinkedException
      *         when the caregiver is already linked to the assisted person
+     * @throws com.resolum.alivia.nursing.domain.exceptions.CaregiverHouseholdMembershipRevokedException
+     *         when the caregiver has a revoked membership in the household
      * @throws IllegalArgumentException when the caregiver is the assisted person
      */
     CaregiverSummary handle(LinkCaregiverCommand command);

@@ -30,6 +30,9 @@ public interface CareNetworkQueryService {
     /**
      * Lists the caregivers linked to the assisted persons of the household.
      *
+     * <p>Any member who can read the household gets the caregivers; their email is filled in only
+     * when the user may also manage the household.</p>
+     *
      * @param query the query
      * @return the caregivers ordered by assisted person and caregiver profile identifier
      * @throws com.resolum.alivia.nursing.domain.exceptions.CareNetworkHouseholdNotFoundException

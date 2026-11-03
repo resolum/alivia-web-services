@@ -6,6 +6,7 @@ import com.resolum.alivia.nursing.application.internal.outboundservices.acl.Exte
 import com.resolum.alivia.nursing.domain.exceptions.AssistedPersonNotInHouseholdException;
 import com.resolum.alivia.nursing.domain.exceptions.CareMemberProfileNotFoundException;
 import com.resolum.alivia.nursing.domain.exceptions.CaregiverAlreadyLinkedException;
+import com.resolum.alivia.nursing.domain.exceptions.CaregiverHouseholdMembershipRevokedException;
 import com.resolum.alivia.nursing.domain.model.aggregates.CareMembership;
 import com.resolum.alivia.nursing.domain.model.commands.LinkCaregiverCommand;
 import com.resolum.alivia.nursing.domain.model.queries.GetAssistedPersonsQuery;
@@ -27,8 +28,9 @@ import java.util.Set;
  *
  * <p>Checks run in this order: household existence (404), management access (403), the assisted
  * person belongs to the household (404), the caregiver has a profile (404), the caregiver is not
- * the assisted person (400) and the pair is not linked yet (409). A concurrent duplicate is
- * rejected by the unique constraint and also answered as a conflict.</p>
+ * the assisted person (400), the pair is not linked yet (409) and the caregiver has no revoked
+ * membership in the household (409). A concurrent duplicate is rejected by the unique constraint
+ * and also answered as a conflict.</p>
  */
 @Slf4j
 @Service
@@ -71,7 +73,7 @@ public class CaregiverMembershipCommandServiceImpl implements CaregiverMembershi
         var householdId = command.householdId();
         var assistedProfile = command.assistedPersonProfileId();
         var caregiver = command.caregiverUserId();
-        externalHouseholdsService.requireManageable(householdId, command.requesterUserId());
+        var activeMembers = externalHouseholdsService.requireManageable(householdId, command.requesterUserId());
 
         var belongsToHousehold = careNetworkQueryService
                 .handle(new GetAssistedPersonsQuery(command.requesterUserId(), householdId)).stream()
@@ -94,7 +96,13 @@ public class CaregiverMembershipCommandServiceImpl implements CaregiverMembershi
         }
 
         // A caregiver of several assisted persons of the household is already a member the second time.
-        externalHouseholdsService.addCaregiver(householdId, caregiver);
+        // Profiles also answers "not added" for a revoked member, who must not get a care membership.
+        var added = externalHouseholdsService.addCaregiver(householdId, caregiver);
+        if (!added && !activeMembers.contains(caregiver)) {
+            log.warn("Caregiver link rejected: user id {} has a revoked membership in household {}",
+                    caregiver.userId(), householdId);
+            throw new CaregiverHouseholdMembershipRevokedException(caregiver, householdId);
+        }
         try {
             careMembershipRepository.save(new CareMembership(caregiver, caregiverProfile, assistedProfile,
                     CareRole.CAREGIVER));

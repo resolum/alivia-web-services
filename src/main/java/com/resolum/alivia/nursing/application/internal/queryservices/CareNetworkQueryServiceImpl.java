@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -97,7 +98,11 @@ public class CareNetworkQueryServiceImpl implements CareNetworkQueryService {
                 .map(CareMembership::getMemberPersonProfileId)
                 .collect(Collectors.toSet());
         var names = externalProfilesService.fetchPersonNames(profileIds);
-        var emails = externalIamService.fetchEmails(userIds);
+        // Every member may list the caregivers, but their email is personal data: only whoever
+        // manages the household sees it. For the others it stays null and IAM is not queried.
+        var emails = externalHouseholdsService.canManage(query.householdId(), query.userId())
+                ? externalIamService.fetchEmails(userIds)
+                : Map.<UserId, String>of();
         var summaries = caregivers.stream()
                 .map(membership -> new CaregiverSummary(membership.getUserId(), membership.getMemberPersonProfileId(),
                         membership.getAssistedPersonProfileId(), names.get(membership.getMemberPersonProfileId()),
