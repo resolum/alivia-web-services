@@ -76,6 +76,8 @@ public class WebSecurityConfiguration {
                         // The same guest books the technical evaluation of that draft.
                         .requestMatchers(HttpMethod.GET, "/api/v1/appointments/available-slots").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/appointments").permitAll()
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/appointments/holds/*").permitAll()
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/appointments/holds/*").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/stripe").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()

@@ -1,12 +1,12 @@
 package com.resolum.alivia.operations.domain.services;
 
 import com.resolum.alivia.shared.domain.model.valueobjects.TimeRange;
-import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
 import com.resolum.alivia.operations.domain.model.valueobjects.AvailableBlock;
 import com.resolum.alivia.operations.domain.model.valueobjects.AvailableSlot;
 import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
 import com.resolum.alivia.operations.domain.model.valueobjects.SlotId;
 import com.resolum.alivia.operations.domain.model.valueobjects.TechnicianAvailability;
+import com.resolum.alivia.operations.domain.model.valueobjects.TechnicianOccupancy;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -21,8 +21,9 @@ import java.util.TreeSet;
  * <p>The evaluation lasts 45 to 60 minutes, so the family books a two-hour arrival window. Windows are
  * cut from the start of each shift block and must fit in it whole (a 08:00 to 12:00 block gives 08:00 to
  * 10:00 and 10:00 to 12:00). A technician takes a window only when it does not overlap a visit they
- * already have. The family sees every free technician of each window and picks one; when the backend
- * picks instead, the one with fewer visits that day goes, then the lowest id, so the load is spread.</p>
+ * already have or a window another family is holding for them. The family sees every free technician of
+ * each window and picks one; when the backend picks instead, the one with fewer visits that day goes,
+ * then the lowest id, so the load is spread.</p>
  *
  * <p>Technical orders use the same rules with the window of their {@link ServiceType}: a four-hour
  * installation only fits a block of at least four hours.</p>
@@ -56,7 +57,7 @@ public final class EvaluationSlotPlanner {
      * family chooses who visits them.
      */
     public static List<AvailableSlot> plan(LocalDate date, List<TechnicianAvailability> technicians,
-                                           List<Appointment> visitsOfTheDay) {
+                                           List<? extends TechnicianOccupancy> visitsOfTheDay) {
         var windows = new TreeSet<TimeRange>(Comparator.comparing(TimeRange::start));
         technicians.forEach(technician -> windows.addAll(windowsWithin(technician.shifts())));
         var slots = new ArrayList<AvailableSlot>();
@@ -76,7 +77,7 @@ public final class EvaluationSlotPlanner {
      */
     public static List<AvailableBlock> blocks(LocalDate date, ServiceType serviceType,
                                               List<TechnicianAvailability> technicians,
-                                              List<Appointment> visitsOfTheDay) {
+                                              List<? extends TechnicianOccupancy> visitsOfTheDay) {
         var windows = new TreeSet<TimeRange>(Comparator.comparing(TimeRange::start));
         technicians.forEach(technician -> windows.addAll(windowsWithin(technician.shifts(), serviceType.window())));
         var blocks = new ArrayList<AvailableBlock>();
@@ -89,7 +90,7 @@ public final class EvaluationSlotPlanner {
 
     /** Technicians free for the window, least busy first. */
     public static List<TechnicianAvailability> candidates(TimeRange window, List<TechnicianAvailability> technicians,
-                                                          List<Appointment> visitsOfTheDay) {
+                                                          List<? extends TechnicianOccupancy> visitsOfTheDay) {
         return technicians.stream()
                 .filter(technician -> windowsWithin(technician.shifts(), window.duration()).contains(window))
                 .filter(technician -> visitsOfTheDay.stream().noneMatch(visit ->

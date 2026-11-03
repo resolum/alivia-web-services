@@ -33,7 +33,9 @@ import com.resolum.alivia.operations.domain.model.valueobjects.SlotId;
 import com.resolum.alivia.operations.domain.model.valueobjects.TechnicianAvailability;
 import com.resolum.alivia.operations.domain.services.AppointmentCommandService;
 import com.resolum.alivia.operations.domain.services.EvaluationSlotPlanner;
+import com.resolum.alivia.operations.domain.model.valueobjects.TechnicianOccupancy;
 import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.AppointmentRepository;
+import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.EvaluationSlotHoldRepository;
 import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.IncidentPersistenceRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -52,15 +54,17 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
     static final int ALTERNATIVES = 3;
 
     private final AppointmentRepository appointments;
+    private final EvaluationSlotHoldRepository holds;
     private final IncidentPersistenceRepository incidents;
     private final ExternalHcmService hcm;
     private final ExternalSubscriptionsService subscriptions;
     private final Clock clock;
 
-    public AppointmentCommandServiceImpl(AppointmentRepository appointments, IncidentPersistenceRepository incidents,
-                                         ExternalHcmService hcm, ExternalSubscriptionsService subscriptions,
-                                         Clock clock) {
+    public AppointmentCommandServiceImpl(AppointmentRepository appointments, EvaluationSlotHoldRepository holds,
+                                         IncidentPersistenceRepository incidents, ExternalHcmService hcm,
+                                         ExternalSubscriptionsService subscriptions, Clock clock) {
         this.appointments = appointments;
+        this.holds = holds;
         this.incidents = incidents;
         this.hcm = hcm;
         this.subscriptions = subscriptions;
@@ -81,15 +85,18 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
             throw new IllegalArgumentException("The visit must be booked between tomorrow and the next seven days.");
         }
         var window = new TimeRange(command.startTime(), command.endTime());
-        // Recomputed here: the window shown to the family may have been taken since.
-        var technician = candidates(command.date(), window, null).stream()
+        // Recomputed here: the window shown to the family may have been taken since. Their own hold keeps it free.
+        var technician = EvaluationSlotPlanner.candidates(window, hcm.fetchTechniciansWorkingOn(command.date()),
+                        occupancyOf(command.date(), null, command.draftId())).stream()
                 .filter(candidate -> candidate.technicianId().equals(command.technicianId()))
                 .findFirst()
                 .orElseThrow(AppointmentSlotTaken::new);
         try {
-            return appointments.saveAndFlush(new Appointment(command.draftId(), ServiceType.EVALUATION, command.date(),
-                    window, technician.technicianId(), technician.fullName(), command.contactName(),
+            var appointment = appointments.saveAndFlush(new Appointment(command.draftId(), ServiceType.EVALUATION,
+                    command.date(), window, technician.technicianId(), technician.fullName(), command.contactName(),
                     command.contactPhone(), command.directions(), Instant.now(clock)));
+            holds.deleteByDraft(command.draftId());
+            return appointment;
         } catch (DataIntegrityViolationException exception) {
             // Two families confirmed the same technician and window at once; the unique constraint kept one.
             throw new AppointmentSlotTaken();
@@ -322,9 +329,15 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
         return EvaluationSlotPlanner.candidates(window, hcm.fetchTechniciansWorkingOn(date), visitsOf(date, ignored));
     }
 
-    private List<Appointment> visitsOf(LocalDate date, Appointment ignored) {
-        return appointments.findByScheduledDateAndStatus(date, AppointmentStatus.SCHEDULED).stream()
-                .filter(visit -> ignored == null || !visit.equals(ignored) && !isSame(visit, ignored))
+    private List<TechnicianOccupancy> visitsOf(LocalDate date, Appointment ignored) {
+        return occupancyOf(date, ignored, null);
+    }
+
+    /** Scheduled orders and windows held by families, without {@code ignored} and the hold of {@code ownDraftId}. */
+    private List<TechnicianOccupancy> occupancyOf(LocalDate date, Appointment ignored, String ownDraftId) {
+        return AppointmentQueryServiceImpl.occupancyOf(appointments, holds, date, ownDraftId, Instant.now(clock)).stream()
+                .filter(visit -> ignored == null || !visit.equals(ignored)
+                        && !(visit instanceof Appointment order && isSame(order, ignored)))
                 .toList();
     }
 

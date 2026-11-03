@@ -13,11 +13,14 @@ import com.resolum.alivia.operations.domain.model.valueobjects.AvailableSlot;
 import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
 import com.resolum.alivia.operations.domain.services.AppointmentQueryService;
 import com.resolum.alivia.operations.domain.services.EvaluationSlotPlanner;
+import com.resolum.alivia.operations.domain.model.valueobjects.TechnicianOccupancy;
 import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.AppointmentRepository;
+import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.EvaluationSlotHoldRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -30,11 +33,14 @@ public class AppointmentQueryServiceImpl implements AppointmentQueryService {
     public static final int MAX_DAYS_AHEAD = ServiceType.EVALUATION.daysAhead();
 
     private final AppointmentRepository appointments;
+    private final EvaluationSlotHoldRepository holds;
     private final ExternalHcmService hcm;
     private final Clock clock;
 
-    public AppointmentQueryServiceImpl(AppointmentRepository appointments, ExternalHcmService hcm, Clock clock) {
+    public AppointmentQueryServiceImpl(AppointmentRepository appointments, EvaluationSlotHoldRepository holds,
+                                       ExternalHcmService hcm, Clock clock) {
         this.appointments = appointments;
+        this.holds = holds;
         this.hcm = hcm;
         this.clock = clock;
     }
@@ -45,7 +51,7 @@ public class AppointmentQueryServiceImpl implements AppointmentQueryService {
         var slots = new ArrayList<AvailableSlot>();
         for (var date : bookableDates(ServiceType.EVALUATION, query.from(), query.days(), clock)) {
             slots.addAll(EvaluationSlotPlanner.plan(date, hcm.fetchTechniciansWorkingOn(date),
-                    appointments.findByScheduledDateAndStatus(date, AppointmentStatus.SCHEDULED)));
+                    occupancyOf(appointments, holds, date, query.draftId(), Instant.now(clock))));
         }
         return slots;
     }
@@ -57,7 +63,7 @@ public class AppointmentQueryServiceImpl implements AppointmentQueryService {
         var blocks = new ArrayList<AvailableBlock>();
         for (var date : bookableDates(serviceType, query.from(), query.days(), clock)) {
             blocks.addAll(EvaluationSlotPlanner.blocks(date, serviceType, hcm.fetchTechniciansWorkingOn(date),
-                    appointments.findByScheduledDateAndStatus(date, AppointmentStatus.SCHEDULED)));
+                    occupancyOf(appointments, holds, date, null, Instant.now(clock))));
         }
         return blocks;
     }
@@ -85,6 +91,21 @@ public class AppointmentQueryServiceImpl implements AppointmentQueryService {
     @Transactional(readOnly = true)
     public Optional<Appointment> handle(GetTechnicalOrderByIdQuery query) {
         return appointments.findById(query.orderId());
+    }
+
+    /**
+     * What keeps technicians busy on {@code date}: the scheduled orders and the windows families are holding,
+     * except the one held by {@code ownDraftId}, which that request may still book.
+     */
+    public static List<TechnicianOccupancy> occupancyOf(AppointmentRepository appointments,
+                                                        EvaluationSlotHoldRepository holds, LocalDate date,
+                                                        String ownDraftId, Instant now) {
+        var occupancy = new ArrayList<TechnicianOccupancy>(appointments.findByScheduledDateAndStatus(date,
+                AppointmentStatus.SCHEDULED));
+        holds.findByScheduledDateAndExpiresAtAfter(date, now).stream()
+                .filter(hold -> !hold.getDraftId().equals(ownDraftId))
+                .forEach(occupancy::add);
+        return occupancy;
     }
 
     /** Visits are booked from tomorrow on, so the technician knows their agenda a day ahead. */
