@@ -392,4 +392,18 @@ class ProfileCommandServicesTest {
         assertEquals(77L, result);
         verify(storage).upload(any(), eq("logo.png"));
     }
+
+    // --- Null command validation ---
+
+    @Test
+    void handlersRejectNullCommandsWithoutTouchingRepositories() {
+        assertThrows(NullPointerException.class, () -> businessService.handle((CreateBusinessProfileCommand) null));
+        assertThrows(NullPointerException.class, () -> businessService.handle((UpdateBusinessProfileCommand) null));
+        assertThrows(NullPointerException.class, () -> personService.handle((CreatePersonProfileCommand) null));
+        assertThrows(NullPointerException.class, () -> personService.handle((UpdatePersonProfileCommand) null));
+        assertThrows(NullPointerException.class, () -> staffService.handle((CreateStaffProfileCommand) null));
+        assertThrows(NullPointerException.class, () -> staffService.handle((UpdateStaffProfileCommand) null));
+
+        verifyNoInteractions(businessRepo, personRepo, staffRepo);
+    }
 }

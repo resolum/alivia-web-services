@@ -1,6 +1,7 @@
 package com.resolum.alivia.profiles.application.internal.commandservices;
 
 import java.util.Map;
+import java.util.Objects;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -42,6 +43,8 @@ public class PersonProfileCommandServiceImpl implements PersonProfileCommandServ
     @Transactional
     @Override
     public Long handle(CreatePersonProfileCommand command) {
+        Objects.requireNonNull(command, "CreatePersonProfileCommand cannot be null");
+
         var emailAddress = new EmailAddress(command.emailAddress());
         if (personProfileRepository.existsByEmailAddress(emailAddress)) {
             throw new EmailAddressAlreadyExistsException(emailAddress);
@@ -72,6 +75,8 @@ public class PersonProfileCommandServiceImpl implements PersonProfileCommandServ
     @Transactional
     @Override
     public Long handle(UpdatePersonProfileCommand command) {
+        Objects.requireNonNull(command, "UpdatePersonProfileCommand cannot be null");
+
         var personProfile = personProfileRepository.findById(command.profileId())
                 .orElseThrow(() -> new PersonProfileNotFoundException(command.profileId()));
 
