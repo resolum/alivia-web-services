@@ -3,8 +3,9 @@ package com.resolum.alivia.profiles.domain.model.valueobjects;
 /**
  * Responsibility of a household member.
  *
- * <p>The values are provisional: AP-355 must confirm the final responsibility matrix before
- * the authorization service depends on them.</p>
+ * <p>The authorization matrix lives in
+ * {@link com.resolum.alivia.profiles.domain.services.HouseholdAccessService}: {@code PRINCIPAL}
+ * reads and manages, while {@code CAREGIVER} and {@code GUEST} only read.</p>
  */
 public enum HouseholdResponsibility {
     PRINCIPAL,
