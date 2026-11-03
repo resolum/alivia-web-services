@@ -8,6 +8,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.slf4j.LoggerFactory;
+
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 
 import com.resolum.alivia.profiles.application.internal.queryservices.HouseholdAccessServiceImpl;
 import com.resolum.alivia.profiles.domain.exceptions.HouseholdAccessDeniedException;
@@ -116,6 +122,33 @@ class HouseholdAccessServiceTest {
 
         assertDoesNotThrow(() -> service.assertCanRead(HOUSEHOLD_ID, MEMBER_ID));
         assertDoesNotThrow(() -> service.assertCanManage(HOUSEHOLD_ID, MEMBER_ID));
+    }
+
+    @Test
+    void logsTheDeniedAttemptWithIdentifiersOnly() {
+        var household = householdWithMember(MEMBER_ID, HouseholdResponsibility.GUEST,
+                HouseholdMemberStatus.ACTIVE);
+        when(householdRepository.findById(HOUSEHOLD_ID)).thenReturn(Optional.of(household));
+
+        var logger = (Logger) LoggerFactory.getLogger(HouseholdAccessServiceImpl.class);
+        var appender = new ListAppender<ILoggingEvent>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            assertThrows(HouseholdAccessDeniedException.class,
+                    () -> service.assertCanManage(HOUSEHOLD_ID, MEMBER_ID));
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        var denied = appender.list.stream()
+                .filter(event -> event.getLevel() == Level.WARN)
+                .map(ILoggingEvent::getFormattedMessage)
+                .toList();
+        assertEquals(1, denied.size());
+        assertTrue(denied.get(0).contains("operation=manage"));
+        assertTrue(denied.get(0).contains("householdId=1"));
+        assertTrue(denied.get(0).contains("userId=10"));
     }
 
     @Test

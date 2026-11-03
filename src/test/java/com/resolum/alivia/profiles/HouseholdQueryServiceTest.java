@@ -6,7 +6,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.resolum.alivia.profiles.application.internal.queryservices.HouseholdQueryServiceImpl;
-import com.resolum.alivia.profiles.domain.exceptions.HouseholdAccessDeniedException;
 import com.resolum.alivia.profiles.domain.exceptions.HouseholdNotFoundException;
 import com.resolum.alivia.profiles.domain.model.aggregates.Household;
 import com.resolum.alivia.profiles.domain.model.queries.GetHouseholdMembersQuery;
@@ -41,25 +40,26 @@ class HouseholdQueryServiceTest {
     }
 
     @Test
-    void returnsHouseholdForActiveMember() {
+    void returnsTheHouseholdWithItsMembers() {
         var household = household();
         household.addMember(new UserId(10L), HouseholdResponsibility.PRINCIPAL);
         when(householdRepository.findById(1L)).thenReturn(Optional.of(household));
 
-        var result = service.handle(new GetHouseholdQuery(1L, 10L));
+        var result = service.handle(new GetHouseholdQuery(1L));
 
         assertEquals("Casa", result.getAlias());
         assertEquals(ADDRESS, result.getAddress());
+        assertEquals(1, result.getMembers().size());
     }
 
     @Test
-    void returnsMembersForActiveMember() {
+    void returnsTheMembers() {
         var household = household();
         household.addMember(new UserId(10L), HouseholdResponsibility.PRINCIPAL);
         household.addMember(new UserId(11L), HouseholdResponsibility.CAREGIVER);
         when(householdRepository.findById(1L)).thenReturn(Optional.of(household));
 
-        var result = service.handle(new GetHouseholdMembersQuery(1L, 10L));
+        var result = service.handle(new GetHouseholdMembersQuery(1L));
 
         assertEquals(2, result.size());
         assertTrue(result.stream().anyMatch(member -> member.getUserId().userId().equals(11L)));
@@ -70,28 +70,17 @@ class HouseholdQueryServiceTest {
         when(householdRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThrows(HouseholdNotFoundException.class,
-                () -> service.handle(new GetHouseholdQuery(99L, 10L)));
+                () -> service.handle(new GetHouseholdQuery(99L)));
+        assertThrows(HouseholdNotFoundException.class,
+                () -> service.handle(new GetHouseholdMembersQuery(99L)));
     }
 
     @Test
-    void rejectsNonMember() {
-        var household = household();
-        household.addMember(new UserId(11L), HouseholdResponsibility.PRINCIPAL);
-        when(householdRepository.findById(1L)).thenReturn(Optional.of(household));
-
-        assertThrows(HouseholdAccessDeniedException.class,
-                () -> service.handle(new GetHouseholdQuery(1L, 10L)));
-    }
-
-    @Test
-    void rejectsRevokedMember() {
-        var household = household();
-        var member = household.addMember(new UserId(10L), HouseholdResponsibility.CAREGIVER);
-        member.revoke();
-        when(householdRepository.findById(1L)).thenReturn(Optional.of(household));
-
-        assertThrows(HouseholdAccessDeniedException.class,
-                () -> service.handle(new GetHouseholdMembersQuery(1L, 10L)));
+    void rejectsInvalidHouseholdIdentifiers() {
+        assertThrows(IllegalArgumentException.class, () -> new GetHouseholdQuery(null));
+        assertThrows(IllegalArgumentException.class, () -> new GetHouseholdQuery(0L));
+        assertThrows(IllegalArgumentException.class, () -> new GetHouseholdMembersQuery(null));
+        assertThrows(IllegalArgumentException.class, () -> new GetHouseholdMembersQuery(-1L));
     }
 
     private static Household household() {
