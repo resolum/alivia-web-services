@@ -61,6 +61,8 @@ public class ConfigurationDraft {
 
     private Instant preauthorizedAt;
 
+    private Instant confirmedAt;
+
     protected ConfigurationDraft() {
     }
 
@@ -145,5 +147,17 @@ public class ConfigurationDraft {
     public void markPreauthorizationCanceled() {
         paymentStatus = PaymentStatus.CANCELED;
         updatedAt = Instant.now();
+    }
+
+    /** The family confirmed the configuration that the technician validated; confirming again changes nothing. */
+    public void confirm(Instant now) {
+        if (now == null) throw new IllegalArgumentException("La fecha de confirmación es obligatoria.");
+        if (confirmedAt != null) return;
+        confirmedAt = now;
+        updatedAt = now;
+    }
+
+    public boolean isConfirmed() {
+        return confirmedAt != null;
     }
 }

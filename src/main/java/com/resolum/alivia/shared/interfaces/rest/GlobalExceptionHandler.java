@@ -23,6 +23,7 @@ import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationResendTooSoonException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationTokenExpiredException;
 import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationDraftNotFound;
+import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationNotReadyToConfirm;
 import com.resolum.alivia.subscriptions.domain.exceptions.InvalidStripeWebhookSignature;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentRejected;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupUnavailable;
@@ -177,6 +178,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(TechnicalOrderNotScheduled.class)
     public ProblemDetail handleTechnicalOrderNotScheduled(TechnicalOrderNotScheduled exception) {
         return problem(HttpStatus.CONFLICT, "technical_order_not_scheduled", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(ConfigurationNotReadyToConfirm.class)
+    public ProblemDetail handleConfigurationNotReadyToConfirm(ConfigurationNotReadyToConfirm exception) {
+        return problem(HttpStatus.CONFLICT, "configuration_not_ready_to_confirm", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(ConfigurationDraftNotFound.class)

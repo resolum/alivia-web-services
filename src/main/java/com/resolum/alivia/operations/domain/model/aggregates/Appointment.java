@@ -6,10 +6,12 @@ import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotSchedule
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
 import com.resolum.alivia.operations.domain.model.valueobjects.AssignmentReason;
 import com.resolum.alivia.operations.domain.model.valueobjects.AssignmentRecord;
+import com.resolum.alivia.operations.domain.model.valueobjects.EvaluationResult;
 import com.resolum.alivia.operations.domain.model.valueobjects.InstallationResult;
 import com.resolum.alivia.operations.domain.model.valueobjects.MaintenanceReport;
 import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
 import com.resolum.alivia.operations.domain.model.valueobjects.SlotId;
+import com.resolum.alivia.operations.domain.model.valueobjects.TechnicianOccupancy;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -59,7 +61,7 @@ import java.util.regex.Pattern;
                 columnNames = {"technician_id", "scheduled_date", "start_time"})
 })
 @Getter
-public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
+public class Appointment extends AuditableAbstractAggregateRoot<Appointment> implements TechnicianOccupancy {
     private static final Pattern PHONE = Pattern.compile("^\\+?\\d{9,15}$");
 
     @Column(name = "draft_id", nullable = false, length = 36)
@@ -79,9 +81,9 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
     private Long technicianId;
     @Column(name = "technician_name", nullable = false, length = 120)
     private String technicianName;
-    @Column(name = "contact_name", nullable = false, length = 100)
+    @Column(name = "contact_name", length = 100)
     private String contactName;
-    @Column(name = "contact_phone", nullable = false, length = 20)
+    @Column(name = "contact_phone", length = 20)
     private String contactPhone;
     @Column(length = 300)
     private String directions;
@@ -91,6 +93,9 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
     @Enumerated(EnumType.STRING)
     @Column(name = "installation_result", length = 16)
     private InstallationResult installationResult;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "evaluation_result", length = 24)
+    private EvaluationResult evaluationResult;
     @Column(name = "completion_notes", length = 300)
     private String completionNotes;
     @Embedded
@@ -129,11 +134,17 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
             throw new IllegalArgumentException("A date and a window within the day are required.");
         }
         requireTechnician(technicianId, technicianName);
-        if (contactName == null || contactName.isBlank() || contactName.trim().length() > 100) {
-            throw new IllegalArgumentException("The name of the person who receives the visit is required.");
+        // The family books the evaluation without naming who receives the technician; when a contact is given,
+        // it needs both the name and a valid phone.
+        var name = contactName == null || contactName.isBlank() ? null : contactName.trim();
+        var phone = contactPhone == null || contactPhone.isBlank() ? null : contactPhone.replaceAll("[\\s-]", "");
+        if ((name == null) != (phone == null)) {
+            throw new IllegalArgumentException("The contact needs both the name and the phone of who receives the visit.");
         }
-        var phone = contactPhone == null ? "" : contactPhone.replaceAll("[\\s-]", "");
-        if (!PHONE.matcher(phone).matches()) throw new IllegalArgumentException("The contact phone is not valid.");
+        if (name != null && name.length() > 100) {
+            throw new IllegalArgumentException("The name of the person who receives the visit is too long.");
+        }
+        if (phone != null && !PHONE.matcher(phone).matches()) throw new IllegalArgumentException("The contact phone is not valid.");
         if (directions != null && directions.length() > 300) {
             throw new IllegalArgumentException("Directions cannot exceed 300 characters.");
         }
@@ -143,7 +154,7 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
         this.scheduledDate = scheduledDate;
         this.startTime = window.start();
         this.endTime = window.end();
-        this.contactName = contactName.trim();
+        this.contactName = name;
         this.contactPhone = phone;
         this.directions = directions == null || directions.isBlank() ? null : directions.trim();
         this.status = AppointmentStatus.SCHEDULED;
@@ -183,6 +194,26 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
     }
 
     /**
+     * Closes an evaluation visit with the technician's decision at the home. A viable home moves the family's
+     * request to the confirmation of its configuration; an adaptation needs the notes that describe it.
+     */
+    public void recordEvaluationResult(EvaluationResult result, String notes) {
+        requireScheduled();
+        if (serviceType != ServiceType.EVALUATION) {
+            throw new IllegalArgumentException("Only evaluation orders record an evaluation result.");
+        }
+        if (result == null) throw new IllegalArgumentException("The evaluation result is required.");
+        var trimmed = notes == null || notes.isBlank() ? null : notes.trim();
+        if (trimmed != null && trimmed.length() > 300) throw new IllegalArgumentException("Notes cannot exceed 300 characters.");
+        if (result == EvaluationResult.VIABLE_WITH_ADAPTATION && trimmed == null) {
+            throw new IllegalArgumentException("Describe the adaptation the home needs.");
+        }
+        this.evaluationResult = result;
+        this.completionNotes = trimmed;
+        this.status = AppointmentStatus.COMPLETED;
+    }
+
+    /**
      * Closes an installation visit with its result. An approved installation puts the home in service, which
      * is the condition for the family to report incidents.
      */
@@ -212,6 +243,7 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
         this.status = AppointmentStatus.COMPLETED;
     }
 
+    @Override
     public TimeRange window() {
         return new TimeRange(startTime, endTime);
     }
@@ -220,6 +252,7 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> {
         return new SlotId(scheduledDate, window());
     }
 
+    @Override
     public boolean isAttendedBy(Long candidateTechnicianId) {
         return status == AppointmentStatus.SCHEDULED && technicianId.equals(candidateTechnicianId);
     }

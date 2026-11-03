@@ -1,5 +1,6 @@
 package com.resolum.alivia.operations;
 
+import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.EvaluationSlotHoldRepository;
 import com.resolum.alivia.operations.application.internal.queryservices.AppointmentQueryServiceImpl;
 import com.resolum.alivia.operations.application.internal.queryservices.IncidentQueryServiceImpl;
 import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalHcmService;
@@ -165,7 +166,7 @@ class SupportIncidentRulesTest {
     @Test
     void findsTheMaintenanceVisitsOfTheIncidents() {
         var repository = mock(AppointmentRepository.class);
-        var queries = new AppointmentQueryServiceImpl(repository, mock(ExternalHcmService.class),
+        var queries = new AppointmentQueryServiceImpl(repository, mock(EvaluationSlotHoldRepository.class), mock(ExternalHcmService.class),
                 Clock.fixed(NOW, ZoneOffset.UTC));
         var visit = order(ServiceType.MAINTENANCE, 3L);
         when(repository.findByIncidentIdInOrderByScheduledDateAscStartTimeAsc(List.of(3L))).thenReturn(List.of(visit));
