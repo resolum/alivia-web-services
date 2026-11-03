@@ -1,6 +1,7 @@
 package com.resolum.alivia.nursing.infrastructure.persistence.jpa.repositories;
 
 import com.resolum.alivia.nursing.domain.model.aggregates.CareMembership;
+import com.resolum.alivia.nursing.domain.model.valueobjects.CareRole;
 import com.resolum.alivia.nursing.domain.model.valueobjects.MembershipStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -11,6 +12,16 @@ import java.util.List;
  * Spring Data repository for {@link CareMembership} aggregates.
  */
 public interface CareMembershipPersistenceRepository extends JpaRepository<CareMembership, Long> {
+
+    /**
+     * Checks whether a membership exists for the user, assisted person and role, whatever its status.
+     *
+     * @param userId                  the member user identifier
+     * @param assistedPersonProfileId the assisted person profile identifier
+     * @param role                    the role of the member
+     * @return {@code true} when a membership exists
+     */
+    boolean existsByUserIdAndAssistedPersonProfileIdAndRole(Long userId, Long assistedPersonProfileId, CareRole role);
 
     /**
      * Finds the memberships of a user with the given status.
