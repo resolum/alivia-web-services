@@ -1,6 +1,7 @@
 package com.resolum.alivia.profiles.application.internal.commandservices;
 
 import java.util.Map;
+import java.util.Objects;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -42,9 +43,7 @@ public class StaffProfileCommandServiceImpl implements StaffProfileCommandServic
     @Transactional
     @Override
     public Long handle(CreateStaffProfileCommand command) {
-        if (command == null) {
-            throw new IllegalArgumentException("CreateStaffProfileCommand cannot be null");
-        }
+        Objects.requireNonNull(command, "CreateStaffProfileCommand cannot be null");
 
         var emailAddress = new EmailAddress(command.emailAddress());
         if (staffProfileRepository.existsByEmailAddress(emailAddress)) {
@@ -77,9 +76,7 @@ public class StaffProfileCommandServiceImpl implements StaffProfileCommandServic
     @Transactional
     @Override
     public Long handle(UpdateStaffProfileCommand command) {
-        if (command == null) {
-            throw new IllegalArgumentException("UpdateStaffProfileCommand cannot be null");
-        }
+        Objects.requireNonNull(command, "UpdateStaffProfileCommand cannot be null");
 
         var staffProfile = staffProfileRepository.findById(command.profileId())
                 .orElseThrow(() -> new StaffProfileNotFoundException(command.profileId()));
