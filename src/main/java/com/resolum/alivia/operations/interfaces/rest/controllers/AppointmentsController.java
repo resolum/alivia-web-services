@@ -44,7 +44,7 @@ public class AppointmentsController {
 
     @GetMapping("/available-slots")
     @Operation(summary = "Franjas disponibles según los horarios de los técnicos",
-            description = "Ventanas de dos horas desde mañana y hasta siete días, con el técnico que atendería cada una.")
+            description = "Ventanas de dos horas desde mañana y hasta siete días, una por cada técnico libre.")
     public List<AvailableSlotResource> availableSlots(
             @RequestParam(name = "from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(name = "days", defaultValue = "7") int days) {

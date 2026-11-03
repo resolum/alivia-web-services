@@ -21,8 +21,8 @@ import java.util.TreeSet;
  * <p>The evaluation lasts 45 to 60 minutes, so the family books a two-hour arrival window. Windows are
  * cut from the start of each shift block and must fit in it whole (a 08:00 to 12:00 block gives 08:00 to
  * 10:00 and 10:00 to 12:00). A technician takes a window only when it does not overlap a visit they
- * already have. When several can take it, the one with fewer visits that day attends it, then the
- * lowest id, so the load is spread.</p>
+ * already have. The family sees every free technician of each window and picks one; when the backend
+ * picks instead, the one with fewer visits that day goes, then the lowest id, so the load is spread.</p>
  *
  * <p>Technical orders use the same rules with the window of their {@link ServiceType}: a four-hour
  * installation only fits a block of at least four hours.</p>
@@ -51,7 +51,10 @@ public final class EvaluationSlotPlanner {
         return windows;
     }
 
-    /** Bookable windows of one date, in time order, each with the technician that would attend it. */
+    /**
+     * Bookable windows of one date, in time order, once per free technician (least busy first), so the
+     * family chooses who visits them.
+     */
     public static List<AvailableSlot> plan(LocalDate date, List<TechnicianAvailability> technicians,
                                            List<Appointment> visitsOfTheDay) {
         var windows = new TreeSet<TimeRange>(Comparator.comparing(TimeRange::start));
@@ -59,9 +62,10 @@ public final class EvaluationSlotPlanner {
         var slots = new ArrayList<AvailableSlot>();
         for (var window : windows) {
             var candidates = candidates(window, technicians, visitsOfTheDay);
-            if (candidates.isEmpty()) continue;
-            var chosen = candidates.getFirst();
-            slots.add(new AvailableSlot(date, window, chosen.technicianId(), chosen.fullName(), candidates.size()));
+            for (var technician : candidates) {
+                slots.add(new AvailableSlot(date, window, technician.technicianId(), technician.fullName(),
+                        candidates.size()));
+            }
         }
         return slots;
     }
