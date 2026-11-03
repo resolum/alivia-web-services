@@ -42,6 +42,10 @@ public class PersonProfileCommandServiceImpl implements PersonProfileCommandServ
     @Transactional
     @Override
     public Long handle(CreatePersonProfileCommand command) {
+        if (command == null) {
+            throw new IllegalArgumentException("CreatePersonProfileCommand cannot be null");
+        }
+
         var emailAddress = new EmailAddress(command.emailAddress());
         if (personProfileRepository.existsByEmailAddress(emailAddress)) {
             throw new EmailAddressAlreadyExistsException(emailAddress);
@@ -72,6 +76,10 @@ public class PersonProfileCommandServiceImpl implements PersonProfileCommandServ
     @Transactional
     @Override
     public Long handle(UpdatePersonProfileCommand command) {
+        if (command == null) {
+            throw new IllegalArgumentException("UpdatePersonProfileCommand cannot be null");
+        }
+
         var personProfile = personProfileRepository.findById(command.profileId())
                 .orElseThrow(() -> new PersonProfileNotFoundException(command.profileId()));
 
