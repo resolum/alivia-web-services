@@ -21,7 +21,8 @@ public record CaregiverResource(
         Long assistedPersonId,
         @Schema(description = "Nombre completo", example = "Ana Torres", nullable = true)
         String fullName,
-        @Schema(description = "Correo electrónico", example = "ana.torres@example.com", nullable = true)
+        @Schema(description = "Correo electrónico; solo se informa a quien gestiona el hogar",
+                example = "ana.torres@example.com", nullable = true)
         String email
 ) {
 }

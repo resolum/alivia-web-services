@@ -78,6 +78,17 @@ public class ExternalHouseholdsService {
     }
 
     /**
+     * Checks whether the user may manage the household, without failing when it cannot.
+     *
+     * @param householdId the household identifier
+     * @param userId      the authenticated user
+     * @return {@code true} when Profiles grants management access
+     */
+    public boolean canManage(Long householdId, UserId userId) {
+        return householdAccessFacade.canManageHousehold(householdId, userId.userId());
+    }
+
+    /**
      * Adds an assisted person to the household with read-only access.
      *
      * @param householdId the household identifier

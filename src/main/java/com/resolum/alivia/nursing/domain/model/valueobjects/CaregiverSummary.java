@@ -10,7 +10,8 @@ import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
  * @param personProfileId         the caregiver person profile
  * @param assistedPersonProfileId the assisted person the caregiver looks after
  * @param fullName                the full name read from Profiles; {@code null} when it cannot be resolved
- * @param email                   the email read from IAM; {@code null} when it cannot be resolved
+ * @param email                   the email read from IAM; {@code null} when it cannot be resolved or the
+ *                                requester may not manage the household
  */
 public record CaregiverSummary(UserId userId, PersonProfileId personProfileId,
                                PersonProfileId assistedPersonProfileId, String fullName, String email) {

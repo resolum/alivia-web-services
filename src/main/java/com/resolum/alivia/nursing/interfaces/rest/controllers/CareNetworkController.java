@@ -158,7 +158,8 @@ public class CareNetworkController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
             @ApiResponse(responseCode = "404", description = "Hogar, persona asistida o cuidador no encontrados",
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
-            @ApiResponse(responseCode = "409", description = "El cuidador ya está vinculado a la persona asistida",
+            @ApiResponse(responseCode = "409", description = "El cuidador ya está vinculado a la persona asistida "
+                    + "o tiene una membresía revocada en el hogar",
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public ResponseEntity<CaregiverResource> linkCaregiver(
@@ -183,7 +184,7 @@ public class CareNetworkController {
     @GetMapping("/caregivers")
     @Operation(summary = "Listar los cuidadores del hogar",
             description = "Cuidadores vinculados a las personas asistidas del hogar. Disponible para cualquier "
-                    + "miembro activo del hogar.")
+                    + "miembro activo del hogar; el correo electrónico solo se informa a quien gestiona el hogar.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Cuidadores del hogar",
                     content = @Content(schema = @Schema(implementation = CaregiverResource.class))),

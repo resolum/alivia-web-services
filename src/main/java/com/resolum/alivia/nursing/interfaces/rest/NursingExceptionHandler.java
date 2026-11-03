@@ -6,6 +6,7 @@ import com.resolum.alivia.nursing.domain.exceptions.CareMemberProfileNotFoundExc
 import com.resolum.alivia.nursing.domain.exceptions.CareNetworkAccessDeniedException;
 import com.resolum.alivia.nursing.domain.exceptions.CareNetworkHouseholdNotFoundException;
 import com.resolum.alivia.nursing.domain.exceptions.CaregiverAlreadyLinkedException;
+import com.resolum.alivia.nursing.domain.exceptions.CaregiverHouseholdMembershipRevokedException;
 import com.resolum.alivia.nursing.domain.exceptions.MedicationAdministrationAccessDeniedException;
 import com.resolum.alivia.nursing.domain.exceptions.MedicationAdministrationNotFoundException;
 import com.resolum.alivia.nursing.domain.exceptions.MedicationOutcomeAlreadyRecordedException;
@@ -131,6 +132,19 @@ public class NursingExceptionHandler {
     public ProblemDetail handleCaregiverAlreadyLinked(CaregiverAlreadyLinkedException exception) {
         return problem(HttpStatus.CONFLICT, "caregiver_already_linked",
                 "The caregiver is already linked to this assisted person.");
+    }
+
+    /**
+     * Answers 409 when the caregiver has a revoked membership in the household.
+     *
+     * @param exception the conflict exception
+     * @return the problem detail
+     */
+    @ExceptionHandler(CaregiverHouseholdMembershipRevokedException.class)
+    public ProblemDetail handleCaregiverHouseholdMembershipRevoked(
+            CaregiverHouseholdMembershipRevokedException exception) {
+        return problem(HttpStatus.CONFLICT, "household_membership_revoked",
+                "The caregiver has a revoked membership in this household.");
     }
 
     private static ProblemDetail problem(HttpStatus status, String code, String detail) {
