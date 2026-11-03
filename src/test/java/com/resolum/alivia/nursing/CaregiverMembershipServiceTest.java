@@ -8,6 +8,7 @@ import com.resolum.alivia.nursing.domain.exceptions.AssistedPersonNotInHousehold
 import com.resolum.alivia.nursing.domain.exceptions.CareMemberProfileNotFoundException;
 import com.resolum.alivia.nursing.domain.exceptions.CareNetworkAccessDeniedException;
 import com.resolum.alivia.nursing.domain.exceptions.CaregiverAlreadyLinkedException;
+import com.resolum.alivia.nursing.domain.exceptions.CaregiverHouseholdMembershipRevokedException;
 import com.resolum.alivia.nursing.domain.model.aggregates.CareMembership;
 import com.resolum.alivia.nursing.domain.model.commands.LinkCaregiverCommand;
 import com.resolum.alivia.nursing.domain.model.queries.GetAssistedPersonsQuery;
@@ -74,6 +75,7 @@ class CaregiverMembershipServiceTest {
     void linksTheCaregiver() {
         givenAssistedPersonInHousehold();
         givenCaregiverProfile();
+        when(externalHouseholdsService.addCaregiver(HOUSEHOLD, CAREGIVER)).thenReturn(true);
         when(careMembershipRepository.existsByUserIdAndAssistedPersonProfileIdAndRole(CAREGIVER, ASSISTED_PROFILE,
                 CareRole.CAREGIVER)).thenReturn(false);
         when(externalProfilesService.fetchPersonNames(Set.of(CAREGIVER_PROFILE)))
@@ -155,9 +157,37 @@ class CaregiverMembershipServiceTest {
     void concurrentDuplicate() {
         givenAssistedPersonInHousehold();
         givenCaregiverProfile();
+        when(externalHouseholdsService.addCaregiver(HOUSEHOLD, CAREGIVER)).thenReturn(true);
         when(careMembershipRepository.save(any())).thenThrow(new DataIntegrityViolationException("uk"));
 
         assertThatThrownBy(() -> service.handle(command())).isInstanceOf(CaregiverAlreadyLinkedException.class);
+    }
+
+    @Test
+    @DisplayName("A caregiver who already is an active member of the household is linked without being added again")
+    void activeMemberIsLinked() {
+        givenAssistedPersonInHousehold();
+        givenCaregiverProfile();
+        when(externalHouseholdsService.requireManageable(HOUSEHOLD, REQUESTER)).thenReturn(Set.of(REQUESTER, CAREGIVER));
+        when(externalHouseholdsService.addCaregiver(HOUSEHOLD, CAREGIVER)).thenReturn(false);
+
+        var result = service.handle(command());
+
+        assertThat(result.userId()).isEqualTo(CAREGIVER);
+        verify(careMembershipRepository).save(any(CareMembership.class));
+    }
+
+    @Test
+    @DisplayName("A caregiver with a revoked household membership is rejected and no care membership is saved")
+    void revokedMemberIsRejected() {
+        givenAssistedPersonInHousehold();
+        givenCaregiverProfile();
+        when(externalHouseholdsService.requireManageable(HOUSEHOLD, REQUESTER)).thenReturn(Set.of(REQUESTER));
+        when(externalHouseholdsService.addCaregiver(HOUSEHOLD, CAREGIVER)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.handle(command()))
+                .isInstanceOf(CaregiverHouseholdMembershipRevokedException.class);
+        verify(careMembershipRepository, never()).save(any());
     }
 
     private void givenAssistedPersonInHousehold() {

@@ -6,6 +6,7 @@ import com.resolum.alivia.nursing.domain.exceptions.CareMemberProfileNotFoundExc
 import com.resolum.alivia.nursing.domain.exceptions.CareNetworkAccessDeniedException;
 import com.resolum.alivia.nursing.domain.exceptions.CareNetworkHouseholdNotFoundException;
 import com.resolum.alivia.nursing.domain.exceptions.CaregiverAlreadyLinkedException;
+import com.resolum.alivia.nursing.domain.exceptions.CaregiverHouseholdMembershipRevokedException;
 import com.resolum.alivia.nursing.domain.model.commands.LinkCaregiverCommand;
 import com.resolum.alivia.nursing.domain.model.commands.RegisterAssistedPersonCommand;
 import com.resolum.alivia.nursing.domain.model.queries.GetAssistedPersonsQuery;
@@ -190,7 +191,8 @@ class CareNetworkControllerTest {
                 .thenThrow(new AssistedPersonNotInHouseholdException(1L, ASSISTED_PROFILE))
                 .thenThrow(new CareMemberProfileNotFoundException(CAREGIVER))
                 .thenThrow(new IllegalArgumentException("An assisted person cannot be their own caregiver."))
-                .thenThrow(new CaregiverAlreadyLinkedException(CAREGIVER, ASSISTED_PROFILE));
+                .thenThrow(new CaregiverAlreadyLinkedException(CAREGIVER, ASSISTED_PROFILE))
+                .thenThrow(new CaregiverHouseholdMembershipRevokedException(CAREGIVER, 1L));
 
         perform(post(CAREGIVERS_URL), LINK_BODY).andExpect(status().isForbidden());
         perform(post(CAREGIVERS_URL), LINK_BODY).andExpect(status().isNotFound())
@@ -203,6 +205,8 @@ class CareNetworkControllerTest {
                 .andExpect(jsonPath("$.code").value("invalid_argument"));
         perform(post(CAREGIVERS_URL), LINK_BODY).andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("caregiver_already_linked"));
+        perform(post(CAREGIVERS_URL), LINK_BODY).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("household_membership_revoked"));
     }
 
     @Test

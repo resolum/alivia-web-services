@@ -28,6 +28,8 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -84,7 +86,7 @@ class CareNetworkQueryServiceTest {
         var result = service.handle(new GetAssistedPersonsQuery(REQUESTER, HOUSEHOLD));
 
         assertThat(result).isEmpty();
-        org.mockito.Mockito.verify(careMembershipRepository).findActiveByAssistedPersonProfileIds(
+        verify(careMembershipRepository).findActiveByAssistedPersonProfileIds(
                 org.mockito.ArgumentMatchers.argThat(profiles -> Set.copyOf(profiles)
                         .equals(Set.of(REQUESTER_PROFILE, ASSISTED_PROFILE))));
     }
@@ -110,6 +112,7 @@ class CareNetworkQueryServiceTest {
                 membership(CAREGIVER_USER, CAREGIVER_PROFILE, ASSISTED_PROFILE, CareRole.CAREGIVER)));
         when(externalProfilesService.fetchPersonNames(Set.of(CAREGIVER_PROFILE)))
                 .thenReturn(Map.of(CAREGIVER_PROFILE, "Ana Torres"));
+        when(externalHouseholdsService.canManage(HOUSEHOLD, REQUESTER)).thenReturn(true);
         when(externalIamService.fetchEmails(Set.of(CAREGIVER_USER)))
                 .thenReturn(Map.of(CAREGIVER_USER, "ana@alivia.com"));
 
@@ -122,6 +125,25 @@ class CareNetworkQueryServiceTest {
             assertThat(caregiver.fullName()).isEqualTo("Ana Torres");
             assertThat(caregiver.email()).isEqualTo("ana@alivia.com");
         });
+    }
+
+    @Test
+    @DisplayName("A member who cannot manage the household sees the caregivers without email and IAM is not queried")
+    void emailIsHiddenFromMembersWhoCannotManage() {
+        givenReadableHousehold();
+        when(careMembershipRepository.findActiveByAssistedPersonProfileIds(any())).thenReturn(List.of(
+                membership(CAREGIVER_USER, CAREGIVER_PROFILE, ASSISTED_PROFILE, CareRole.CAREGIVER)));
+        when(externalProfilesService.fetchPersonNames(Set.of(CAREGIVER_PROFILE)))
+                .thenReturn(Map.of(CAREGIVER_PROFILE, "Ana Torres"));
+        when(externalHouseholdsService.canManage(HOUSEHOLD, REQUESTER)).thenReturn(false);
+
+        var result = service.handle(new GetCaregiversQuery(REQUESTER, HOUSEHOLD));
+
+        assertThat(result).singleElement().satisfies(caregiver -> {
+            assertThat(caregiver.fullName()).isEqualTo("Ana Torres");
+            assertThat(caregiver.email()).isNull();
+        });
+        verify(externalIamService, never()).fetchEmails(any());
     }
 
     @Test
