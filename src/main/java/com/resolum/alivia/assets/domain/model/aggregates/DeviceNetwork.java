@@ -73,11 +73,17 @@ public class DeviceNetwork extends AuditableAbstractAggregateRoot<DeviceNetwork>
    }
 
 
-    void removeEdge(Long edgeId) {}
+    void removeEdge(Long edgeId) {
+        if (edgeId<=0){
+            throw new IllegalArgumentException("Edge ID must be a positive number.");
+        }
+    }
 
    void removeDevice(Long deviceId){
 
-
+      if (deviceId<=0){
+          throw new IllegalArgumentException("Device ID must be a positive number.");
+      }
    }
 
 
