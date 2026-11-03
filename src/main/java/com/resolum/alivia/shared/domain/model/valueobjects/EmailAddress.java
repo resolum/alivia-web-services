@@ -1,5 +1,8 @@
 package com.resolum.alivia.shared.domain.model.valueobjects;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.persistence.Embeddable;
+
 import java.util.Locale;
 
 /**
@@ -10,7 +13,12 @@ import java.util.Locale;
  *
  * @param email the normalized email address
  */
-public record EmailAddress(String email) {
+@Embeddable
+@Schema(description = "Dirección de correo electrónico normalizada y validada")
+public record EmailAddress(
+        @Schema(description = "Correo electrónico en minúsculas y sin espacios", example = "usuario@example.com")
+        String email
+) {
 
     private static final char AT_SIGN = '@';
     private static final char DOT = '.';

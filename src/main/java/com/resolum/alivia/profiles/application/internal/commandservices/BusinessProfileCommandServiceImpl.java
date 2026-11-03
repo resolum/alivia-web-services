@@ -1,5 +1,8 @@
 package com.resolum.alivia.profiles.application.internal.commandservices;
 
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +19,7 @@ import com.resolum.alivia.profiles.domain.model.valueobjects.LegalName;
 import com.resolum.alivia.profiles.domain.model.valueobjects.Ruc;
 import com.resolum.alivia.profiles.domain.services.BusinessProfileCommandService;
 import com.resolum.alivia.profiles.infrastructure.persistence.jpa.repositories.BusinessProfileRepository;
+import com.resolum.alivia.shared.application.internal.outboundservices.storage.StorageService;
 import com.resolum.alivia.shared.domain.model.valueobjects.Address;
 import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import com.resolum.alivia.shared.domain.model.valueobjects.PhoneNumber;
@@ -25,9 +29,17 @@ import com.resolum.alivia.shared.domain.model.valueobjects.Photo;
 public class BusinessProfileCommandServiceImpl implements BusinessProfileCommandService {
 
     private final BusinessProfileRepository businessProfileRepository;
+    private final StorageService storageService;
 
     public BusinessProfileCommandServiceImpl(BusinessProfileRepository businessProfileRepository) {
+        this(businessProfileRepository, null);
+    }
+
+    @Autowired
+    public BusinessProfileCommandServiceImpl(BusinessProfileRepository businessProfileRepository,
+                                            @Autowired(required = false) StorageService storageService) {
         this.businessProfileRepository = businessProfileRepository;
+        this.storageService = storageService;
     }
 
     @Transactional
@@ -53,7 +65,7 @@ public class BusinessProfileCommandServiceImpl implements BusinessProfileCommand
             throw new LegalNameAlreadyExistsException(legalName);
         }
 
-        var photo = new Photo(command.photoUrl(), command.photoPublicId());
+        Photo photo = resolvePhoto(command.photoData(), command.photoFileName(), null);
         var whatsappNum = new PhoneNumber(command.whatsappNum());
         var businessPhone = new PhoneNumber(command.emergencyPhone());
         var supportEmail = new EmailAddress(command.supportEmail());
@@ -113,12 +125,30 @@ public class BusinessProfileCommandServiceImpl implements BusinessProfileCommand
                 address
         );
 
+        Photo photo = resolvePhoto(command.photoData(), command.photoFileName(), businessProfile.getPhoto());
         businessProfile.updateContactInformation(
                 new PhoneNumber(command.whatsappNum()),
-                new Photo(command.photoUrl(), command.photoPublicId())
+                photo
         );
 
         var updatedProfile = businessProfileRepository.save(businessProfile);
         return updatedProfile.getId();
+    }
+
+    private Photo resolvePhoto(byte[] photoData, String photoFileName, Photo existingPhoto) {
+        if (photoData != null && photoData.length > 0) {
+            if (storageService != null) {
+                Map<String, String> uploaded = storageService.upload(photoData, photoFileName);
+                if (uploaded != null) {
+                    String url = uploaded.get("url") != null ? uploaded.get("url") : uploaded.get("secure_url");
+                    String publicId = uploaded.get("publicId") != null ? uploaded.get("publicId") : uploaded.get("public_id");
+                    if (url != null && publicId != null) {
+                        return new Photo(url, publicId);
+                    }
+                }
+            }
+            return new Photo("https://res.cloudinary.com/placeholder", "placeholder");
+        }
+        return existingPhoto != null ? existingPhoto : new Photo("https://res.cloudinary.com/placeholder", "placeholder");
     }
 }

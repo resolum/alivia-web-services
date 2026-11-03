@@ -1,5 +1,8 @@
 package com.resolum.alivia.profiles.application.internal.commandservices;
 
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,6 +17,7 @@ import com.resolum.alivia.profiles.domain.model.valueobjects.Dni;
 import com.resolum.alivia.profiles.domain.model.valueobjects.PersonName;
 import com.resolum.alivia.profiles.domain.services.StaffProfileCommandService;
 import com.resolum.alivia.profiles.infrastructure.persistence.jpa.repositories.StaffProfileRepository;
+import com.resolum.alivia.shared.application.internal.outboundservices.storage.StorageService;
 import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import com.resolum.alivia.shared.domain.model.valueobjects.PhoneNumber;
 import com.resolum.alivia.shared.domain.model.valueobjects.Photo;
@@ -22,9 +26,17 @@ import com.resolum.alivia.shared.domain.model.valueobjects.Photo;
 public class StaffProfileCommandServiceImpl implements StaffProfileCommandService {
 
     private final StaffProfileRepository staffProfileRepository;
+    private final StorageService storageService;
 
     public StaffProfileCommandServiceImpl(StaffProfileRepository staffProfileRepository) {
+        this(staffProfileRepository, null);
+    }
+
+    @Autowired
+    public StaffProfileCommandServiceImpl(StaffProfileRepository staffProfileRepository,
+                                          @Autowired(required = false) StorageService storageService) {
         this.staffProfileRepository = staffProfileRepository;
+        this.storageService = storageService;
     }
 
     @Transactional
@@ -40,7 +52,7 @@ public class StaffProfileCommandServiceImpl implements StaffProfileCommandServic
             throw new DniAlreadyExistsException(dni);
         }
 
-        var photo = new Photo(command.photoUrl(), command.photoPublicId());
+        Photo photo = resolvePhoto(command.photoData(), command.photoFileName(), null);
         var phoneNumber = new PhoneNumber(command.phoneNumber());
         var personName = new PersonName(command.firstName(), command.lastName());
         var birthDate = new BirthDate(command.birthDate());
@@ -67,11 +79,28 @@ public class StaffProfileCommandServiceImpl implements StaffProfileCommandServic
         var personName = new PersonName(command.firstName(), command.lastName());
         var birthDate = new BirthDate(command.birthDate());
         var phoneNumber = new PhoneNumber(command.phoneNumber());
-        var photo = new Photo(command.photoUrl(), command.photoPublicId());
+        Photo photo = resolvePhoto(command.photoData(), command.photoFileName(), staffProfile.getPhoto());
 
         staffProfile.updatePersonalInformation(personName, birthDate, phoneNumber, photo);
 
         var updatedProfile = staffProfileRepository.save(staffProfile);
         return updatedProfile.getId();
+    }
+
+    private Photo resolvePhoto(byte[] photoData, String photoFileName, Photo existingPhoto) {
+        if (photoData != null && photoData.length > 0) {
+            if (storageService != null) {
+                Map<String, String> uploaded = storageService.upload(photoData, photoFileName);
+                if (uploaded != null) {
+                    String url = uploaded.get("url") != null ? uploaded.get("url") : uploaded.get("secure_url");
+                    String publicId = uploaded.get("publicId") != null ? uploaded.get("publicId") : uploaded.get("public_id");
+                    if (url != null && publicId != null) {
+                        return new Photo(url, publicId);
+                    }
+                }
+            }
+            return new Photo("https://res.cloudinary.com/placeholder", "placeholder");
+        }
+        return existingPhoto != null ? existingPhoto : new Photo("https://res.cloudinary.com/placeholder", "placeholder");
     }
 }

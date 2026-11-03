@@ -99,9 +99,9 @@ public class ExternalProfilesService {
         }
 
         Long profileId = staff
-                ? profilesContextFacade.createStaffProfile(email, photoUrl, photoPublicId, phoneNumber,
+                ? profilesContextFacade.createStaffProfile(userId, email, photoUrl, photoPublicId, phoneNumber,
                         profileData.firstName(), profileData.lastName(), profileData.dni(), profileData.birthDate())
-                : profilesContextFacade.createPersonProfile(email, photoUrl, photoPublicId, phoneNumber,
+                : profilesContextFacade.createPersonProfile(userId, email, photoUrl, photoPublicId, phoneNumber,
                         profileData.firstName(), profileData.lastName(), profileData.dni(), profileData.birthDate());
         log.info("Created profile id {} for account id {} with role {}", profileId, userId, role);
         return profileId;
