@@ -46,6 +46,8 @@ public class Subscription {
     private LocalDateTime currentPeriodStart;
     private LocalDateTime currentPeriodEnd;
     @Column(nullable = false) private boolean refunded;
+    /** Configuration draft the family contracted with; Operations keeps its technical orders by this id. */
+    @Column(name = "draft_id", length = 36) private String draftId;
     protected Subscription() { }
     public Subscription(UserId userId, HouseholdId householdId, Plan plan, ActuatorSelection selection,
                         Money monthlyAmount, String stripeCustomerId, String idempotencyKey) {
@@ -85,6 +87,10 @@ public class Subscription {
     public void markPastDue() { this.status = SubscriptionStatus.PAST_DUE; }
     public void cancel() { this.status = SubscriptionStatus.CANCELED; this.activeHouseholdId = null; }
     public void refund() { this.refunded = true; }
+    public void linkDraft(String draftId) {
+        if (draftId == null || draftId.isBlank()) throw new IllegalArgumentException("Se requiere la configuración contratada.");
+        this.draftId = draftId;
+    }
     public boolean isActive() { return status == SubscriptionStatus.ACTIVE; }
     public boolean isCurrent() { return isActive() && currentPeriodEnd != null && currentPeriodEnd.isAfter(LocalDateTime.now()); }
 }

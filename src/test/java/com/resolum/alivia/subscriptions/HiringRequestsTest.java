@@ -1,6 +1,7 @@
 package com.resolum.alivia.subscriptions;
 
 import com.resolum.alivia.shared.interfaces.rest.GlobalExceptionHandler;
+import com.resolum.alivia.subscriptions.application.internal.outboundservices.acl.ExternalOperationsService;
 import com.resolum.alivia.subscriptions.application.internal.queryservices.HiringRequestQueryServiceImpl;
 import com.resolum.alivia.subscriptions.domain.exceptions.InvalidActuatorSelection;
 import com.resolum.alivia.subscriptions.domain.model.aggregates.Plan;
@@ -52,7 +53,9 @@ class HiringRequestsTest {
                 .thenReturn(new PlanQuote(PlanCode.MINIMUM, "PEN", 1, Map.of(), BigDecimal.valueOf(99),
                         BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.valueOf(99)))
                 .thenThrow(new InvalidActuatorSelection("El plan permite entre 1 y 1 actuador(es)."));
-        var service = new HiringRequestQueryServiceImpl(drafts, plans);
+        var operations = mock(ExternalOperationsService.class);
+        when(operations.fetchTechnicalStages(any())).thenReturn(Map.of());
+        var service = new HiringRequestQueryServiceImpl(drafts, plans, operations);
 
         var requests = service.handle(new GetHiringRequestsQuery(null));
 

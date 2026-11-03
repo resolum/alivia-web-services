@@ -9,6 +9,11 @@ import com.resolum.alivia.operations.domain.model.queries.GetAvailableSlotsQuery
 import com.resolum.alivia.operations.domain.model.valueobjects.AvailableSlot;
 import com.resolum.alivia.operations.domain.services.AppointmentCommandService;
 import com.resolum.alivia.operations.domain.services.AppointmentQueryService;
+import com.resolum.alivia.operations.domain.services.EvaluationSlotHoldCommandService;
+import com.resolum.alivia.operations.domain.model.aggregates.EvaluationSlotHold;
+import com.resolum.alivia.operations.domain.model.commands.HoldEvaluationSlotCommand;
+import com.resolum.alivia.operations.domain.model.commands.ReleaseEvaluationSlotCommand;
+import java.time.Instant;
 import com.resolum.alivia.operations.interfaces.rest.controllers.AppointmentsController;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +30,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -37,13 +44,15 @@ class AppointmentsControllerTest {
 
     private AppointmentCommandService commands;
     private AppointmentQueryService queries;
+    private EvaluationSlotHoldCommandService holds;
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
         commands = mock(AppointmentCommandService.class);
         queries = mock(AppointmentQueryService.class);
-        mvc = MockMvcBuilders.standaloneSetup(new AppointmentsController(commands, queries))
+        holds = mock(EvaluationSlotHoldCommandService.class);
+        mvc = MockMvcBuilders.standaloneSetup(new AppointmentsController(commands, queries, holds))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
 
@@ -74,5 +83,46 @@ class AppointmentsControllerTest {
                 .andExpect(status().isConflict());
         verify(commands, times(2)).handle(new ScheduleAppointmentCommand("d1", DAY, LocalTime.of(10, 0),
                 LocalTime.of(12, 0), 7L, "María Villanueva", "984123456", "Puerta verde"));
+    }
+
+    @Test
+    void listsSlotsKeepingTheWindowHeldByTheDraft() throws Exception {
+        when(queries.handle(new GetAvailableSlotsQuery(DAY, 7, "d1")))
+                .thenReturn(List.of(new AvailableSlot(DAY, WINDOW, 7L, "Ana Pérez", 1)));
+
+        mvc.perform(get("/api/v1/appointments/available-slots").param("from", "2026-10-29").param("draftId", "d1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].technicianId").value(7));
+    }
+
+    @Test
+    void holdsTheChosenWindow() throws Exception {
+        when(holds.handle(new HoldEvaluationSlotCommand("d1", DAY, WINDOW.start(), WINDOW.end(), 7L)))
+                .thenReturn(new EvaluationSlotHold("d1", DAY, WINDOW, 7L, "Ana Pérez", Instant.parse("2026-10-28T15:00:00Z")));
+
+        mvc.perform(put("/api/v1/appointments/holds/d1").contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"date":"2026-10-29","startTime":"10:00","endTime":"12:00","technicianId":7}"""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.technicianName").value("Ana Pérez"))
+                .andExpect(jsonPath("$.startTime").value("10:00"))
+                .andExpect(jsonPath("$.expiresAt").value("2026-10-28T15:30:00Z"));
+    }
+
+    @Test
+    void refusesAWindowHeldByAnotherFamily() throws Exception {
+        when(holds.handle(any(HoldEvaluationSlotCommand.class))).thenThrow(new AppointmentSlotTaken());
+
+        mvc.perform(put("/api/v1/appointments/holds/d1").contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"date":"2026-10-29","startTime":"10:00","endTime":"12:00","technicianId":7}"""))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void releasesTheHeldWindow() throws Exception {
+        mvc.perform(delete("/api/v1/appointments/holds/d1")).andExpect(status().isNoContent());
+
+        verify(holds).handle(new ReleaseEvaluationSlotCommand("d1"));
     }
 }

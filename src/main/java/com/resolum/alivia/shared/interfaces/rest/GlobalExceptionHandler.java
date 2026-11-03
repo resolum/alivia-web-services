@@ -33,6 +33,7 @@ import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationResendTooSoonException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationTokenExpiredException;
 import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationDraftNotFound;
+import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationNotReadyToConfirm;
 import com.resolum.alivia.subscriptions.domain.exceptions.InvalidStripeWebhookSignature;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentRejected;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupUnavailable;
@@ -40,6 +41,19 @@ import com.resolum.alivia.subscriptions.domain.exceptions.PlanNotFound;
 import com.resolum.alivia.operations.domain.exceptions.AppointmentAlreadyExists;
 import com.resolum.alivia.operations.domain.exceptions.AppointmentSlotTaken;
 import com.resolum.alivia.operations.domain.exceptions.DraftNotReadyForAppointment;
+import com.resolum.alivia.operations.domain.exceptions.EvaluationRequiredForInstallation;
+import com.resolum.alivia.operations.domain.exceptions.IncidentAccessDenied;
+import com.resolum.alivia.operations.domain.exceptions.IncidentAlreadyOpen;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotOpen;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotScheduled;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotAllowed;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotFound;
+import com.resolum.alivia.operations.domain.exceptions.SlotUnavailable;
+import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderAlreadyExists;
+import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotFound;
+import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotScheduled;
+import com.resolum.alivia.operations.domain.exceptions.TechnicianNotEligible;
+import com.resolum.alivia.operations.interfaces.rest.transform.TechnicalOrderResourceFromEntityAssembler;
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
@@ -114,6 +128,76 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({AppointmentSlotTaken.class, AppointmentAlreadyExists.class, DraftNotReadyForAppointment.class})
     public ProblemDetail handleAppointmentConflict(RuntimeException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
+    @ExceptionHandler(SlotUnavailable.class)
+    public ProblemDetail handleSlotUnavailable(SlotUnavailable exception) {
+        var problem = problem(HttpStatus.CONFLICT, "slot_unavailable", exception.getMessage(), List.of());
+        problem.setProperty("alternatives", exception.getAlternatives().stream()
+                .map(TechnicalOrderResourceFromEntityAssembler::toResourceFromBlock).toList());
+        return problem;
+    }
+
+    @ExceptionHandler(IncidentNotAllowed.class)
+    public ProblemDetail handleIncidentNotAllowed(IncidentNotAllowed exception) {
+        return problem(HttpStatus.FORBIDDEN, "incident_not_allowed", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(IncidentAccessDenied.class)
+    public ProblemDetail handleIncidentAccessDenied(IncidentAccessDenied exception) {
+        return problem(HttpStatus.FORBIDDEN, "incident_access_denied", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(IncidentAlreadyOpen.class)
+    public ProblemDetail handleIncidentAlreadyOpen(IncidentAlreadyOpen exception) {
+        var problem = problem(HttpStatus.CONFLICT, "incident_already_open", exception.getMessage(), List.of());
+        problem.setProperty("incidentId", exception.getIncidentId());
+        return problem;
+    }
+
+    @ExceptionHandler(IncidentNotOpen.class)
+    public ProblemDetail handleIncidentNotOpen(IncidentNotOpen exception) {
+        return problem(HttpStatus.CONFLICT, "incident_not_open", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(IncidentNotScheduled.class)
+    public ProblemDetail handleIncidentNotScheduled(IncidentNotScheduled exception) {
+        return problem(HttpStatus.CONFLICT, "incident_not_scheduled", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(IncidentNotFound.class)
+    public ProblemDetail handleIncidentNotFound(IncidentNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "incident_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(TechnicalOrderNotFound.class)
+    public ProblemDetail handleTechnicalOrderNotFound(TechnicalOrderNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "technical_order_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(TechnicianNotEligible.class)
+    public ProblemDetail handleTechnicianNotEligible(TechnicianNotEligible exception) {
+        return problem(HttpStatus.CONFLICT, "technician_not_eligible", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(TechnicalOrderAlreadyExists.class)
+    public ProblemDetail handleTechnicalOrderAlreadyExists(TechnicalOrderAlreadyExists exception) {
+        return problem(HttpStatus.CONFLICT, "technical_order_already_exists", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(EvaluationRequiredForInstallation.class)
+    public ProblemDetail handleEvaluationRequired(EvaluationRequiredForInstallation exception) {
+        return problem(HttpStatus.CONFLICT, "evaluation_required", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(TechnicalOrderNotScheduled.class)
+    public ProblemDetail handleTechnicalOrderNotScheduled(TechnicalOrderNotScheduled exception) {
+        return problem(HttpStatus.CONFLICT, "technical_order_not_scheduled", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(ConfigurationNotReadyToConfirm.class)
+    public ProblemDetail handleConfigurationNotReadyToConfirm(ConfigurationNotReadyToConfirm exception) {
+        return problem(HttpStatus.CONFLICT, "configuration_not_ready_to_confirm", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(ConfigurationDraftNotFound.class)
