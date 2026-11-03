@@ -14,12 +14,15 @@ import com.resolum.alivia.profiles.domain.repositories.HouseholdRepository;
 import com.resolum.alivia.profiles.domain.services.HouseholdAccessService;
 import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
 
+import lombok.extern.slf4j.Slf4j;
+
 /**
  * Implementation of {@link HouseholdAccessService}.
  *
  * <p>Every decision is derived from the household aggregate, so it is deterministic and does not
  * depend on the access role carried by the token.</p>
  */
+@Slf4j
 @Service
 public class HouseholdAccessServiceImpl implements HouseholdAccessService {
 
@@ -67,7 +70,7 @@ public class HouseholdAccessServiceImpl implements HouseholdAccessService {
     @Transactional(readOnly = true)
     @Override
     public void assertCanRead(Long householdId, Long userId) {
-        assertGranted(householdId, userId, READ_RESPONSIBILITIES);
+        assertGranted(householdId, userId, READ_RESPONSIBILITIES, "read");
     }
 
     /**
@@ -76,15 +79,18 @@ public class HouseholdAccessServiceImpl implements HouseholdAccessService {
     @Transactional(readOnly = true)
     @Override
     public void assertCanManage(Long householdId, Long userId) {
-        assertGranted(householdId, userId, MANAGE_RESPONSIBILITIES);
+        assertGranted(householdId, userId, MANAGE_RESPONSIBILITIES, "manage");
     }
 
     private void assertGranted(Long householdId, Long userId,
-                               Set<HouseholdResponsibility> required) {
+                               Set<HouseholdResponsibility> required, String operation) {
         validate(householdId, userId);
         var household = householdRepository.findById(householdId)
                 .orElseThrow(() -> new HouseholdNotFoundException(householdId));
         if (!grants(household, userId, required)) {
+            // Only identifiers and the operation are logged; household data never reaches the log.
+            log.warn("Household access denied: operation={}, householdId={}, userId={}",
+                    operation, householdId, userId);
             throw new HouseholdAccessDeniedException(householdId, userId);
         }
     }

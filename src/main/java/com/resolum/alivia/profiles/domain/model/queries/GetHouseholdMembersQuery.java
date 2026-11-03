@@ -1,19 +1,18 @@
 package com.resolum.alivia.profiles.domain.model.queries;
 
 /**
- * Query that asks for the members of a household on behalf of an authenticated user.
+ * Query that asks for the members of a household.
  *
- * @param householdId     the household identifier
- * @param requesterUserId the authenticated user that requests the members
+ * <p>The caller must authorize the request first through
+ * {@link com.resolum.alivia.profiles.domain.services.HouseholdAccessService}.</p>
+ *
+ * @param householdId the household identifier
  */
-public record GetHouseholdMembersQuery(Long householdId, Long requesterUserId) {
+public record GetHouseholdMembersQuery(Long householdId) {
 
     public GetHouseholdMembersQuery {
         if (householdId == null || householdId <= 0) {
             throw new IllegalArgumentException("Household id must be greater than 0");
-        }
-        if (requesterUserId == null || requesterUserId <= 0) {
-            throw new IllegalArgumentException("Requester user id must be greater than 0");
         }
     }
 }

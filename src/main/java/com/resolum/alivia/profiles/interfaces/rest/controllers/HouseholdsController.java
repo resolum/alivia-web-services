@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.resolum.alivia.profiles.domain.model.queries.GetHouseholdMembersQuery;
 import com.resolum.alivia.profiles.domain.model.queries.GetHouseholdQuery;
+import com.resolum.alivia.profiles.domain.services.HouseholdAccessService;
 import com.resolum.alivia.profiles.domain.services.HouseholdQueryService;
 import com.resolum.alivia.profiles.interfaces.rest.resources.HouseholdMemberResource;
 import com.resolum.alivia.profiles.interfaces.rest.resources.HouseholdResource;
@@ -29,9 +30,12 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 public class HouseholdsController {
 
     private final HouseholdQueryService queryService;
+    private final HouseholdAccessService accessService;
 
-    public HouseholdsController(HouseholdQueryService queryService) {
+    public HouseholdsController(HouseholdQueryService queryService,
+                                HouseholdAccessService accessService) {
         this.queryService = queryService;
+        this.accessService = accessService;
     }
 
     @GetMapping("/{householdId}")
@@ -42,7 +46,9 @@ public class HouseholdsController {
             @ApiResponse(responseCode = "404", description = "Hogar no encontrado")
     })
     public HouseholdResource getHousehold(@PathVariable Long householdId, Principal principal) {
-        var household = queryService.handle(new GetHouseholdQuery(householdId, userIdOf(principal)));
+        var userId = userIdOf(principal);
+        accessService.assertCanRead(householdId, userId);
+        var household = queryService.handle(new GetHouseholdQuery(householdId));
         return HouseholdResourceFromEntityAssembler.toResourceFromEntity(household);
     }
 
@@ -55,7 +61,9 @@ public class HouseholdsController {
     })
     public List<HouseholdMemberResource> getHouseholdMembers(@PathVariable Long householdId,
                                                              Principal principal) {
-        return queryService.handle(new GetHouseholdMembersQuery(householdId, userIdOf(principal)))
+        var userId = userIdOf(principal);
+        accessService.assertCanRead(householdId, userId);
+        return queryService.handle(new GetHouseholdMembersQuery(householdId))
                 .stream()
                 .map(HouseholdMemberResourceFromEntityAssembler::toResourceFromEntity)
                 .toList();
