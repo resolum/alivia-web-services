@@ -7,6 +7,7 @@ import com.resolum.alivia.operations.domain.model.commands.StartMaintenanceOrder
 import com.resolum.alivia.operations.domain.model.commands.CreateMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateTechnicalOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.ReassignTechnicianCommand;
+import com.resolum.alivia.operations.domain.model.commands.RecordEvaluationResultCommand;
 import com.resolum.alivia.operations.domain.model.commands.RecordInstallationResultCommand;
 import com.resolum.alivia.operations.domain.model.commands.ScheduleAppointmentCommand;
 
@@ -18,6 +19,8 @@ public interface AppointmentCommandService {
     Appointment handle(AssignTechnicianCommand command);
 
     Appointment handle(ReassignTechnicianCommand command);
+
+    Appointment handle(RecordEvaluationResultCommand command);
 
     Appointment handle(RecordInstallationResultCommand command);
 

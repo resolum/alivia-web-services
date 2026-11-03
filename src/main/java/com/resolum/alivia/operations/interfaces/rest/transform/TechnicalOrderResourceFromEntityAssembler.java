@@ -24,7 +24,9 @@ public final class TechnicalOrderResourceFromEntityAssembler {
                 order.getIncidentId(), order.getStatus().name(), order.slotId().value(), order.getScheduledDate(),
                 order.getStartTime().format(TIME), order.getEndTime().format(TIME), order.getTechnicianId(),
                 order.getTechnicianName(), order.getContactName(), order.getContactPhone(), order.getDirections(),
+                order.getEvaluationResult() == null ? null : order.getEvaluationResult().name(),
                 order.getInstallationResult() == null ? null : order.getInstallationResult().name(),
+                order.getCompletionNotes(),
                 toResource(order.getMaintenanceReport()),
                 order.getAssignments().stream().map(TechnicalOrderResourceFromEntityAssembler::toResource).toList());
     }

@@ -1,7 +1,9 @@
 package com.resolum.alivia.operations.interfaces.acl;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 
 /** Anti-corruption layer of Operations for the contexts that follow a contracting request after its payment. */
@@ -22,4 +24,20 @@ public interface OperationsContextFacade {
      * without one are left out of the map.
      */
     Map<String, ScheduledVisit> fetchScheduledVisitsOfDrafts(Collection<String> draftIds);
+
+    /**
+     * A visit of the contracting flow as the family follows it.
+     *
+     * @param serviceType {@code EVALUATION} or {@code INSTALLATION}
+     * @param status      {@code SCHEDULED} or {@code COMPLETED}
+     * @param result      the evaluation result ({@code VIABLE}, {@code VIABLE_WITH_ADAPTATION}, {@code NOT_VIABLE})
+     *                    or the installation result ({@code APPROVED}, {@code REJECTED}); null while scheduled
+     * @param notes       what the technician wrote when closing the visit, such as the adaptation
+     */
+    record ContractingVisit(String serviceType, String status, LocalDate date, LocalTime startTime, LocalTime endTime,
+                            String technicianName, String directions, String result, String notes) {
+    }
+
+    /** Latest scheduled or completed evaluation and installation of a request, evaluation first. */
+    List<ContractingVisit> fetchContractingVisitsOfDraft(String draftId);
 }

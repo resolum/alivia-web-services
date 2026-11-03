@@ -2,9 +2,11 @@ package com.resolum.alivia.subscriptions.application.internal.outboundservices.a
 
 import com.resolum.alivia.operations.interfaces.acl.OperationsContextFacade;
 import com.resolum.alivia.subscriptions.domain.model.valueobjects.HiringStage;
+import com.resolum.alivia.subscriptions.domain.model.valueobjects.TechnicalVisit;
 import org.springframework.stereotype.Service;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -24,6 +26,15 @@ public class ExternalOperationsService {
     public Map<String, HiringStage> fetchTechnicalStages(Collection<String> draftIds) {
         return operationsContextFacade.fetchScheduledVisitsOfDrafts(draftIds).entrySet().stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, entry -> toStage(entry.getValue())));
+    }
+
+    /** Latest evaluation and installation visits of a request, evaluation first. */
+    public List<TechnicalVisit> fetchContractingVisits(String draftId) {
+        return operationsContextFacade.fetchContractingVisitsOfDraft(draftId).stream()
+                .map(visit -> new TechnicalVisit(visit.serviceType(), "COMPLETED".equals(visit.status()), visit.date(),
+                        visit.startTime(), visit.endTime(), visit.technicianName(), visit.directions(), visit.result(),
+                        visit.notes()))
+                .toList();
     }
 
     private static HiringStage toStage(OperationsContextFacade.ScheduledVisit visit) {

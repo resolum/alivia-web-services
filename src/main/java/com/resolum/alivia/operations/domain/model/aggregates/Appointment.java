@@ -6,6 +6,7 @@ import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotSchedule
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
 import com.resolum.alivia.operations.domain.model.valueobjects.AssignmentReason;
 import com.resolum.alivia.operations.domain.model.valueobjects.AssignmentRecord;
+import com.resolum.alivia.operations.domain.model.valueobjects.EvaluationResult;
 import com.resolum.alivia.operations.domain.model.valueobjects.InstallationResult;
 import com.resolum.alivia.operations.domain.model.valueobjects.MaintenanceReport;
 import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
@@ -92,6 +93,9 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> imp
     @Enumerated(EnumType.STRING)
     @Column(name = "installation_result", length = 16)
     private InstallationResult installationResult;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "evaluation_result", length = 24)
+    private EvaluationResult evaluationResult;
     @Column(name = "completion_notes", length = 300)
     private String completionNotes;
     @Embedded
@@ -187,6 +191,26 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> imp
         this.startTime = slot.window().start();
         this.endTime = slot.window().end();
         record(newTechnicianId, newTechnicianName, AssignmentReason.REASSIGNED, reason, at);
+    }
+
+    /**
+     * Closes an evaluation visit with the technician's decision at the home. A viable home moves the family's
+     * request to the confirmation of its configuration; an adaptation needs the notes that describe it.
+     */
+    public void recordEvaluationResult(EvaluationResult result, String notes) {
+        requireScheduled();
+        if (serviceType != ServiceType.EVALUATION) {
+            throw new IllegalArgumentException("Only evaluation orders record an evaluation result.");
+        }
+        if (result == null) throw new IllegalArgumentException("The evaluation result is required.");
+        var trimmed = notes == null || notes.isBlank() ? null : notes.trim();
+        if (trimmed != null && trimmed.length() > 300) throw new IllegalArgumentException("Notes cannot exceed 300 characters.");
+        if (result == EvaluationResult.VIABLE_WITH_ADAPTATION && trimmed == null) {
+            throw new IllegalArgumentException("Describe the adaptation the home needs.");
+        }
+        this.evaluationResult = result;
+        this.completionNotes = trimmed;
+        this.status = AppointmentStatus.COMPLETED;
     }
 
     /**

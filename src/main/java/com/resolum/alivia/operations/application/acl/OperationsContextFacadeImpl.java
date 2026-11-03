@@ -40,4 +40,27 @@ public class OperationsContextFacadeImpl implements OperationsContextFacade {
                         order -> order.map(visit -> new ScheduledVisit(visit.getServiceType().name(),
                                 visit.getScheduledDate(), visit.getInstallationResult() == InstallationResult.APPROVED)).orElseThrow())));
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ContractingVisit> fetchContractingVisitsOfDraft(String draftId) {
+        if (draftId == null || draftId.isBlank()) return List.of();
+        return appointments.findByDraftIdInAndStatusIn(List.of(draftId),
+                        List.of(AppointmentStatus.SCHEDULED, AppointmentStatus.COMPLETED)).stream()
+                .filter(order -> CONTRACTING_VISITS.contains(order.getServiceType()))
+                .collect(Collectors.toMap(Appointment::getServiceType, order -> order,
+                        (first, second) -> second.getId() != null && first.getId() != null
+                                && second.getId() > first.getId() ? second : first))
+                .values().stream()
+                .sorted(Comparator.comparing(Appointment::getServiceType))
+                .map(OperationsContextFacadeImpl::toVisit)
+                .toList();
+    }
+
+    private static ContractingVisit toVisit(Appointment order) {
+        var result = order.getServiceType() == ServiceType.EVALUATION ? order.getEvaluationResult() : order.getInstallationResult();
+        return new ContractingVisit(order.getServiceType().name(), order.getStatus().name(), order.getScheduledDate(),
+                order.getStartTime(), order.getEndTime(), order.getTechnicianName(), order.getDirections(),
+                result == null ? null : result.name(), order.getCompletionNotes());
+    }
 }

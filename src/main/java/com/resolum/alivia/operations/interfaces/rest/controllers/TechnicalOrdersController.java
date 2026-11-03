@@ -4,6 +4,7 @@ import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotFound;
 import com.resolum.alivia.operations.domain.model.commands.AssignTechnicianCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateTechnicalOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.ReassignTechnicianCommand;
+import com.resolum.alivia.operations.domain.model.commands.RecordEvaluationResultCommand;
 import com.resolum.alivia.operations.domain.model.commands.RecordInstallationResultCommand;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalOrderByIdQuery;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalOrdersQuery;
@@ -14,6 +15,7 @@ import com.resolum.alivia.operations.domain.services.AppointmentCommandService;
 import com.resolum.alivia.operations.domain.services.AppointmentQueryService;
 import com.resolum.alivia.operations.interfaces.rest.resources.AssignTechnicianResource;
 import com.resolum.alivia.operations.interfaces.rest.resources.CreateTechnicalOrderResource;
+import com.resolum.alivia.operations.interfaces.rest.resources.EvaluationResultResource;
 import com.resolum.alivia.operations.interfaces.rest.resources.InstallationResultResource;
 import com.resolum.alivia.operations.interfaces.rest.resources.ReassignTechnicianResource;
 import com.resolum.alivia.operations.interfaces.rest.resources.TechnicalOrderResource;
@@ -97,6 +99,17 @@ public class TechnicalOrdersController {
     public TechnicalOrderResource reassign(@PathVariable Long orderId,
                                            @Valid @RequestBody ReassignTechnicianResource resource) {
         var order = commandService.handle(new ReassignTechnicianCommand(orderId, resource.reason()));
+        return TechnicalOrderResourceFromEntityAssembler.toResourceFromEntity(order);
+    }
+
+    @PostMapping(value = "/{orderId}/evaluation-result", consumes = APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'TECHNICIAN')")
+    @Operation(summary = "Cerrar la evaluación con la decisión del técnico en el hogar",
+            description = "VIABLE o VIABLE_WITH_ADAPTATION (con la adaptación en notes) pasan la contratación a "
+                    + "Confirmación, donde la familia revisa y confirma su configuración. NOT_VIABLE la cierra.")
+    public TechnicalOrderResource recordEvaluationResult(@PathVariable Long orderId,
+                                                         @Valid @RequestBody EvaluationResultResource resource) {
+        var order = commandService.handle(new RecordEvaluationResultCommand(orderId, resource.result(), resource.notes()));
         return TechnicalOrderResourceFromEntityAssembler.toResourceFromEntity(order);
     }
 

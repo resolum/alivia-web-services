@@ -23,6 +23,7 @@ import com.resolum.alivia.operations.domain.model.commands.CreateMaintenanceOrde
 import com.resolum.alivia.operations.domain.model.commands.StartMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateTechnicalOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.ReassignTechnicianCommand;
+import com.resolum.alivia.operations.domain.model.commands.RecordEvaluationResultCommand;
 import com.resolum.alivia.operations.domain.model.commands.RecordInstallationResultCommand;
 import com.resolum.alivia.operations.domain.model.commands.ScheduleAppointmentCommand;
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
@@ -190,6 +191,14 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
         } catch (DataIntegrityViolationException exception) {
             throw new SlotUnavailable(alternatives(order.getServiceType(), earliestFor(order), order.slotId()));
         }
+    }
+
+    @Override
+    @Transactional
+    public Appointment handle(RecordEvaluationResultCommand command) {
+        var order = appointments.findById(command.orderId()).orElseThrow(() -> new TechnicalOrderNotFound(command.orderId()));
+        order.recordEvaluationResult(command.result(), command.notes());
+        return appointments.saveAndFlush(order);
     }
 
     @Override
