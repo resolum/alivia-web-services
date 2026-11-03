@@ -23,17 +23,18 @@ class EvaluationSlotPlannerTest {
     }
 
     @Test
-    void assignsTheLeastBusyFreeTechnicianToEachWindow() {
+    void offersEveryFreeTechnicianOfEachWindowLeastBusyFirst() {
         var ana = new TechnicianAvailability(1L, "Ana Pérez", List.of(range(8, 12)));
         var luis = new TechnicianAvailability(2L, "Luis Rojas", List.of(range(10, 14)));
         var anaAt8 = visit(1L, 8);
 
         var slots = EvaluationSlotPlanner.plan(DAY, List.of(ana, luis), List.of(anaAt8));
 
-        assertEquals(List.of(range(10, 12), range(12, 14)), slots.stream().map(slot -> slot.window()).toList());
-        // Both can take 10:00; Luis has no visits that day, so he gets it.
-        assertEquals(2L, slots.getFirst().technicianId());
+        assertEquals(List.of(range(10, 12), range(10, 12), range(12, 14)), slots.stream().map(slot -> slot.window()).toList());
+        // Both can take 10:00; Luis has no visits that day, so he comes first, and the family may pick Ana.
+        assertEquals(List.of(2L, 1L, 2L), slots.stream().map(slot -> slot.technicianId()).toList());
         assertEquals(2, slots.getFirst().availableTechnicians());
+        assertEquals(1, slots.getLast().availableTechnicians());
         assertTrue(EvaluationSlotPlanner.plan(DAY, List.of(ana), List.of(anaAt8, visit(1L, 10))).isEmpty());
     }
 

@@ -78,7 +78,7 @@ class OperationsAclTest {
         when(draft.getPaymentStatus()).thenReturn(PaymentStatus.PREAUTHORIZED, PaymentStatus.AWAITING_CONFIRMATION);
         when(drafts.findById("d1")).thenReturn(Optional.of(draft));
         when(drafts.findById("missing")).thenReturn(Optional.empty());
-        var service = new ExternalSubscriptionsService(new SubscriptionsContextFacadeImpl(drafts));
+        var service = new ExternalSubscriptionsService(new SubscriptionsContextFacadeImpl(drafts, mock(com.resolum.alivia.subscriptions.infrastructure.persistence.jpa.repositories.SubscriptionRepository.class)));
 
         assertTrue(service.isReadyForEvaluation("d1"));
         assertFalse(service.isReadyForEvaluation("d1"));

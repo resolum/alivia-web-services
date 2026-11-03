@@ -1,12 +1,20 @@
 package com.resolum.alivia.shared.domain.model.valueobjects;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.Embeddable;
 
 import java.time.Duration;
 import java.time.LocalTime;
 import java.util.Objects;
+
 @Embeddable
-public record TimeRange(LocalTime start, LocalTime end) {
+@Schema(description = "Rango de horas (hora de inicio y hora de fin)")
+public record TimeRange(
+        @Schema(description = "Hora de inicio en formato HH:mm:ss", example = "08:00:00")
+        LocalTime start,
+
+        @Schema(description = "Hora de fin en formato HH:mm:ss", example = "18:00:00")
+        LocalTime end) {
 
     private static final Duration DAY = Duration.ofDays(1);
 

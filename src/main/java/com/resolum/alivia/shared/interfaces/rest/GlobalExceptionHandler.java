@@ -9,6 +9,16 @@ import com.resolum.alivia.hcm.domain.exceptions.WorkScheduleNotEditable;
 import com.resolum.alivia.hcm.domain.exceptions.WorkScheduleNotFound;
 import com.resolum.alivia.hcm.domain.exceptions.WorkScheduleOutsideContract;
 import com.resolum.alivia.hcm.domain.exceptions.WorkScheduleOverlap;
+import com.resolum.alivia.business.domain.exceptions.AdministratorNotFound;
+import com.resolum.alivia.business.domain.exceptions.BackupPersonalEmailAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.BusinessAlreadyExistsForAdministrator;
+import com.resolum.alivia.business.domain.exceptions.BusinessNameAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.BusinessNotFound;
+import com.resolum.alivia.business.domain.exceptions.DniAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.EmailAddressAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.LegalNameAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.RucAlreadyExists;
+import com.resolum.alivia.business.domain.exceptions.UnauthorizedAdministratorException;
 import com.resolum.alivia.iam.domain.exceptions.AccountAlreadyVerifiedException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotActiveException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotFoundException;
@@ -23,6 +33,7 @@ import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationResendTooSoonException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationTokenExpiredException;
 import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationDraftNotFound;
+import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationNotReadyToConfirm;
 import com.resolum.alivia.subscriptions.domain.exceptions.InvalidStripeWebhookSignature;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentRejected;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentSetupUnavailable;
@@ -30,14 +41,32 @@ import com.resolum.alivia.subscriptions.domain.exceptions.PlanNotFound;
 import com.resolum.alivia.operations.domain.exceptions.AppointmentAlreadyExists;
 import com.resolum.alivia.operations.domain.exceptions.AppointmentSlotTaken;
 import com.resolum.alivia.operations.domain.exceptions.DraftNotReadyForAppointment;
+import com.resolum.alivia.operations.domain.exceptions.EvaluationRequiredForInstallation;
+import com.resolum.alivia.operations.domain.exceptions.IncidentAccessDenied;
+import com.resolum.alivia.operations.domain.exceptions.IncidentAlreadyOpen;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotOpen;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotScheduled;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotAllowed;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotFound;
+import com.resolum.alivia.operations.domain.exceptions.SlotUnavailable;
+import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderAlreadyExists;
+import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotFound;
+import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotScheduled;
+import com.resolum.alivia.operations.domain.exceptions.TechnicianNotEligible;
+import com.resolum.alivia.operations.interfaces.rest.transform.TechnicalOrderResourceFromEntityAssembler;
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookProcessingFailed;
 import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailable;
 import com.resolum.alivia.profiles.domain.exceptions.BusinessNameAlreadyExistsException;
 import com.resolum.alivia.profiles.domain.exceptions.BusinessProfileNotFoundException;
 import com.resolum.alivia.profiles.domain.exceptions.DniAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.DniNotEditableException;
 import com.resolum.alivia.profiles.domain.exceptions.EmailAddressAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.EmailNotEditableException;
+import com.resolum.alivia.profiles.domain.exceptions.HouseholdAccessDeniedException;
+import com.resolum.alivia.profiles.domain.exceptions.HouseholdNotFoundException;
 import com.resolum.alivia.profiles.domain.exceptions.LegalNameAlreadyExistsException;
+import com.resolum.alivia.profiles.domain.exceptions.OwnProfileNotFoundException;
 import com.resolum.alivia.profiles.domain.exceptions.PersonProfileNotFoundException;
 import com.resolum.alivia.profiles.domain.exceptions.RucAlreadyExistsException;
 import com.resolum.alivia.profiles.domain.exceptions.StaffProfileNotFoundException;
@@ -101,6 +130,76 @@ public class GlobalExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
     }
 
+    @ExceptionHandler(SlotUnavailable.class)
+    public ProblemDetail handleSlotUnavailable(SlotUnavailable exception) {
+        var problem = problem(HttpStatus.CONFLICT, "slot_unavailable", exception.getMessage(), List.of());
+        problem.setProperty("alternatives", exception.getAlternatives().stream()
+                .map(TechnicalOrderResourceFromEntityAssembler::toResourceFromBlock).toList());
+        return problem;
+    }
+
+    @ExceptionHandler(IncidentNotAllowed.class)
+    public ProblemDetail handleIncidentNotAllowed(IncidentNotAllowed exception) {
+        return problem(HttpStatus.FORBIDDEN, "incident_not_allowed", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(IncidentAccessDenied.class)
+    public ProblemDetail handleIncidentAccessDenied(IncidentAccessDenied exception) {
+        return problem(HttpStatus.FORBIDDEN, "incident_access_denied", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(IncidentAlreadyOpen.class)
+    public ProblemDetail handleIncidentAlreadyOpen(IncidentAlreadyOpen exception) {
+        var problem = problem(HttpStatus.CONFLICT, "incident_already_open", exception.getMessage(), List.of());
+        problem.setProperty("incidentId", exception.getIncidentId());
+        return problem;
+    }
+
+    @ExceptionHandler(IncidentNotOpen.class)
+    public ProblemDetail handleIncidentNotOpen(IncidentNotOpen exception) {
+        return problem(HttpStatus.CONFLICT, "incident_not_open", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(IncidentNotScheduled.class)
+    public ProblemDetail handleIncidentNotScheduled(IncidentNotScheduled exception) {
+        return problem(HttpStatus.CONFLICT, "incident_not_scheduled", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(IncidentNotFound.class)
+    public ProblemDetail handleIncidentNotFound(IncidentNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "incident_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(TechnicalOrderNotFound.class)
+    public ProblemDetail handleTechnicalOrderNotFound(TechnicalOrderNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "technical_order_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(TechnicianNotEligible.class)
+    public ProblemDetail handleTechnicianNotEligible(TechnicianNotEligible exception) {
+        return problem(HttpStatus.CONFLICT, "technician_not_eligible", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(TechnicalOrderAlreadyExists.class)
+    public ProblemDetail handleTechnicalOrderAlreadyExists(TechnicalOrderAlreadyExists exception) {
+        return problem(HttpStatus.CONFLICT, "technical_order_already_exists", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(EvaluationRequiredForInstallation.class)
+    public ProblemDetail handleEvaluationRequired(EvaluationRequiredForInstallation exception) {
+        return problem(HttpStatus.CONFLICT, "evaluation_required", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(TechnicalOrderNotScheduled.class)
+    public ProblemDetail handleTechnicalOrderNotScheduled(TechnicalOrderNotScheduled exception) {
+        return problem(HttpStatus.CONFLICT, "technical_order_not_scheduled", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(ConfigurationNotReadyToConfirm.class)
+    public ProblemDetail handleConfigurationNotReadyToConfirm(ConfigurationNotReadyToConfirm exception) {
+        return problem(HttpStatus.CONFLICT, "configuration_not_ready_to_confirm", exception.getMessage(), List.of());
+    }
+
     @ExceptionHandler(ConfigurationDraftNotFound.class)
     public ProblemDetail handleConfigurationDraftNotFound(ConfigurationDraftNotFound exception) {
         return problem(HttpStatus.NOT_FOUND, "configuration_draft_not_found",
@@ -129,6 +228,36 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleBusinessProfileNotFound(BusinessProfileNotFoundException exception) {
         return problem(HttpStatus.NOT_FOUND, "business_profile_not_found",
                 "The business profile does not exist.", List.of());
+    }
+
+    @ExceptionHandler(OwnProfileNotFoundException.class)
+    public ProblemDetail handleOwnProfileNotFound(OwnProfileNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, "profile_not_found",
+                exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(EmailNotEditableException.class)
+    public ProblemDetail handleEmailNotEditable(EmailNotEditableException exception) {
+        return problem(HttpStatus.BAD_REQUEST, "email_not_editable",
+                exception.getMessage(), List.of(new ApiFieldError("email", "email_not_editable")));
+    }
+
+    @ExceptionHandler(DniNotEditableException.class)
+    public ProblemDetail handleDniNotEditable(DniNotEditableException exception) {
+        return problem(HttpStatus.BAD_REQUEST, "dni_not_editable",
+                exception.getMessage(), List.of(new ApiFieldError("dni", "dni_not_editable")));
+    }
+
+    @ExceptionHandler(HouseholdNotFoundException.class)
+    public ProblemDetail handleHouseholdNotFound(HouseholdNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, "household_not_found",
+                exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(HouseholdAccessDeniedException.class)
+    public ProblemDetail handleHouseholdAccessDenied(HouseholdAccessDeniedException exception) {
+        return problem(HttpStatus.FORBIDDEN, "household_access_denied",
+                exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(EmployeeNotInBusiness.class)
@@ -228,6 +357,56 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleLegalNameAlreadyExists(LegalNameAlreadyExistsException exception) {
         return problem(HttpStatus.CONFLICT, "legal_name_already_exists",
                 "The legal name is already registered.", List.of());
+    }
+
+    @ExceptionHandler(BusinessNotFound.class)
+    public ProblemDetail handleBusinessNotFound(BusinessNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "business_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(AdministratorNotFound.class)
+    public ProblemDetail handleAdministratorNotFound(AdministratorNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "administrator_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(BusinessAlreadyExistsForAdministrator.class)
+    public ProblemDetail handleBusinessAlreadyExistsForAdministrator(BusinessAlreadyExistsForAdministrator exception) {
+        return problem(HttpStatus.CONFLICT, "business_already_exists_for_administrator", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(DniAlreadyExists.class)
+    public ProblemDetail handleDniAlreadyExists(DniAlreadyExists exception) {
+        return problem(HttpStatus.CONFLICT, "dni_already_registered", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(EmailAddressAlreadyExists.class)
+    public ProblemDetail handleEmailAddressAlreadyExists(EmailAddressAlreadyExists exception) {
+        return problem(HttpStatus.CONFLICT, "email_already_registered", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(BusinessNameAlreadyExists.class)
+    public ProblemDetail handleBusinessNameAlreadyExists(BusinessNameAlreadyExists exception) {
+        return problem(HttpStatus.CONFLICT, "business_name_already_exists", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(LegalNameAlreadyExists.class)
+    public ProblemDetail handleLegalNameAlreadyExists(LegalNameAlreadyExists exception) {
+        return problem(HttpStatus.CONFLICT, "legal_name_already_exists", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(RucAlreadyExists.class)
+    public ProblemDetail handleRucAlreadyExists(RucAlreadyExists exception) {
+        return problem(HttpStatus.CONFLICT, "ruc_already_exists", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(BackupPersonalEmailAlreadyExists.class)
+    public ProblemDetail handleBackupPersonalEmailAlreadyExists(BackupPersonalEmailAlreadyExists exception) {
+        return problem(HttpStatus.CONFLICT, "backup_personal_email_already_exists", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(UnauthorizedAdministratorException.class)
+    public ProblemDetail handleUnauthorizedAdministrator(UnauthorizedAdministratorException exception) {
+        return problem(HttpStatus.FORBIDDEN, "unauthorized_administrator", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(SignUpValidationException.class)

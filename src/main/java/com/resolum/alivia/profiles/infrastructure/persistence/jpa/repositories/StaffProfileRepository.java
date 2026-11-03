@@ -7,10 +7,14 @@ import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
 public interface StaffProfileRepository extends JpaRepository<StaffProfile, Long> {
     public boolean existsByEmailAddress(EmailAddress emailAddress);
 
     public boolean existsByDni(Dni dni);
+
+    Optional<StaffProfile> findByUserId(Long userId);
 
 }

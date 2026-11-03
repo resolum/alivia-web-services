@@ -64,20 +64,20 @@ class ExternalProfilesServiceTest {
         service.createProfile(1L, EMAIL, AccessRole.CAREGIVER, profileData("Maria Elena", "Lopez Garcia", "12345678"));
         service.createProfile(2L, "ana@example.com", AccessRole.ASSISTED_PERSON, profileData("Ana", "Torres", "87654321"));
 
-        verify(profilesContextFacade).createPersonProfile(EMAIL, UPLOADED_URL, "profiles/maria_1",
+        verify(profilesContextFacade).createPersonProfile(1L, EMAIL, UPLOADED_URL, "profiles/maria_1",
                 "51987654321", "Maria Elena", "Lopez Garcia", "12345678", BIRTH_DATE);
-        verify(profilesContextFacade).createPersonProfile("ana@example.com", UPLOADED_URL, "profiles/maria_1",
+        verify(profilesContextFacade).createPersonProfile(2L, "ana@example.com", UPLOADED_URL, "profiles/maria_1",
                 "51987654321", "Ana", "Torres", "87654321", BIRTH_DATE);
     }
 
     @Test
     void createsStaffProfileForTechnician() {
-        when(profilesContextFacade.createStaffProfile(anyString(), anyString(), anyString(), anyString(),
+        when(profilesContextFacade.createStaffProfile(any(), anyString(), anyString(), anyString(), anyString(),
                 anyString(), anyString(), anyString(), any(LocalDate.class))).thenReturn(30L);
 
         assertEquals(30L, service.createProfile(1L, EMAIL, AccessRole.TECHNICIAN, profileData("Maria", "Lopez", "12345678")));
 
-        verify(profilesContextFacade).createStaffProfile(EMAIL, UPLOADED_URL, "profiles/maria_1",
+        verify(profilesContextFacade).createStaffProfile(1L, EMAIL, UPLOADED_URL, "profiles/maria_1",
                 "51987654321", "Maria", "Lopez", "12345678", BIRTH_DATE);
     }
 
@@ -87,7 +87,7 @@ class ExternalProfilesServiceTest {
 
         service.createProfile(1L, EMAIL, AccessRole.CAREGIVER, data);
 
-        verify(profilesContextFacade).createPersonProfile(EMAIL, DEFAULT_URL, "defaults/avatar",
+        verify(profilesContextFacade).createPersonProfile(1L, EMAIL, DEFAULT_URL, "defaults/avatar",
                 "51987654321", "Maria", "Lopez", "12345678", BIRTH_DATE);
         verifyNoInteractions(storageService);
     }
@@ -135,8 +135,8 @@ class ExternalProfilesServiceTest {
         assertThrows(DniAlreadyRegisteredException.class,
                 () -> service.createProfile(3L, "ana@example.com", AccessRole.CAREGIVER, profileData("Ana", "Torres", "12345678")));
 
-        verify(profilesContextFacade, never()).createPersonProfile(any(), any(), any(), any(), any(), any(), any(), any());
-        verify(profilesContextFacade, never()).createStaffProfile(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(profilesContextFacade, never()).createPersonProfile(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(profilesContextFacade, never()).createStaffProfile(any(), any(), any(), any(), any(), any(), any(), any(), any());
         verifyNoInteractions(storageService);
     }
 
