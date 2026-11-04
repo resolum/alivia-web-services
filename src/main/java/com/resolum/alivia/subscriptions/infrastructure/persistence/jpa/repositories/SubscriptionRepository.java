@@ -7,4 +7,5 @@ import java.util.Optional;
 public interface SubscriptionRepository extends JpaRepository<Subscription, Long> {
     boolean existsByActiveHouseholdId(String householdId);
     Optional<Subscription> findByIdempotencyKey(String key);
+    Optional<Subscription> findByActiveHouseholdId(String householdId);
 }

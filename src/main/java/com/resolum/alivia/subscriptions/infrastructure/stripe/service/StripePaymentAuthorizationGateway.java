@@ -59,6 +59,19 @@ public class StripePaymentAuthorizationGateway implements PaymentAuthorizationGa
         catch (StripeException exception) { throw new PreauthorizationUnavailable("No se pudo liberar la retención.", exception); }
     }
 
+    @Override
+    public PaymentStatus capture(StripePaymentIntentId id) {
+        if (secretKey.isBlank()) throw new PreauthorizationUnavailable("Stripe no está configurado.");
+        try {
+            var captured = new StripeClient(secretKey).paymentIntents().capture(id.value(),
+                    RequestOptions.builder().setIdempotencyKey("capture-" + id.value()).build());
+            // Card captures are synchronous: the intent comes back succeeded, so no webhook is needed to know it.
+            return captured == null ? PaymentStatus.AWAITING_CONFIRMATION : map(captured).state();
+        } catch (StripeException exception) {
+            throw new PreauthorizationUnavailable("No se pudo capturar la preautorización.", exception);
+        }
+    }
+
     private StripeAuthorization map(PaymentIntent intent) {
         var state = switch (intent.getStatus()) {
             case "requires_capture" -> PaymentStatus.PREAUTHORIZED;

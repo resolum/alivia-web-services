@@ -6,11 +6,14 @@ import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailab
 import com.resolum.alivia.subscriptions.domain.model.valueobjects.VerifiedStripeWebhookEvent;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.net.Webhook;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 public class StripeWebhookVerifierImpl implements StripeWebhookVerifier {
+    private static final ObjectMapper JSON = new ObjectMapper();
     private final String signingSecret;
 
     public StripeWebhookVerifierImpl(@Value("${stripe.webhook-secret:}") String signingSecret) {
@@ -24,8 +27,10 @@ public class StripeWebhookVerifierImpl implements StripeWebhookVerifier {
         }
         try {
             var event = Webhook.constructEvent(payload, signature, signingSecret);
-            return new VerifiedStripeWebhookEvent(event.getId(), event.getType());
-        } catch (SignatureVerificationException | IllegalArgumentException exception) {
+            var rawObject = JSON.readTree(event.getDataObjectDeserializer().getRawJson());
+            var objectId = rawObject.hasNonNull("id") ? rawObject.get("id").asText() : null;
+            return new VerifiedStripeWebhookEvent(event.getId(), event.getType(), objectId);
+        } catch (SignatureVerificationException | IllegalArgumentException | JsonProcessingException exception) {
             throw new InvalidStripeWebhookSignature();
         }
     }

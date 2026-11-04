@@ -1,6 +1,7 @@
 package com.resolum.alivia.nursing.infrastructure.adapters;
 
 import com.resolum.alivia.nursing.domain.model.aggregates.CareMembership;
+import com.resolum.alivia.nursing.domain.model.valueobjects.CareRole;
 import com.resolum.alivia.nursing.domain.model.valueobjects.MembershipStatus;
 import com.resolum.alivia.nursing.domain.repositories.CareMembershipRepository;
 import com.resolum.alivia.nursing.infrastructure.persistence.jpa.repositories.CareMembershipPersistenceRepository;
@@ -26,6 +27,25 @@ public class CareMembershipRepositoryImpl implements CareMembershipRepository {
      */
     public CareMembershipRepositoryImpl(CareMembershipPersistenceRepository persistenceRepository) {
         this.persistenceRepository = persistenceRepository;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public CareMembership save(CareMembership careMembership) {
+        return persistenceRepository.save(careMembership);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean existsByUserIdAndAssistedPersonProfileIdAndRole(UserId userId,
+                                                                   PersonProfileId assistedPersonProfileId,
+                                                                   CareRole role) {
+        return persistenceRepository.existsByUserIdAndAssistedPersonProfileIdAndRole(
+                userId.userId(), assistedPersonProfileId.personProfileId(), role);
     }
 
     /**

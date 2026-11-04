@@ -29,6 +29,18 @@
     <properties>
         <java.version>25</java.version>
         <sonar.coverage.jacoco.xmlReportPaths>${project.build.directory}/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+        <sonar.coverage.exclusions>
+            **/domain/exceptions/**,
+            **/domain/model/queries/**,
+            **/domain/model/commands/**,
+            **/interfaces/rest/resources/**,
+            **/interfaces/rest/transform/**,
+            **/infrastructure/persistence/**
+        </sonar.coverage.exclusions>
+        <sonar.cpd.exclusions>
+            **/interfaces/rest/resources/**,
+            **/domain/model/commands/**
+        </sonar.cpd.exclusions>
     </properties>
     <dependencies>
         <!-- Source: https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-actuator -->

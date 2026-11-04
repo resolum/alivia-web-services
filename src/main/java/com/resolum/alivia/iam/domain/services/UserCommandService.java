@@ -26,9 +26,9 @@ public interface UserCommandService {
      * Verifies the email address of an account.
      *
      * @param command the verify-email command
-     * @return the verified user
+     * @return the session opened for the verified user
      */
-    User handle(VerifyEmailCommand command);
+    AuthSession handle(VerifyEmailCommand command);
 
     /**
      * Replaces the pending verification token and sends a new link.

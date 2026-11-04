@@ -13,7 +13,7 @@ public record ScheduleAppointmentResource(
         @NotNull LocalTime startTime,
         @NotNull LocalTime endTime,
         @NotNull Long technicianId,
-        @NotBlank @Size(max = 100) String contactName,
-        @NotBlank @Size(max = 20) String contactPhone,
+        @Size(max = 100) String contactName,
+        @Size(max = 20) String contactPhone,
         @Size(max = 300) String directions) {
 }

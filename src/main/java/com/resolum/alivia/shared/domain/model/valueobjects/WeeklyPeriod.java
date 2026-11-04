@@ -1,5 +1,6 @@
 package com.resolum.alivia.shared.domain.model.valueobjects;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.Embeddable;
 
 import java.time.DayOfWeek;
@@ -10,7 +11,13 @@ import java.util.Objects;
 import java.util.Set;
 
 @Embeddable
-public record WeeklyPeriod(Set<DayOfWeek> days, TimeRange range) {
+@Schema(description = "Periodo semanal de atención comercial")
+public record WeeklyPeriod(
+        @Schema(description = "Días de la semana en los que aplica el periodo", example = "[\"MONDAY\", \"TUESDAY\", \"WEDNESDAY\", \"THURSDAY\", \"FRIDAY\"]")
+        Set<DayOfWeek> days,
+
+        @Schema(description = "Rango de horas aplicable")
+        TimeRange range) {
 
     private static final Duration DAY = Duration.ofDays(1);
     private static final Duration WEEK = Duration.ofDays(7);

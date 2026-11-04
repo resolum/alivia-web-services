@@ -20,7 +20,26 @@ public interface ProfilesContextFacade {
     }
 
     /**
-     * Creates a new person profile.
+     * Creates a new person profile linked to an IAM user.
+     *
+     * @param userId        the IAM user that owns the profile, or {@code null} when the profile
+     *                      is not created from a user registration
+     * @param emailAddress  the person's email address
+     * @param photoUrl      the photo URL
+     * @param photoPublicId the photo public identifier
+     * @param phoneNumber   the contact phone number
+     * @param firstName     the first name
+     * @param lastName      the last name
+     * @param dni           the national identity document number
+     * @param birthDate     the birth date
+     * @return the identifier of the created person profile
+     */
+    Long createPersonProfile(Long userId, String emailAddress, String photoUrl, String photoPublicId,
+                             String phoneNumber, String firstName, String lastName,
+                             String dni, LocalDate birthDate);
+
+    /**
+     * Creates a new person profile without an IAM user.
      *
      * @param emailAddress  the person's email address
      * @param photoUrl      the photo URL
@@ -36,8 +55,31 @@ public interface ProfilesContextFacade {
                              String phoneNumber, String firstName, String lastName,
                              String dni, LocalDate birthDate);
 
+    Long createPersonProfileWithPhoto(String emailAddress, byte[] photoData, String photoFileName,
+                                     String phoneNumber, String firstName, String lastName,
+                                     String dni, LocalDate birthDate);
+
     /**
-     * Creates a new staff profile.
+     * Creates a new staff profile linked to an IAM user.
+     *
+     * @param userId        the IAM user that owns the profile, or {@code null} when the profile
+     *                      is not created from a user registration
+     * @param emailAddress  the staff member's email address
+     * @param photoUrl      the photo URL
+     * @param photoPublicId the photo public identifier
+     * @param phoneNumber   the contact phone number
+     * @param firstName     the first name
+     * @param lastName      the last name
+     * @param dni           the national identity document number
+     * @param birthDate     the birth date
+     * @return the identifier of the created staff profile
+     */
+    Long createStaffProfile(Long userId, String emailAddress, String photoUrl, String photoPublicId,
+                            String phoneNumber, String firstName, String lastName,
+                            String dni, LocalDate birthDate);
+
+    /**
+     * Creates a new staff profile without an IAM user.
      *
      * @param emailAddress  the staff member's email address
      * @param photoUrl      the photo URL
@@ -53,11 +95,19 @@ public interface ProfilesContextFacade {
                             String phoneNumber, String firstName, String lastName,
                             String dni, LocalDate birthDate);
 
+    Long createStaffProfileWithPhoto(String emailAddress, byte[] photoData, String photoFileName,
+                                    String phoneNumber, String firstName, String lastName,
+                                    String dni, LocalDate birthDate);
+
     Optional<StaffProfileData> fetchStaffProfileById(Long profileId);
 
     Long updateStaffProfile(Long profileId, String firstName, String lastName,
                             LocalDate birthDate, String phoneNumber, String photoUrl,
                             String photoPublicId);
+
+    Long updateStaffProfileWithPhoto(Long profileId, String firstName, String lastName,
+                                    LocalDate birthDate, String phoneNumber, byte[] photoData,
+                                    String photoFileName);
 
     /**
      * Creates a new business profile.
@@ -87,6 +137,46 @@ public interface ProfilesContextFacade {
                                String emergencyPhone, List<WeeklyPeriod> businessHours,
                                String slogan, String supportEmail, String streetAddress,
                                Double latitude, Double longitude, String placeId);
+
+    Long createBusinessProfileWithPhoto(String emailAddress, byte[] photoData, String photoFileName,
+                                       String whatsappNum, String ruc, String businessName,
+                                       String legalName, String description, String mainActivity,
+                                       String emergencyPhone, List<WeeklyPeriod> businessHours,
+                                       String slogan, String supportEmail, String streetAddress,
+                                       Double latitude, Double longitude, String placeId);
+
+    /**
+     * Updates an existing business profile.
+     *
+     * @param profileId      the business profile identifier
+     * @param photoUrl       the photo URL
+     * @param photoPublicId  the photo public identifier
+     * @param whatsappNum    the WhatsApp contact number
+     * @param businessName   the business trade name
+     * @param legalName      the legal entity name
+     * @param description    the description of the company
+     * @param mainActivity   the main economic activity
+     * @param emergencyPhone the emergency contact phone number
+     * @param businessHours  the weekly periods representing business operating hours
+     * @param slogan         the company slogan
+     * @param supportEmail   the customer support email address
+     * @return the identifier of the updated business profile
+     */
+    Long updateBusinessProfile(Long profileId, String photoUrl, String photoPublicId,
+                               String whatsappNum, String businessName, String legalName,
+                               String description, String mainActivity, String emergencyPhone,
+                               List<WeeklyPeriod> businessHours, String slogan, String supportEmail);
+
+    Long updateBusinessProfileWithPhoto(Long profileId, byte[] photoData, String photoFileName,
+                                       String whatsappNum, String businessName, String legalName,
+                                       String description, String mainActivity, String emergencyPhone,
+                                       List<WeeklyPeriod> businessHours, String slogan, String supportEmail);
+
+    boolean existsBusinessProfileByRuc(String ruc);
+
+    boolean existsBusinessProfileByBusinessName(String businessName);
+
+    boolean existsBusinessProfileByLegalName(String legalName);
 
     /**
      * Checks whether a person profile exists with the given email address.

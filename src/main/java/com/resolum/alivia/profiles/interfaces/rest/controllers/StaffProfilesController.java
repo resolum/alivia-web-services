@@ -19,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
+import static org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE;
 
 @RestController
 @RequestMapping(value = "/api/v1/staff-profiles", produces = APPLICATION_JSON_VALUE)
@@ -33,15 +34,15 @@ public class StaffProfilesController {
         this.queryService = queryService;
     }
 
-    @PostMapping
+    @PostMapping(consumes = MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Crear perfil de staff")
+    @Operation(summary = "Crear perfil de staff (Multipart/form-data con archivo de foto)")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Perfil creado exitosamente"),
             @ApiResponse(responseCode = "400", description = "Datos de entrada inválidos"),
             @ApiResponse(responseCode = "409", description = "Email o DNI ya existente")
     })
-    public ResponseEntity<StaffProfileResource> createStaffProfile(@RequestBody CreateStaffProfileResource resource) {
+    public ResponseEntity<StaffProfileResource> createStaffProfile(@ModelAttribute CreateStaffProfileResource resource) {
         var command = CreateStaffProfileCommandFromResourceAssembler.toCommandFromResource(resource);
         var profileId = commandService.handle(command);
         return queryService.handle(new GetStaffProfileByIdQuery(profileId))
@@ -63,8 +64,8 @@ public class StaffProfilesController {
         return ResponseEntity.ok(StaffProfileResourceFromEntityAssembler.toResourceFromEntity(profile));
     }
 
-    @PutMapping("/{profileId}")
-    @Operation(summary = "Actualizar información de personal")
+    @PutMapping(value = "/{profileId}", consumes = MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Actualizar información de personal (Multipart/form-data con archivo de foto)")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Perfil actualizado exitosamente"),
             @ApiResponse(responseCode = "404", description = "Perfil no encontrado"),
@@ -72,7 +73,7 @@ public class StaffProfilesController {
     })
     public ResponseEntity<StaffProfileResource> updateStaffProfile(
             @PathVariable Long profileId,
-            @RequestBody UpdateStaffProfileResource resource) {
+            @ModelAttribute UpdateStaffProfileResource resource) {
         var command = UpdateStaffProfileCommandFromResourceAssembler.toCommandFromResource(profileId, resource);
         var updatedId = commandService.handle(command);
         var profile = queryService.handle(new GetStaffProfileByIdQuery(updatedId));

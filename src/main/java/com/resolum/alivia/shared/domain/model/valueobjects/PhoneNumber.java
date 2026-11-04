@@ -4,6 +4,9 @@ package com.resolum.alivia.shared.domain.model.valueobjects;
 import com.google.i18n.phonenumbers.NumberParseException;
 import com.google.i18n.phonenumbers.PhoneNumberUtil;
 
+import jakarta.persistence.Embeddable;
+
+@Embeddable
 public record PhoneNumber(String phoneNumber) {
 
     private static final PhoneNumberUtil UTIL = PhoneNumberUtil.getInstance();

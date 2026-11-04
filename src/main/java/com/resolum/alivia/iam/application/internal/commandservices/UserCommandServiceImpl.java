@@ -145,14 +145,14 @@ public class UserCommandServiceImpl implements UserCommandService {
      * Verifies the email address of an account.
      *
      * @param command the verify-email command
-     * @return the verified user
+     * @return the session opened for the verified user
      * @throws InvalidVerificationTokenException when the account or the pending
      *                                           token does not match
      * @throws VerificationTokenExpiredException when the pending token has expired
      */
     @Override
     @Transactional
-    public User handle(VerifyEmailCommand command) {
+    public AuthSession handle(VerifyEmailCommand command) {
         if (command == null || command.verificationToken() == null
                 || command.verificationToken().isBlank()) {
             log.warn("Email verification rejected: token is missing");
@@ -184,7 +184,7 @@ public class UserCommandServiceImpl implements UserCommandService {
         }
         var savedUser = userRepository.save(user);
         log.info("Verified email for account id {}", savedUser.getId());
-        return savedUser;
+        return startSession(savedUser);
     }
 
     /**

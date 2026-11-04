@@ -20,6 +20,7 @@ import com.resolum.alivia.shared.interfaces.rest.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -55,9 +56,12 @@ class ProfileControllersTest {
     void setUp() {
         businessCmdService = mock(BusinessProfileCommandService.class);
         businessQueryService = mock(BusinessProfileQueryService.class);
+        var conversionService = new org.springframework.format.support.DefaultFormattingConversionService();
+        conversionService.addConverter(new com.resolum.alivia.profiles.interfaces.rest.transform.StringToBusinessHoursConverter());
         businessMvc = MockMvcBuilders.standaloneSetup(
                 new BusinessProfilesController(businessCmdService, businessQueryService)
-        ).setControllerAdvice(new GlobalExceptionHandler()).build();
+        ).setConversionService(conversionService)
+        .setControllerAdvice(new GlobalExceptionHandler()).build();
 
         personCmdService = mock(PersonProfileCommandService.class);
         personQueryService = mock(PersonProfileQueryService.class);
@@ -97,38 +101,25 @@ class ProfileControllersTest {
         when(businessCmdService.handle(any(CreateBusinessProfileCommand.class))).thenReturn(1L);
         when(businessQueryService.handle(new GetBusinessProfileByIdQuery(1L))).thenReturn(Optional.of(profile));
 
-        String json = """
-                {
-                    "emailAddress": "corp@alivia.com",
-                    "photoUrl": "http://img.jpg",
-                    "photoPublicId": "img_1",
-                    "whatsappNum": "51987654321",
-                    "ruc": "20123456789",
-                    "businessName": "Alivia Lab",
-                    "legalName": "Alivia Lab SAC",
-                    "description": "Desc",
-                    "mainActivity": "Salud",
-                    "emergencyPhone": "51987654322",
-                    "businessHours": {
-                        "periods": [
-                            {
-                                "days": ["MONDAY"],
-                                "range": { "start": "08:00:00", "end": "18:00:00" }
-                            }
-                        ]
-                    },
-                    "slogan": "Slogan",
-                    "supportEmail": "support@alivia.com",
-                    "streetAddress": "Av. Brasil 123",
-                    "latitude": -12.05,
-                    "longitude": -77.04,
-                    "placeId": "place_1"
-                }
-                """;
+        var file = new MockMultipartFile("photo", "logo.png", "image/png", new byte[]{1, 2, 3});
 
-        businessMvc.perform(post("/api/v1/business-profiles")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json))
+        businessMvc.perform(multipart("/api/v1/business-profiles")
+                        .file(file)
+                        .param("emailAddress", "corp@alivia.com")
+                        .param("whatsappNum", "51987654321")
+                        .param("ruc", "20123456789")
+                        .param("businessName", "Alivia Lab")
+                        .param("legalName", "Alivia Lab SAC")
+                        .param("description", "Desc")
+                        .param("mainActivity", "Salud")
+                        .param("emergencyPhone", "51987654322")
+                        .param("slogan", "Slogan")
+                        .param("supportEmail", "support@alivia.com")
+                        .param("streetAddress", "Av. Brasil 123")
+                        .param("latitude", "-12.05")
+                        .param("longitude", "-77.04")
+                        .param("placeId", "place_1")
+                        .param("businessHours", "{\"periods\":[{\"days\":[\"MONDAY\"],\"range\":{\"start\":\"08:00\",\"end\":\"18:00\"}}]}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.emailAddress").value("corp@alivia.com"))
                 .andExpect(jsonPath("$.businessName").value("Alivia Lab"));
@@ -139,40 +130,34 @@ class ProfileControllersTest {
         when(businessCmdService.handle(any(CreateBusinessProfileCommand.class))).thenReturn(1L);
         when(businessQueryService.handle(new GetBusinessProfileByIdQuery(1L))).thenReturn(Optional.empty());
 
-        String json = """
-                {
-                    "emailAddress": "corp@alivia.com",
-                    "photoUrl": "http://img.jpg",
-                    "photoPublicId": "img_1",
-                    "whatsappNum": "51987654321",
-                    "ruc": "20123456789",
-                    "businessName": "Alivia Lab",
-                    "legalName": "Alivia Lab SAC",
-                    "description": "Desc",
-                    "mainActivity": "Salud",
-                    "emergencyPhone": "51987654322",
-                    "businessHours": {
-                        "periods": [
-                            {
-                                "days": ["MONDAY"],
-                                "range": { "start": "08:00:00", "end": "18:00:00" }
-                            }
-                        ]
-                    },
-                    "slogan": "Slogan",
-                    "supportEmail": "support@alivia.com",
-                    "streetAddress": "Av. Brasil 123",
-                    "latitude": -12.05,
-                    "longitude": -77.04,
-                    "placeId": "place_1"
-                }
-                """;
+        var file = new MockMultipartFile("photo", "logo.png", "image/png", new byte[]{1, 2, 3});
 
-        businessMvc.perform(post("/api/v1/business-profiles")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json))
+        businessMvc.perform(multipart("/api/v1/business-profiles")
+                        .file(file)
+                        .param("emailAddress", "corp@alivia.com")
+                        .param("whatsappNum", "51987654321")
+                        .param("ruc", "20123456789")
+                        .param("businessName", "Alivia Lab")
+                        .param("legalName", "Alivia Lab SAC")
+                        .param("description", "Desc")
+                        .param("mainActivity", "Salud")
+                        .param("emergencyPhone", "51987654322")
+                        .param("slogan", "Slogan")
+                        .param("supportEmail", "support@alivia.com")
+                        .param("streetAddress", "Av. Brasil 123")
+                        .param("latitude", "-12.05")
+                        .param("longitude", "-77.04")
+                        .param("placeId", "place_1"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.code").value("internal_error"));
+    }
+
+    @Test
+    void createBusinessProfileRejectsJsonWithUnsupportedMediaType() throws Exception {
+        businessMvc.perform(post("/api/v1/business-profiles")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isUnsupportedMediaType());
     }
 
     @Test
@@ -229,48 +214,48 @@ class ProfileControllersTest {
 
         when(businessCmdService.handle(any(UpdateBusinessProfileCommand.class))).thenReturn(1L);
         when(businessQueryService.handle(new GetBusinessProfileByIdQuery(1L))).thenReturn(Optional.of(profile));
-        when(businessQueryService.handle(new GetBusinessProfileByIdQuery(2L))).thenReturn(Optional.empty());
 
-        String json = """
-                {
-                    "emailAddress": "corp@alivia.com",
-                    "photoUrl": "http://img.jpg",
-                    "photoPublicId": "img_1",
-                    "whatsappNum": "51987654321",
-                    "ruc": "20123456789",
-                    "businessName": "Alivia Lab",
-                    "legalName": "Alivia Lab SAC",
-                    "description": "Desc",
-                    "mainActivity": "Salud",
-                    "emergencyPhone": "51987654322",
-                    "businessHours": {
-                        "periods": [
-                            {
-                                "days": ["MONDAY"],
-                                "range": { "start": "08:00:00", "end": "18:00:00" }
-                            }
-                        ]
-                    },
-                    "slogan": "Slogan",
-                    "supportEmail": "support@alivia.com",
-                    "streetAddress": "Av. Brasil 123",
-                    "latitude": -12.05,
-                    "longitude": -77.04,
-                    "placeId": "place_1"
-                }
-                """;
+        var file = new MockMultipartFile("photo", "logo_up.png", "image/png", new byte[]{1, 2, 3});
 
-        businessMvc.perform(put("/api/v1/business-profiles/1")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json))
+        businessMvc.perform(multipart("/api/v1/business-profiles/1")
+                        .file(file)
+                        .with(request -> { request.setMethod("PUT"); return request; })
+                        .param("emailAddress", "corp@alivia.com")
+                        .param("whatsappNum", "51987654321")
+                        .param("ruc", "20123456789")
+                        .param("businessName", "Alivia Lab")
+                        .param("legalName", "Alivia Lab SAC")
+                        .param("description", "Desc")
+                        .param("mainActivity", "Salud")
+                        .param("emergencyPhone", "51987654322")
+                        .param("slogan", "Slogan")
+                        .param("supportEmail", "support@alivia.com")
+                        .param("streetAddress", "Av. Brasil 123")
+                        .param("latitude", "-12.05")
+                        .param("longitude", "-77.04")
+                        .param("placeId", "place_1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.businessName").value("Alivia Lab"));
 
         // If after update query returns empty
         when(businessCmdService.handle(any(UpdateBusinessProfileCommand.class))).thenReturn(2L);
-        businessMvc.perform(put("/api/v1/business-profiles/2")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json))
+        businessMvc.perform(multipart("/api/v1/business-profiles/2")
+                        .file(file)
+                        .with(request -> { request.setMethod("PUT"); return request; })
+                        .param("emailAddress", "corp@alivia.com")
+                        .param("whatsappNum", "51987654321")
+                        .param("ruc", "20123456789")
+                        .param("businessName", "Alivia Lab")
+                        .param("legalName", "Alivia Lab SAC")
+                        .param("description", "Desc")
+                        .param("mainActivity", "Salud")
+                        .param("emergencyPhone", "51987654322")
+                        .param("slogan", "Slogan")
+                        .param("supportEmail", "support@alivia.com")
+                        .param("streetAddress", "Av. Brasil 123")
+                        .param("latitude", "-12.05")
+                        .param("longitude", "-77.04")
+                        .param("placeId", "place_1"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("business_profile_not_found"));
     }
@@ -291,22 +276,16 @@ class ProfileControllersTest {
         when(personCmdService.handle(any(CreatePersonProfileCommand.class))).thenReturn(10L);
         when(personQueryService.handle(new GetPersonProfileByIdQuery(10L))).thenReturn(Optional.of(person));
 
-        String json = """
-                {
-                    "emailAddress": "juan@alivia.com",
-                    "photoUrl": "http://img.jpg",
-                    "photoPublicId": "img_1",
-                    "phoneNumber": "51987654321",
-                    "firstName": "Juan",
-                    "lastName": "Perez",
-                    "dni": "12345678",
-                    "birthDate": "1990-05-10"
-                }
-                """;
+        var file = new MockMultipartFile("photo", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
 
-        personMvc.perform(post("/api/v1/person-profiles")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json))
+        personMvc.perform(multipart("/api/v1/person-profiles")
+                        .file(file)
+                        .param("emailAddress", "juan@alivia.com")
+                        .param("phoneNumber", "51987654321")
+                        .param("firstName", "Juan")
+                        .param("lastName", "Perez")
+                        .param("dni", "12345678")
+                        .param("birthDate", "1990-05-10"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.firstName").value("Juan"));
 
@@ -314,11 +293,24 @@ class ProfileControllersTest {
         when(personCmdService.handle(any(CreatePersonProfileCommand.class))).thenReturn(99L);
         when(personQueryService.handle(new GetPersonProfileByIdQuery(99L))).thenReturn(Optional.empty());
 
-        personMvc.perform(post("/api/v1/person-profiles")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json))
+        personMvc.perform(multipart("/api/v1/person-profiles")
+                        .file(file)
+                        .param("emailAddress", "juan@alivia.com")
+                        .param("phoneNumber", "51987654321")
+                        .param("firstName", "Juan")
+                        .param("lastName", "Perez")
+                        .param("dni", "12345678")
+                        .param("birthDate", "1990-05-10"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.code").value("internal_error"));
+    }
+
+    @Test
+    void createPersonProfileRejectsJsonWithUnsupportedMediaType() throws Exception {
+        personMvc.perform(post("/api/v1/person-profiles")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isUnsupportedMediaType());
     }
 
     @Test
@@ -359,27 +351,26 @@ class ProfileControllersTest {
         when(personQueryService.handle(new GetPersonProfileByIdQuery(10L))).thenReturn(Optional.of(person));
         when(personQueryService.handle(new GetPersonProfileByIdQuery(20L))).thenReturn(Optional.empty());
 
-        String json = """
-                {
-                    "firstName": "Juan",
-                    "lastName": "Perez",
-                    "birthDate": "1990-05-10",
-                    "phoneNumber": "51987654321",
-                    "photoUrl": "http://img.jpg",
-                    "photoPublicId": "img_1"
-                }
-                """;
+        var file = new MockMultipartFile("photo", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
 
-        personMvc.perform(put("/api/v1/person-profiles/10")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json))
+        personMvc.perform(multipart("/api/v1/person-profiles/10")
+                        .file(file)
+                        .with(request -> { request.setMethod("PUT"); return request; })
+                        .param("firstName", "Juan")
+                        .param("lastName", "Perez")
+                        .param("birthDate", "1990-05-10")
+                        .param("phoneNumber", "51987654321"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.firstName").value("Juan"));
 
         when(personCmdService.handle(any(UpdatePersonProfileCommand.class))).thenReturn(20L);
-        personMvc.perform(put("/api/v1/person-profiles/20")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json))
+        personMvc.perform(multipart("/api/v1/person-profiles/20")
+                        .file(file)
+                        .with(request -> { request.setMethod("PUT"); return request; })
+                        .param("firstName", "Juan")
+                        .param("lastName", "Perez")
+                        .param("birthDate", "1990-05-10")
+                        .param("phoneNumber", "51987654321"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("person_profile_not_found"));
     }
@@ -400,33 +391,40 @@ class ProfileControllersTest {
         when(staffCmdService.handle(any(CreateStaffProfileCommand.class))).thenReturn(30L);
         when(staffQueryService.handle(new GetStaffProfileByIdQuery(30L))).thenReturn(Optional.of(staff));
 
-        String json = """
-                {
-                    "emailAddress": "ana@alivia.com",
-                    "photoUrl": "http://img.jpg",
-                    "photoPublicId": "img_1",
-                    "phoneNumber": "51987654321",
-                    "firstName": "Ana",
-                    "lastName": "Torres",
-                    "dni": "87654321",
-                    "birthDate": "1988-12-01"
-                }
-                """;
+        var file = new MockMultipartFile("photo", "nurse.jpg", "image/jpeg", new byte[]{1, 2, 3});
 
-        staffMvc.perform(post("/api/v1/staff-profiles")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json))
+        staffMvc.perform(multipart("/api/v1/staff-profiles")
+                        .file(file)
+                        .param("emailAddress", "ana@alivia.com")
+                        .param("phoneNumber", "51987654321")
+                        .param("firstName", "Ana")
+                        .param("lastName", "Torres")
+                        .param("dni", "87654321")
+                        .param("birthDate", "1988-12-01"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.firstName").value("Ana"));
 
         when(staffCmdService.handle(any(CreateStaffProfileCommand.class))).thenReturn(99L);
         when(staffQueryService.handle(new GetStaffProfileByIdQuery(99L))).thenReturn(Optional.empty());
 
-        staffMvc.perform(post("/api/v1/staff-profiles")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json))
+        staffMvc.perform(multipart("/api/v1/staff-profiles")
+                        .file(file)
+                        .param("emailAddress", "ana@alivia.com")
+                        .param("phoneNumber", "51987654321")
+                        .param("firstName", "Ana")
+                        .param("lastName", "Torres")
+                        .param("dni", "87654321")
+                        .param("birthDate", "1988-12-01"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.code").value("internal_error"));
+    }
+
+    @Test
+    void createStaffProfileRejectsJsonWithUnsupportedMediaType() throws Exception {
+        staffMvc.perform(post("/api/v1/staff-profiles")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isUnsupportedMediaType());
     }
 
     @Test
@@ -467,27 +465,26 @@ class ProfileControllersTest {
         when(staffQueryService.handle(new GetStaffProfileByIdQuery(30L))).thenReturn(Optional.of(staff));
         when(staffQueryService.handle(new GetStaffProfileByIdQuery(40L))).thenReturn(Optional.empty());
 
-        String json = """
-                {
-                    "firstName": "Ana",
-                    "lastName": "Torres",
-                    "birthDate": "1988-12-01",
-                    "phoneNumber": "51987654321",
-                    "photoUrl": "http://img.jpg",
-                    "photoPublicId": "img_1"
-                }
-                """;
+        var file = new MockMultipartFile("photo", "nurse.jpg", "image/jpeg", new byte[]{1, 2, 3});
 
-        staffMvc.perform(put("/api/v1/staff-profiles/30")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json))
+        staffMvc.perform(multipart("/api/v1/staff-profiles/30")
+                        .file(file)
+                        .with(request -> { request.setMethod("PUT"); return request; })
+                        .param("firstName", "Ana")
+                        .param("lastName", "Torres")
+                        .param("birthDate", "1988-12-01")
+                        .param("phoneNumber", "51987654321"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.firstName").value("Ana"));
 
         when(staffCmdService.handle(any(UpdateStaffProfileCommand.class))).thenReturn(40L);
-        staffMvc.perform(put("/api/v1/staff-profiles/40")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json))
+        staffMvc.perform(multipart("/api/v1/staff-profiles/40")
+                        .file(file)
+                        .with(request -> { request.setMethod("PUT"); return request; })
+                        .param("firstName", "Ana")
+                        .param("lastName", "Torres")
+                        .param("birthDate", "1988-12-01")
+                        .param("phoneNumber", "51987654321"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("staff_profile_not_found"));
     }
@@ -497,22 +494,16 @@ class ProfileControllersTest {
         when(personCmdService.handle(any(CreatePersonProfileCommand.class)))
                 .thenThrow(new EmailAddressAlreadyExistsException("juan@alivia.com"));
 
-        String json = """
-                {
-                    "emailAddress": "juan@alivia.com",
-                    "photoUrl": "http://img.jpg",
-                    "photoPublicId": "img_1",
-                    "phoneNumber": "51987654321",
-                    "firstName": "Juan",
-                    "lastName": "Perez",
-                    "dni": "12345678",
-                    "birthDate": "1990-05-10"
-                }
-                """;
+        var file = new MockMultipartFile("photo", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
 
-        personMvc.perform(post("/api/v1/person-profiles")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json))
+        personMvc.perform(multipart("/api/v1/person-profiles")
+                        .file(file)
+                        .param("emailAddress", "juan@alivia.com")
+                        .param("phoneNumber", "51987654321")
+                        .param("firstName", "Juan")
+                        .param("lastName", "Perez")
+                        .param("dni", "12345678")
+                        .param("birthDate", "1990-05-10"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("email_already_registered"))
                 .andExpect(jsonPath("$.errors").isArray());
@@ -527,21 +518,217 @@ class ProfileControllersTest {
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
 
-        String json = """
-                {
-                    "firstName": "Juan",
-                    "lastName": "Perez",
-                    "birthDate": "1990-05-10",
-                    "phoneNumber": "51987654321",
-                    "photoUrl": "http://img.jpg",
-                    "photoPublicId": "img_1"
-                }
-                """;
+        var file = new MockMultipartFile("photo", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
 
-        realMvc.perform(put("/api/v1/person-profiles/99")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json))
+        realMvc.perform(multipart("/api/v1/person-profiles/99")
+                        .file(file)
+                        .with(request -> { request.setMethod("PUT"); return request; })
+                        .param("firstName", "Juan")
+                        .param("lastName", "Perez")
+                        .param("birthDate", "1990-05-10")
+                        .param("phoneNumber", "51987654321"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("person_profile_not_found"));
+    }
+
+    @Test
+    void createPersonProfileWithMultipartFileReturns201() throws Exception {
+        var person = new PersonProfile(
+                new EmailAddress("juan.mp@alivia.com"),
+                new Photo("http://img.jpg", "img_1"),
+                new PhoneNumber("51987654321"),
+                new PersonName("Juan", "Perez"),
+                new Dni("12345678"),
+                new BirthDate(LocalDate.of(1990, 5, 10))
+        );
+
+        when(personCmdService.handle(any(CreatePersonProfileCommand.class))).thenReturn(11L);
+        when(personQueryService.handle(new GetPersonProfileByIdQuery(11L))).thenReturn(Optional.of(person));
+
+        var file = new MockMultipartFile("photo", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
+
+        personMvc.perform(multipart("/api/v1/person-profiles")
+                        .file(file)
+                        .param("emailAddress", "juan.mp@alivia.com")
+                        .param("phoneNumber", "51987654321")
+                        .param("firstName", "Juan")
+                        .param("lastName", "Perez")
+                        .param("dni", "12345678")
+                        .param("birthDate", "1990-05-10"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.firstName").value("Juan"));
+    }
+
+    @Test
+    void updatePersonProfileWithMultipartFileReturns200() throws Exception {
+        var person = new PersonProfile(
+                new EmailAddress("juan.mp@alivia.com"),
+                new Photo("http://img.jpg", "img_1"),
+                new PhoneNumber("51987654321"),
+                new PersonName("Juan", "Perez"),
+                new Dni("12345678"),
+                new BirthDate(LocalDate.of(1990, 5, 10))
+        );
+
+        when(personCmdService.handle(any(UpdatePersonProfileCommand.class))).thenReturn(11L);
+        when(personQueryService.handle(new GetPersonProfileByIdQuery(11L))).thenReturn(Optional.of(person));
+
+        var file = new MockMultipartFile("photo", "avatar_update.jpg", "image/jpeg", new byte[]{4, 5, 6});
+
+        personMvc.perform(multipart("/api/v1/person-profiles/11")
+                        .file(file)
+                        .with(request -> { request.setMethod("PUT"); return request; })
+                        .param("firstName", "Juan")
+                        .param("lastName", "Perez")
+                        .param("phoneNumber", "51987654321")
+                        .param("birthDate", "1990-05-10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.firstName").value("Juan"));
+    }
+
+    @Test
+    void createStaffProfileWithMultipartFileReturns201() throws Exception {
+        var staff = new StaffProfile(
+                new EmailAddress("ana.mp@alivia.com"),
+                new Photo("http://img.jpg", "img_1"),
+                new PhoneNumber("51987654321"),
+                new PersonName("Ana", "Torres"),
+                new Dni("87654321"),
+                new BirthDate(LocalDate.of(1988, 12, 1))
+        );
+
+        when(staffCmdService.handle(any(CreateStaffProfileCommand.class))).thenReturn(31L);
+        when(staffQueryService.handle(new GetStaffProfileByIdQuery(31L))).thenReturn(Optional.of(staff));
+
+        var file = new MockMultipartFile("photo", "nurse.jpg", "image/jpeg", new byte[]{1, 2, 3});
+
+        staffMvc.perform(multipart("/api/v1/staff-profiles")
+                        .file(file)
+                        .param("emailAddress", "ana.mp@alivia.com")
+                        .param("phoneNumber", "51987654321")
+                        .param("firstName", "Ana")
+                        .param("lastName", "Torres")
+                        .param("dni", "87654321")
+                        .param("birthDate", "1988-12-01"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.firstName").value("Ana"));
+    }
+
+    @Test
+    void updateStaffProfileWithMultipartFileReturns200() throws Exception {
+        var staff = new StaffProfile(
+                new EmailAddress("ana.mp@alivia.com"),
+                new Photo("http://img.jpg", "img_1"),
+                new PhoneNumber("51987654321"),
+                new PersonName("Ana", "Torres"),
+                new Dni("87654321"),
+                new BirthDate(LocalDate.of(1988, 12, 1))
+        );
+
+        when(staffCmdService.handle(any(UpdateStaffProfileCommand.class))).thenReturn(31L);
+        when(staffQueryService.handle(new GetStaffProfileByIdQuery(31L))).thenReturn(Optional.of(staff));
+
+        var file = new MockMultipartFile("photo", "nurse_update.jpg", "image/jpeg", new byte[]{4, 5, 6});
+
+        staffMvc.perform(multipart("/api/v1/staff-profiles/31")
+                        .file(file)
+                        .with(request -> { request.setMethod("PUT"); return request; })
+                        .param("firstName", "Ana")
+                        .param("lastName", "Torres")
+                        .param("phoneNumber", "51987654321")
+                        .param("birthDate", "1988-12-01"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.firstName").value("Ana"));
+    }
+
+    @Test
+    void createBusinessProfileWithMultipartFileReturns201() throws Exception {
+        var range = new TimeRange(LocalTime.of(8, 0), LocalTime.of(18, 0));
+        var hours = new BusinessHours(List.of(new WeeklyPeriod(Set.of(DayOfWeek.MONDAY), range)));
+        var address = new Address("Av. Brasil 123", -12.05, -77.04, "place_1");
+
+        var profile = new BusinessProfile(
+                new EmailAddress("corp.mp@alivia.com"),
+                new Photo("http://img.jpg", "img_1"),
+                new PhoneNumber("51987654321"),
+                new Ruc("20123456789"),
+                new BusinessName("Alivia Lab"),
+                new LegalName("Alivia Lab SAC"),
+                "Desc", "Salud",
+                new PhoneNumber("51987654322"),
+                hours, "Slogan",
+                new EmailAddress("support@alivia.com"),
+                address
+        );
+
+        when(businessCmdService.handle(any(CreateBusinessProfileCommand.class))).thenReturn(15L);
+        when(businessQueryService.handle(new GetBusinessProfileByIdQuery(15L))).thenReturn(Optional.of(profile));
+
+        var file = new MockMultipartFile("photo", "clinic_logo.png", "image/png", new byte[]{1, 2, 3});
+
+        businessMvc.perform(multipart("/api/v1/business-profiles")
+                        .file(file)
+                        .param("emailAddress", "corp.mp@alivia.com")
+                        .param("whatsappNum", "51987654321")
+                        .param("ruc", "20123456789")
+                        .param("businessName", "Alivia Lab")
+                        .param("legalName", "Alivia Lab SAC")
+                        .param("description", "Desc")
+                        .param("mainActivity", "Salud")
+                        .param("emergencyPhone", "51987654322")
+                        .param("slogan", "Slogan")
+                        .param("supportEmail", "support@alivia.com")
+                        .param("streetAddress", "Av. Brasil 123")
+                        .param("latitude", "-12.05")
+                        .param("longitude", "-77.04")
+                        .param("placeId", "place_1"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.businessName").value("Alivia Lab"));
+    }
+
+    @Test
+    void updateBusinessProfileWithMultipartFileReturns200() throws Exception {
+        var range = new TimeRange(LocalTime.of(8, 0), LocalTime.of(18, 0));
+        var hours = new BusinessHours(List.of(new WeeklyPeriod(Set.of(DayOfWeek.MONDAY), range)));
+        var address = new Address("Av. Brasil 123", -12.05, -77.04, "place_1");
+
+        var profile = new BusinessProfile(
+                new EmailAddress("corp.mp@alivia.com"),
+                new Photo("http://img.jpg", "img_1"),
+                new PhoneNumber("51987654321"),
+                new Ruc("20123456789"),
+                new BusinessName("Alivia Lab"),
+                new LegalName("Alivia Lab SAC"),
+                "Desc", "Salud",
+                new PhoneNumber("51987654322"),
+                hours, "Slogan",
+                new EmailAddress("support@alivia.com"),
+                address
+        );
+
+        when(businessCmdService.handle(any(UpdateBusinessProfileCommand.class))).thenReturn(15L);
+        when(businessQueryService.handle(new GetBusinessProfileByIdQuery(15L))).thenReturn(Optional.of(profile));
+
+        var file = new MockMultipartFile("photo", "clinic_logo_v2.png", "image/png", new byte[]{4, 5, 6});
+
+        businessMvc.perform(multipart("/api/v1/business-profiles/15")
+                        .file(file)
+                        .with(request -> { request.setMethod("PUT"); return request; })
+                        .param("emailAddress", "corp.mp@alivia.com")
+                        .param("whatsappNum", "51987654321")
+                        .param("ruc", "20123456789")
+                        .param("businessName", "Alivia Lab")
+                        .param("legalName", "Alivia Lab SAC")
+                        .param("description", "Desc")
+                        .param("mainActivity", "Salud")
+                        .param("emergencyPhone", "51987654322")
+                        .param("slogan", "Slogan")
+                        .param("supportEmail", "support@alivia.com")
+                        .param("streetAddress", "Av. Brasil 123")
+                        .param("latitude", "-12.05")
+                        .param("longitude", "-77.04")
+                        .param("placeId", "place_1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.businessName").value("Alivia Lab"));
     }
 }

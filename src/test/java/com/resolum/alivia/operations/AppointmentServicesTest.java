@@ -1,5 +1,6 @@
 package com.resolum.alivia.operations;
 
+import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.EvaluationSlotHoldRepository;
 import com.resolum.alivia.shared.domain.model.valueobjects.TimeRange;
 import com.resolum.alivia.operations.application.internal.commandservices.AppointmentCommandServiceImpl;
 import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalHcmService;
@@ -12,8 +13,10 @@ import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
 import com.resolum.alivia.operations.domain.model.commands.ScheduleAppointmentCommand;
 import com.resolum.alivia.operations.domain.model.queries.GetAvailableSlotsQuery;
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
+import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
 import com.resolum.alivia.operations.domain.model.valueobjects.TechnicianAvailability;
 import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.AppointmentRepository;
+import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.IncidentPersistenceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -46,8 +49,8 @@ class AppointmentServicesTest {
         appointments = mock(AppointmentRepository.class);
         hcm = mock(ExternalHcmService.class);
         subscriptions = mock(ExternalSubscriptionsService.class);
-        commands = new AppointmentCommandServiceImpl(appointments, hcm, subscriptions, CLOCK);
-        queries = new AppointmentQueryServiceImpl(appointments, hcm, CLOCK);
+        commands = new AppointmentCommandServiceImpl(appointments, mock(EvaluationSlotHoldRepository.class), mock(IncidentPersistenceRepository.class), hcm, subscriptions, CLOCK);
+        queries = new AppointmentQueryServiceImpl(appointments, mock(EvaluationSlotHoldRepository.class), hcm, CLOCK);
         when(hcm.fetchTechniciansWorkingOn(any())).thenReturn(List.of());
         when(hcm.fetchTechniciansWorkingOn(TOMORROW)).thenReturn(List.of(ANA));
         when(appointments.findByScheduledDateAndStatus(any(), eq(AppointmentStatus.SCHEDULED))).thenReturn(List.of());
@@ -80,8 +83,25 @@ class AppointmentServicesTest {
     void rejectsDraftsWithoutPaymentOrAlreadyScheduled() {
         assertThrows(DraftNotReadyForAppointment.class, () -> commands.handle(command(TOMORROW, 10, 7L)));
         when(subscriptions.isReadyForEvaluation("draft")).thenReturn(true);
-        when(appointments.existsByDraftIdAndStatus("draft", AppointmentStatus.SCHEDULED)).thenReturn(true);
+        var booked = commands.handle(command(TOMORROW, 8, 7L));
+        when(appointments.findFirstByDraftIdAndServiceTypeAndStatus("draft", ServiceType.EVALUATION, AppointmentStatus.SCHEDULED))
+                .thenReturn(java.util.Optional.of(booked));
         assertThrows(AppointmentAlreadyExists.class, () -> commands.handle(command(TOMORROW, 10, 7L)));
+    }
+
+    @Test
+    void repeatingTheSameBookingReturnsTheVisitAlreadyMade() {
+        when(subscriptions.isReadyForEvaluation("draft")).thenReturn(true);
+        var booked = commands.handle(command(TOMORROW, 10, 7L));
+        when(appointments.findFirstByDraftIdAndServiceTypeAndStatus("draft", ServiceType.EVALUATION, AppointmentStatus.SCHEDULED))
+                .thenReturn(java.util.Optional.of(booked));
+        // The family's own visit now occupies the window; the repeated request must not read it as taken.
+        when(appointments.findByScheduledDateAndStatus(TOMORROW, AppointmentStatus.SCHEDULED)).thenReturn(List.of(booked));
+
+        var repeated = commands.handle(command(TOMORROW, 10, 7L));
+
+        assertSame(booked, repeated);
+        verify(appointments, times(1)).saveAndFlush(any(Appointment.class));
     }
 
     @Test
