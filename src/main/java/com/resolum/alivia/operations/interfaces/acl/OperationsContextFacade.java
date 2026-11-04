@@ -40,4 +40,12 @@ public interface OperationsContextFacade {
 
     /** Latest scheduled or completed evaluation and installation of a request, evaluation first. */
     List<ContractingVisit> fetchContractingVisitsOfDraft(String draftId);
+
+    /**
+     * The family confirmed the configuration after a viable evaluation: opens the installation order for the
+     * technician who evaluated the home, unless it is already open.
+     *
+     * @param draftId the configuration draft of the request
+     */
+    void openInstallationOfConfirmedRequest(String draftId);
 }

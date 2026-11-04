@@ -1,6 +1,8 @@
 package com.resolum.alivia.operations.application.acl;
 
 import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
+import com.resolum.alivia.operations.domain.model.commands.OpenInstallationCommand;
+import com.resolum.alivia.operations.domain.services.AppointmentCommandService;
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
 import com.resolum.alivia.operations.domain.model.valueobjects.InstallationResult;
 import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
@@ -22,9 +24,11 @@ public class OperationsContextFacadeImpl implements OperationsContextFacade {
     private static final Set<ServiceType> CONTRACTING_VISITS = Set.of(ServiceType.EVALUATION, ServiceType.INSTALLATION);
 
     private final AppointmentRepository appointments;
+    private final AppointmentCommandService commands;
 
-    public OperationsContextFacadeImpl(AppointmentRepository appointments) {
+    public OperationsContextFacadeImpl(AppointmentRepository appointments, AppointmentCommandService commands) {
         this.appointments = appointments;
+        this.commands = commands;
     }
 
     @Override
@@ -62,5 +66,10 @@ public class OperationsContextFacadeImpl implements OperationsContextFacade {
         return new ContractingVisit(order.getServiceType().name(), order.getStatus().name(), order.getScheduledDate(),
                 order.getStartTime(), order.getEndTime(), order.getTechnicianName(), order.getDirections(),
                 result == null ? null : result.name(), order.getCompletionNotes());
+    }
+
+    @Override
+    public void openInstallationOfConfirmedRequest(String draftId) {
+        commands.handle(new OpenInstallationCommand(draftId));
     }
 }

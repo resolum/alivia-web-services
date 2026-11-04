@@ -6,6 +6,8 @@ import com.resolum.alivia.operations.domain.model.queries.GetMaintenanceOrdersBy
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalAvailabilityQuery;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalOrderByIdQuery;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalOrdersQuery;
+import com.resolum.alivia.operations.domain.model.queries.GetTechnicianIdByUserIdQuery;
+import com.resolum.alivia.operations.domain.model.queries.GetTechnicianOrdersQuery;
 import com.resolum.alivia.operations.domain.model.valueobjects.AvailableBlock;
 import com.resolum.alivia.operations.domain.model.valueobjects.AvailableSlot;
 
@@ -22,4 +24,8 @@ public interface AppointmentQueryService {
     Optional<Appointment> handle(GetTechnicalOrderByIdQuery query);
 
     List<Appointment> handle(GetMaintenanceOrdersByIncidentIdsQuery query);
+
+    List<Appointment> handle(GetTechnicianOrdersQuery query);
+
+    Optional<Long> handle(GetTechnicianIdByUserIdQuery query);
 }
