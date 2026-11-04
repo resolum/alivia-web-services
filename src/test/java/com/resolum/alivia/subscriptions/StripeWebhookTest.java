@@ -6,6 +6,7 @@ import com.resolum.alivia.subscriptions.domain.exceptions.StripeWebhookUnavailab
 import com.resolum.alivia.subscriptions.domain.model.commands.ReceiveStripeWebhookCommand;
 import com.resolum.alivia.subscriptions.domain.model.events.StripeWebhookEvent;
 import com.resolum.alivia.subscriptions.infrastructure.persistence.jpa.repositories.StripeWebhookEventRepository;
+import com.resolum.alivia.subscriptions.infrastructure.persistence.jpa.repositories.ConfigurationDraftRepository;
 import com.resolum.alivia.subscriptions.infrastructure.stripe.webhooks.StripeWebhookVerifierImpl;
 import com.resolum.alivia.subscriptions.interfaces.webhooks.StripeWebhookController;
 import com.resolum.alivia.shared.interfaces.rest.GlobalExceptionHandler;
@@ -38,7 +39,8 @@ class StripeWebhookTest {
     @Test
     void verifiesUnmodifiedPayloadAndStoresEachEventOnce() throws Exception {
         var events = mock(StripeWebhookEventRepository.class);
-        var service = new StripeWebhookEventHandler(new StripeWebhookVerifierImpl(SECRET), events);
+        var service = new StripeWebhookEventHandler(new StripeWebhookVerifierImpl(SECRET), events,
+                mock(ConfigurationDraftRepository.class));
         var command = new ReceiveStripeWebhookCommand(PAYLOAD, signedHeader(PAYLOAD));
         when(events.insertIfAbsent("evt_test", "setup_intent.succeeded", PAYLOAD)).thenReturn(1, 0);
 
@@ -52,7 +54,8 @@ class StripeWebhookTest {
     @Test
     void rejectsTamperedPayloadWithoutWritingAnEvent() throws Exception {
         var events = mock(StripeWebhookEventRepository.class);
-        var service = new StripeWebhookEventHandler(new StripeWebhookVerifierImpl(SECRET), events);
+        var service = new StripeWebhookEventHandler(new StripeWebhookVerifierImpl(SECRET), events,
+                mock(ConfigurationDraftRepository.class));
         var command = new ReceiveStripeWebhookCommand(PAYLOAD + " ", signedHeader(PAYLOAD));
 
         assertThrows(InvalidStripeWebhookSignature.class, () -> service.handle(command));
@@ -94,7 +97,8 @@ class StripeWebhookTest {
     @Test
     void endpointReturnsExpectedStatusForSignedInvalidAndFailedEvents() throws Exception {
         var events = mock(StripeWebhookEventRepository.class);
-        var service = new StripeWebhookEventHandler(new StripeWebhookVerifierImpl(SECRET), events);
+        var service = new StripeWebhookEventHandler(new StripeWebhookVerifierImpl(SECRET), events,
+                mock(ConfigurationDraftRepository.class));
         var mvc = MockMvcBuilders.standaloneSetup(new StripeWebhookController(service))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
 

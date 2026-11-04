@@ -33,6 +33,7 @@ import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationResendTooSoonException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationTokenExpiredException;
 import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationDraftNotFound;
+import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationDraftOwnedByAnotherAccount;
 import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationNotReadyToConfirm;
 import com.resolum.alivia.subscriptions.domain.exceptions.InvalidStripeWebhookSignature;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentRejected;
@@ -52,6 +53,8 @@ import com.resolum.alivia.operations.domain.exceptions.SlotUnavailable;
 import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderAlreadyExists;
 import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotFound;
 import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotScheduled;
+import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderAccessDenied;
+import com.resolum.alivia.operations.domain.exceptions.InstalledDeviceAlreadyRegistered;
 import com.resolum.alivia.operations.domain.exceptions.TechnicianNotEligible;
 import com.resolum.alivia.operations.interfaces.rest.transform.TechnicalOrderResourceFromEntityAssembler;
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
@@ -190,6 +193,16 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.CONFLICT, "evaluation_required", exception.getMessage(), List.of());
     }
 
+    @ExceptionHandler(TechnicalOrderAccessDenied.class)
+    public ProblemDetail handleTechnicalOrderAccessDenied(TechnicalOrderAccessDenied exception) {
+        return problem(HttpStatus.FORBIDDEN, "technical_order_access_denied", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InstalledDeviceAlreadyRegistered.class)
+    public ProblemDetail handleInstalledDeviceAlreadyRegistered(InstalledDeviceAlreadyRegistered exception) {
+        return problem(HttpStatus.CONFLICT, "installed_device_already_registered", exception.getMessage(), List.of());
+    }
+
     @ExceptionHandler(TechnicalOrderNotScheduled.class)
     public ProblemDetail handleTechnicalOrderNotScheduled(TechnicalOrderNotScheduled exception) {
         return problem(HttpStatus.CONFLICT, "technical_order_not_scheduled", exception.getMessage(), List.of());
@@ -198,6 +211,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ConfigurationNotReadyToConfirm.class)
     public ProblemDetail handleConfigurationNotReadyToConfirm(ConfigurationNotReadyToConfirm exception) {
         return problem(HttpStatus.CONFLICT, "configuration_not_ready_to_confirm", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(ConfigurationDraftOwnedByAnotherAccount.class)
+    public ProblemDetail handleConfigurationDraftOwnedByAnotherAccount(ConfigurationDraftOwnedByAnotherAccount exception) {
+        return problem(HttpStatus.CONFLICT, "configuration_draft_owned_by_another_account", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(ConfigurationDraftNotFound.class)

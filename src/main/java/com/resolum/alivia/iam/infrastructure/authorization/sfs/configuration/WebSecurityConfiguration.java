@@ -72,6 +72,9 @@ public class WebSecurityConfiguration {
                         .requestMatchers(HttpMethod.GET, "/api/v1/plans", "/api/v1/plans/*", "/api/v1/plans/*/pricing").permitAll()
                         // The guided contracting flow builds the draft and its payment before the account
                         // exists; drafts are reached only through their random UUID.
+                        // Linking a request to the family's account and reading it back need that account.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/configuration-drafts/mine").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/configuration-drafts/*/owner").authenticated()
                         .requestMatchers("/api/v1/configuration-drafts", "/api/v1/configuration-drafts/**").permitAll()
                         // The same guest books the technical evaluation of that draft.
                         .requestMatchers(HttpMethod.GET, "/api/v1/appointments/available-slots").permitAll()
