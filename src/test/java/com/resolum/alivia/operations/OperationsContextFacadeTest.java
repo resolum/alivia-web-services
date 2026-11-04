@@ -28,7 +28,7 @@ class OperationsContextFacadeTest {
         when(appointments.findByDraftIdInAndStatusIn(ids, List.of(AppointmentStatus.SCHEDULED, AppointmentStatus.COMPLETED))).thenReturn(List.of(
                 order("a", ServiceType.EVALUATION, DAY, 8), order("b", ServiceType.INSTALLATION, DAY.plusDays(2), 8),
                 order("b", ServiceType.EVALUATION, DAY, 10)));
-        var facade = new OperationsContextFacadeImpl(appointments);
+        var facade = new OperationsContextFacadeImpl(appointments, mock(com.resolum.alivia.operations.domain.services.AppointmentCommandService.class));
 
         var visits = facade.fetchScheduledVisitsOfDrafts(ids);
 
@@ -41,5 +41,15 @@ class OperationsContextFacadeTest {
         var hours = (int) type.window().toHours();
         return new Appointment(draftId, type, date, new TimeRange(LocalTime.of(hour, 0), LocalTime.of(hour + hours, 0)),
                 7L, "Ana Pérez", "María Villanueva", "984123456", null, Instant.parse("2026-11-02T15:00:00Z"));
+    }
+
+    @Test
+    void theFamilysConfirmationAsksForTheInstallationOrder() {
+        var commands = mock(com.resolum.alivia.operations.domain.services.AppointmentCommandService.class);
+        var facade = new OperationsContextFacadeImpl(mock(AppointmentRepository.class), commands);
+
+        facade.openInstallationOfConfirmedRequest("draft");
+
+        verify(commands).handle(new com.resolum.alivia.operations.domain.model.commands.OpenInstallationCommand("draft"));
     }
 }

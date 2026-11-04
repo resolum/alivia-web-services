@@ -15,12 +15,10 @@ import com.resolum.alivia.iam.interfaces.rest.resources.RegisteredAccountResourc
 import com.resolum.alivia.iam.interfaces.rest.resources.ResendVerificationResource;
 import com.resolum.alivia.iam.interfaces.rest.resources.SignInResource;
 import com.resolum.alivia.iam.interfaces.rest.resources.SignUpResource;
-import com.resolum.alivia.iam.interfaces.rest.resources.VerifiedAccountResource;
 import com.resolum.alivia.iam.interfaces.rest.resources.VerifyEmailResource;
 import com.resolum.alivia.iam.interfaces.rest.transform.AuthenticatedUserResourceFromSessionAssembler;
 import com.resolum.alivia.iam.interfaces.rest.transform.RegisteredAccountResourceFromEntityAssembler;
 import com.resolum.alivia.iam.interfaces.rest.transform.SignUpCommandFromResourceAssembler;
-import com.resolum.alivia.iam.interfaces.rest.transform.VerifiedAccountResourceFromEntityAssembler;
 import com.resolum.alivia.iam.interfaces.rest.transform.VerifyEmailCommandFromResourceAssembler;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -99,20 +97,20 @@ public class AuthenticationController {
          * Verifies the email address associated with a verification token.
          *
          * @param resource the verify-email request
-         * @return the verified account
+         * @return the session opened for the verified account
          */
         @PostMapping("/verify-email")
         @Operation(summary = "Verificar el correo de una cuenta", description = "Activa la cuenta asociada al token. Cada token puede usarse una sola vez.")
         @ApiResponses({
-                        @ApiResponse(responseCode = "200", description = "Cuenta verificada", content = @Content(schema = @Schema(implementation = VerifiedAccountResource.class))),
+                        @ApiResponse(responseCode = "200", description = "Cuenta verificada y sesión iniciada", content = @Content(schema = @Schema(implementation = AuthenticatedUserResource.class))),
                         @ApiResponse(responseCode = "400", description = "Token inválido, reutilizado o vencido", content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
         })
-        public VerifiedAccountResource verifyEmail(@RequestBody VerifyEmailResource resource) {
+        public AuthenticatedUserResource verifyEmail(@RequestBody VerifyEmailResource resource) {
                 log.info("Received email verification request");
-                var user = userCommandService.handle(
+                var session = userCommandService.handle(
                                 VerifyEmailCommandFromResourceAssembler.toCommandFromResource(resource));
-                log.info("Email verification request completed for account id {}", user.getId());
-                return VerifiedAccountResourceFromEntityAssembler.toResourceFromEntity(user);
+                log.info("Email verification request completed for account id {}", session.user().getId());
+                return AuthenticatedUserResourceFromSessionAssembler.toResourceFromSession(session);
         }
 
         /**

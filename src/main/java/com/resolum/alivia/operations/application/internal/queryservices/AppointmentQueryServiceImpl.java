@@ -7,6 +7,8 @@ import com.resolum.alivia.operations.domain.model.queries.GetMaintenanceOrdersBy
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalAvailabilityQuery;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalOrderByIdQuery;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalOrdersQuery;
+import com.resolum.alivia.operations.domain.model.queries.GetTechnicianIdByUserIdQuery;
+import com.resolum.alivia.operations.domain.model.queries.GetTechnicianOrdersQuery;
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
 import com.resolum.alivia.operations.domain.model.valueobjects.AvailableBlock;
 import com.resolum.alivia.operations.domain.model.valueobjects.AvailableSlot;
@@ -78,6 +80,23 @@ public class AppointmentQueryServiceImpl implements AppointmentQueryService {
                 .filter(order -> query.draftId() == null || order.getDraftId().equals(query.draftId()))
                 .sorted(Comparator.comparing(Appointment::getScheduledDate).thenComparing(Appointment::getStartTime))
                 .toList();
+    }
+
+    /**
+     * Orders of the technician signed in as the user, scheduled and closed, by date and start. An account
+     * that is not an active technician has no orders.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<Appointment> handle(GetTechnicianOrdersQuery query) {
+        return hcm.fetchTechnicianIdOfUser(query.userId())
+                .map(appointments::findByTechnicianIdOrderByScheduledDateAscStartTimeAsc)
+                .orElse(List.of());
+    }
+
+    @Override
+    public Optional<Long> handle(GetTechnicianIdByUserIdQuery query) {
+        return hcm.fetchTechnicianIdOfUser(query.userId());
     }
 
     @Override

@@ -22,4 +22,16 @@ public interface SubscriptionsContextFacade {
 
     /** The {@code ACTIVE} subscription of the household, if it has one. */
     Optional<ActiveSubscription> fetchActiveSubscriptionOfHousehold(String householdId);
+
+    /**
+     * Releases the payment the family authorized for a request the technician found not viable, so the held
+     * amount returns to the card. A request without an active hold changes nothing.
+     *
+     * @param draftId the configuration draft of the request
+     * @return true when a held payment was released
+     */
+    boolean releaseConfigurationDraftPayment(String draftId);
+
+    /** Requests capture of the held amount. Stripe's signed webhook confirms the final result. */
+    boolean captureConfigurationDraftPayment(String draftId);
 }

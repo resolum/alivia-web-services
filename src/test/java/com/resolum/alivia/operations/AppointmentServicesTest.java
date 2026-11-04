@@ -83,8 +83,25 @@ class AppointmentServicesTest {
     void rejectsDraftsWithoutPaymentOrAlreadyScheduled() {
         assertThrows(DraftNotReadyForAppointment.class, () -> commands.handle(command(TOMORROW, 10, 7L)));
         when(subscriptions.isReadyForEvaluation("draft")).thenReturn(true);
-        when(appointments.existsByDraftIdAndServiceTypeAndStatus("draft", ServiceType.EVALUATION, AppointmentStatus.SCHEDULED)).thenReturn(true);
+        var booked = commands.handle(command(TOMORROW, 8, 7L));
+        when(appointments.findFirstByDraftIdAndServiceTypeAndStatus("draft", ServiceType.EVALUATION, AppointmentStatus.SCHEDULED))
+                .thenReturn(java.util.Optional.of(booked));
         assertThrows(AppointmentAlreadyExists.class, () -> commands.handle(command(TOMORROW, 10, 7L)));
+    }
+
+    @Test
+    void repeatingTheSameBookingReturnsTheVisitAlreadyMade() {
+        when(subscriptions.isReadyForEvaluation("draft")).thenReturn(true);
+        var booked = commands.handle(command(TOMORROW, 10, 7L));
+        when(appointments.findFirstByDraftIdAndServiceTypeAndStatus("draft", ServiceType.EVALUATION, AppointmentStatus.SCHEDULED))
+                .thenReturn(java.util.Optional.of(booked));
+        // The family's own visit now occupies the window; the repeated request must not read it as taken.
+        when(appointments.findByScheduledDateAndStatus(TOMORROW, AppointmentStatus.SCHEDULED)).thenReturn(List.of(booked));
+
+        var repeated = commands.handle(command(TOMORROW, 10, 7L));
+
+        assertSame(booked, repeated);
+        verify(appointments, times(1)).saveAndFlush(any(Appointment.class));
     }
 
     @Test

@@ -133,7 +133,7 @@ class EvaluationResultTest {
         when(appointments.findByDraftIdInAndStatusIn(List.of("draft"),
                 List.of(AppointmentStatus.SCHEDULED, AppointmentStatus.COMPLETED)))
                 .thenReturn(List.of(installation, oldInstallation, evaluation));
-        var facade = new OperationsContextFacadeImpl(appointments);
+        var facade = new OperationsContextFacadeImpl(appointments, mock(com.resolum.alivia.operations.domain.services.AppointmentCommandService.class));
 
         var visits = facade.fetchContractingVisitsOfDraft("draft");
 

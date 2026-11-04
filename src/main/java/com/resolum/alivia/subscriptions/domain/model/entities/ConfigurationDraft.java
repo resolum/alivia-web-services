@@ -63,6 +63,9 @@ public class ConfigurationDraft {
 
     private Instant confirmedAt;
 
+    /** Account of the family that contracts; linked when that account signs in with the request in its browser. */
+    private Long ownerUserId;
+
     protected ConfigurationDraft() {
     }
 
@@ -149,6 +152,26 @@ public class ConfigurationDraft {
         updatedAt = Instant.now();
     }
 
+    /** The capture was requested; the signed Stripe webhook is the authority that confirms its outcome. */
+    public void markCaptureRequested() {
+        if (paymentStatus == PaymentStatus.SUCCEEDED) return;
+        if (paymentStatus != PaymentStatus.PREAUTHORIZED && paymentStatus != PaymentStatus.AWAITING_CONFIRMATION) {
+            throw new IllegalStateException("La preautorización no está disponible para captura.");
+        }
+        paymentStatus = PaymentStatus.AWAITING_CONFIRMATION;
+        updatedAt = Instant.now();
+    }
+
+    public void confirmCapturedPayment() {
+        paymentStatus = PaymentStatus.SUCCEEDED;
+        updatedAt = Instant.now();
+    }
+
+    public void recordCaptureFailure() {
+        if (paymentStatus != PaymentStatus.SUCCEEDED) paymentStatus = PaymentStatus.FAILED;
+        updatedAt = Instant.now();
+    }
+
     /** The family confirmed the configuration that the technician validated; confirming again changes nothing. */
     public void confirm(Instant now) {
         if (now == null) throw new IllegalArgumentException("La fecha de confirmación es obligatoria.");
@@ -159,5 +182,22 @@ public class ConfigurationDraft {
 
     public boolean isConfirmed() {
         return confirmedAt != null;
+    }
+
+    /**
+     * Links the request to the family's account. The request is built before the account exists, so the
+     * first account that claims it keeps it; another account cannot take it.
+     *
+     * @return true when the request belongs to {@code userId} after the call
+     */
+    public boolean claimBy(Long userId) {
+        if (userId == null) throw new IllegalArgumentException("La cuenta es obligatoria.");
+        if (ownerUserId == null) ownerUserId = userId;
+        return ownerUserId.equals(userId);
+    }
+
+    /** Whether the family already paid (or had paid) the preauthorization, so the request left the configuration. */
+    public boolean isPaid() {
+        return preauthorizedAt != null;
     }
 }

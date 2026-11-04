@@ -37,6 +37,11 @@ public class ExternalOperationsService {
                 .toList();
     }
 
+    /** The family confirmed: the technician who evaluated the home gets the installation order. */
+    public void openInstallation(String draftId) {
+        operationsContextFacade.openInstallationOfConfirmedRequest(draftId);
+    }
+
     private static HiringStage toStage(OperationsContextFacade.ScheduledVisit visit) {
         if (visit.installationApproved()) return HiringStage.COMPLETED;
         return "INSTALLATION".equals(visit.serviceType()) ? HiringStage.INSTALLATION : HiringStage.TECHNICAL_EVALUATION;

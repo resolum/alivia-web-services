@@ -7,6 +7,7 @@ import com.resolum.alivia.operations.domain.model.valueobjects.MaintenanceReport
 import com.resolum.alivia.operations.domain.model.valueobjects.SlotId;
 import com.resolum.alivia.shared.domain.model.valueobjects.TimeRange;
 import com.resolum.alivia.operations.interfaces.rest.resources.AssignmentRecordResource;
+import com.resolum.alivia.operations.interfaces.rest.resources.InstalledDeviceResource;
 import com.resolum.alivia.operations.interfaces.rest.resources.MaintenanceReportResource;
 import com.resolum.alivia.operations.interfaces.rest.resources.TechnicalAvailabilityResource;
 import com.resolum.alivia.operations.interfaces.rest.resources.TechnicalOrderResource;
@@ -28,7 +29,17 @@ public final class TechnicalOrderResourceFromEntityAssembler {
                 order.getInstallationResult() == null ? null : order.getInstallationResult().name(),
                 order.getCompletionNotes(),
                 toResource(order.getMaintenanceReport()),
-                order.getAssignments().stream().map(TechnicalOrderResourceFromEntityAssembler::toResource).toList());
+                order.getAssignments().stream().map(TechnicalOrderResourceFromEntityAssembler::toResource).toList(),
+                codeOf(order), order.getStartedAt(), order.getCompletedAt(),
+                order.getInstalledDevices().stream()
+                        .map(device -> new InstalledDeviceResource(device.alias(), device.macAddress(), device.type().name()))
+                        .toList());
+    }
+
+    /** Readable code of the order, such as {@code ORD-2026-0042}, from the year of its visit and its identifier. */
+    static String codeOf(Appointment order) {
+        if (order.getId() == null) return null;
+        return "ORD-%d-%04d".formatted(order.getScheduledDate().getYear(), order.getId());
     }
 
     public static TechnicalAvailabilityResource toResourceFromBlock(AvailableBlock block) {

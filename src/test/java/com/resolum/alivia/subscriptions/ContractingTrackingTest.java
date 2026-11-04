@@ -70,7 +70,8 @@ class ContractingTrackingTest {
         when(plans.handle(any(QuotePlanQuery.class))).thenReturn(new PlanQuote(PlanCode.CUSTOM, "PEN", 3, Map.of(),
                 BigDecimal.valueOf(129), BigDecimal.valueOf(30), BigDecimal.valueOf(20), BigDecimal.valueOf(179)));
         queries = new ContractingTrackingQueryServiceImpl(drafts, plans, new ExternalOperationsService(operationsFacade));
-        commands = new ContractingCommandServiceImpl(drafts, queries, Clock.fixed(NOW, ZoneOffset.UTC));
+        commands = new ContractingCommandServiceImpl(drafts, queries, new ExternalOperationsService(operationsFacade),
+                Clock.fixed(NOW, ZoneOffset.UTC));
         draft = draft();
         when(drafts.findById(draft.getId())).thenReturn(Optional.of(draft));
         when(drafts.findById("missing")).thenReturn(Optional.empty());
@@ -116,10 +117,14 @@ class ContractingTrackingTest {
                 .andExpect(jsonPath("$.confirmedAt").exists());
         assertEquals(NOW, draft.getConfirmedAt());
         verify(drafts).save(draft);
+        // Confirming hands the installation to the technician who evaluated the home.
+        verify(operationsFacade).openInstallationOfConfirmedRequest(draft.getId());
 
         var again = commands.handle(new ConfirmConfigurationCommand(draft.getId()));
         assertEquals(ContractingStage.INSTALLATION, again.stage());
         verify(drafts, times(1)).save(draft);
+        // A repeated confirmation only makes sure the installation exists; Operations does not duplicate it.
+        verify(operationsFacade, times(2)).openInstallationOfConfirmedRequest(draft.getId());
     }
 
     @Test
@@ -143,6 +148,7 @@ class ContractingTrackingTest {
                 .thenReturn(List.of(evaluation("COMPLETED", "NOT_VIABLE", "Sin red eléctrica estable")));
         assertEquals(ContractingStage.NOT_VIABLE, queries.handle(new GetContractingTrackingQuery(other.getId())).stage());
         assertThrows(ConfigurationNotReadyToConfirm.class, () -> commands.handle(new ConfirmConfigurationCommand(other.getId())));
+        verify(operationsFacade, never()).openInstallationOfConfirmedRequest(other.getId());
     }
 
     @Test
