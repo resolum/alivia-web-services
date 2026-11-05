@@ -3,6 +3,7 @@ package com.resolum.alivia.assets;
 import com.resolum.alivia.assets.domain.model.aggregates.Edge;
 import com.resolum.alivia.assets.domain.model.aggregates.HouseholdDeviceRegistry;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
+import com.resolum.alivia.assets.domain.model.valueobjects.RegistryStatus;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.EdgeRepository;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.HouseholdDeviceRegistryRepository;
 import com.resolum.alivia.shared.infrastructure.configuration.ClockConfiguration;
@@ -101,5 +102,38 @@ class InstallationEdgesPersistenceTest {
 
         assertTrue(edges.findByIdForUpdate(actuator.getId()).isPresent());
         assertTrue(edges.findByIdForUpdate(999L).isEmpty());
+    }
+
+    @Test
+    void theTableVersionOfTheActiveInstallationOfAnEdgeIsFoundWithoutLoadingTheRegistry() {
+        var microphone = edge(1, "MICROPHONE_EDGE");
+        var actuator = edge(2, "ACTUATOR_EDGE");
+        var loose = edge(3, "ACTUATOR_EDGE");
+        var registry = registry(3, 5);
+        registry.placeEdge(microphone);
+        registry.placeEdge(actuator);
+        org.springframework.test.util.ReflectionTestUtils.setField(registry, "tableVersion", 12L);
+        registries.saveAndFlush(registry);
+        entityManager.clear();
+
+        assertEquals(12L, registries.findActiveTableVersionByAssignedEdgeId(microphone.getId()).orElseThrow());
+        assertEquals(12L, registries.findActiveTableVersionByAssignedEdgeId(actuator.getId()).orElseThrow());
+        assertTrue(registries.findActiveTableVersionByAssignedEdgeId(loose.getId()).isEmpty());
+        assertEquals(registry.getId(), registries.findByAssignedEdgeId(actuator.getId()).orElseThrow().getId());
+        assertTrue(registries.findByAssignedEdgeId(loose.getId()).isEmpty());
+    }
+
+    @Test
+    void aRegistryThatIsNotInServiceHasNoActiveTableVersion() {
+        var actuator = edge(2, "ACTUATOR_EDGE");
+        var registry = registry(3, 5);
+        registry.placeEdge(actuator);
+        org.springframework.test.util.ReflectionTestUtils.setField(registry, "status", RegistryStatus.DEACTIVATED);
+        registries.saveAndFlush(registry);
+        entityManager.clear();
+
+        assertTrue(registries.findActiveTableVersionByAssignedEdgeId(actuator.getId()).isEmpty());
+        // The registry itself is still there; the query service filters it out.
+        assertTrue(registries.findByAssignedEdgeId(actuator.getId()).isPresent());
     }
 }

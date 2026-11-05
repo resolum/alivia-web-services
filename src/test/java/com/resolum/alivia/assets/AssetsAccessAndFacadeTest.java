@@ -19,6 +19,9 @@ import com.resolum.alivia.assets.domain.services.EdgeCommandService;
 import com.resolum.alivia.assets.domain.services.EdgeQueryService;
 import com.resolum.alivia.assets.interfaces.rest.controllers.DevicesController;
 import com.resolum.alivia.assets.interfaces.rest.controllers.EdgeCredentialsController;
+import com.resolum.alivia.assets.interfaces.rest.controllers.EdgeDeviceTableController;
+import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryQueryService;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeAccessTable;
 import com.resolum.alivia.assets.interfaces.rest.controllers.EdgesController;
 import com.resolum.alivia.assets.interfaces.rest.controllers.InstallationEdgesController;
 import com.resolum.alivia.assets.domain.model.commands.IssueEdgeCredentialCommand;
@@ -90,6 +93,16 @@ class AssetsAccessAndFacadeTest {
             when(commands.handle(any(PlaceEdgeInInstallationCommand.class))).thenReturn(view);
             when(commands.handle(any(RemoveEdgeFromInstallationCommand.class))).thenReturn(view);
             return new InstallationEdgesController(commands);
+        }
+
+        @Bean
+        EdgeDeviceTableController edgeDeviceTableController() {
+            var queries = mock(HouseholdDeviceRegistryQueryService.class);
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetEdgeTableVersionByEdgeIdQuery.class)))
+                    .thenReturn(Optional.of(1L));
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByEdgeIdQuery.class)))
+                    .thenReturn(Optional.of(new EdgeAccessTable(3L, 5L, 1L, java.util.List.of())));
+            return new EdgeDeviceTableController(queries);
         }
 
         @Bean
@@ -227,5 +240,23 @@ class AssetsAccessAndFacadeTest {
 
         verify(assignments).handle(new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", 6L, CallerAuthority.AUTHORIZED_BY_CONTEXT));
         verify(assignments).handle(new UnassignDeviceCommand(7L, "Fin de la visita", 6L, CallerAuthority.AUTHORIZED_BY_CONTEXT));
+    }
+
+    @Test
+    void onlyAuthenticatedEdgeServicesMayReadTheTableOfDevices() {
+        var edge = new TestingAuthenticationToken("edge:7", "n/a", "ROLE_EDGE_MICROPHONE");
+        var actuator = new TestingAuthenticationToken("edge:8", "n/a", "ROLE_EDGE_ACTUATOR");
+        try (var context = context()) {
+            SecurityContextHolder.getContext().setAuthentication(edge);
+            assertEquals(200, context.getBean(EdgeDeviceTableController.class).getDeviceTable(null, edge).getStatusCode().value());
+            SecurityContextHolder.getContext().setAuthentication(actuator);
+            assertEquals(200, context.getBean(EdgeDeviceTableController.class).getDeviceTable(null, actuator).getStatusCode().value());
+
+            for (var role : new String[]{"ROLE_ADMINISTRATOR", "ROLE_CAREGIVER", "ROLE_TECHNICIAN", "ROLE_SUBSCRIPTION_MANAGER", "ROLE_ASSISTED_PERSON"}) {
+                signInAs(role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(EdgeDeviceTableController.class).getDeviceTable(null, edge), role);
+            }
+        }
     }
 }

@@ -1,0 +1,164 @@
+package com.resolum.alivia.assets;
+
+import com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByEdgeIdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetEdgeTableVersionByEdgeIdQuery;
+import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
+import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeAccessTable;
+import com.resolum.alivia.assets.domain.model.valueobjects.NodeRef;
+import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryQueryService;
+import com.resolum.alivia.assets.interfaces.rest.controllers.EdgeDeviceTableController;
+import com.resolum.alivia.shared.interfaces.rest.GlobalExceptionHandler;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import java.util.List;
+import java.util.Optional;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/** What an edge service gets when it asks for the table of devices of its household. */
+class EdgeDeviceTableControllerTest {
+
+    private static final String PATH = "/api/v1/edge/device-table";
+    private static final Authentication EDGE = new TestingAuthenticationToken("edge:7", null, "ROLE_EDGE_MICROPHONE");
+    private static final EdgeAccessTable TABLE = new EdgeAccessTable(3L, 5L, 12L, List.of(
+            new NodeRef(1L, "AA:BB:CC:DD:EE:01", DeviceType.LIGHT, AssetStatus.IN_USE, "sala", "Luz principal"),
+            new NodeRef(2L, "AA:BB:CC:DD:EE:02", DeviceType.MICROPHONE, AssetStatus.MAINTENANCE, "sala", "Micrófono")));
+
+    private HouseholdDeviceRegistryQueryService queries;
+    private MockMvc mvc;
+
+    @BeforeEach
+    void setUp() {
+        queries = mock(HouseholdDeviceRegistryQueryService.class);
+        mvc = MockMvcBuilders.standaloneSetup(new EdgeDeviceTableController(queries))
+                .setControllerAdvice(new GlobalExceptionHandler()).build();
+        when(queries.handle(new GetEdgeTableVersionByEdgeIdQuery(7L))).thenReturn(Optional.of(12L));
+        when(queries.handle(new GetEdgeAccessTableByEdgeIdQuery(7L))).thenReturn(Optional.of(TABLE));
+    }
+
+    @Test
+    void answersWithTheCompleteTableAndItsVersionAsEtag() throws Exception {
+        mvc.perform(get(PATH).principal(EDGE))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, "\"12\""))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.installationId").value(3))
+                .andExpect(jsonPath("$.householdId").value(5))
+                .andExpect(jsonPath("$.version").value(12))
+                .andExpect(jsonPath("$.nodes.length()").value(2))
+                .andExpect(jsonPath("$.nodes[0].deviceId").value(1))
+                .andExpect(jsonPath("$.nodes[0].macAddress").value("AA:BB:CC:DD:EE:01"))
+                .andExpect(jsonPath("$.nodes[0].deviceType").value("LIGHT"))
+                .andExpect(jsonPath("$.nodes[0].status").value("IN_USE"))
+                .andExpect(jsonPath("$.nodes[0].roomKey").value("sala"))
+                .andExpect(jsonPath("$.nodes[0].function").value("Luz principal"))
+                .andExpect(jsonPath("$.nodes[1].status").value("MAINTENANCE"));
+    }
+
+    @Test
+    void anEmptyTableIsStillATable() throws Exception {
+        when(queries.handle(new GetEdgeTableVersionByEdgeIdQuery(7L))).thenReturn(Optional.of(0L));
+        when(queries.handle(new GetEdgeAccessTableByEdgeIdQuery(7L)))
+                .thenReturn(Optional.of(new EdgeAccessTable(3L, 5L, 0L, List.of())));
+
+        mvc.perform(get(PATH).principal(EDGE))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, "\"0\""))
+                .andExpect(jsonPath("$.version").value(0))
+                .andExpect(jsonPath("$.nodes.length()").value(0));
+    }
+
+    @Test
+    void anEdgeThatIsUpToDateGetsAnEmpty304WithoutReadingTheTable() throws Exception {
+        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"12\""))
+                .andExpect(status().isNotModified())
+                .andExpect(header().string(HttpHeaders.ETAG, "\"12\""))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(content().string(""));
+
+        verify(queries, never()).handle(any(GetEdgeAccessTableByEdgeIdQuery.class));
+    }
+
+    @Test
+    void theVersionMayComeAsAWeakTagInAListOrAsAStar() throws Exception {
+        for (var header : new String[]{"W/\"12\"", "\"3\", \"12\"", " \"3\" ,W/\"12\" ", "*"}) {
+            mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, header))
+                    .andExpect(status().isNotModified());
+        }
+    }
+
+    @Test
+    void anOlderOrNewerOrMalformedVersionGetsTheTable() throws Exception {
+        for (var header : new String[]{"\"11\"", "\"13\"", "12", "\"\"", "garbage", "\"12", "", "  ", "\"012\"", "\"1,2\""}) {
+            mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, header))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.version").value(12));
+        }
+    }
+
+    @Test
+    void theEtagIsTheVersionOfTheTableThatWasReturnedEvenIfItIsNewerThanTheOneChecked() throws Exception {
+        when(queries.handle(new GetEdgeAccessTableByEdgeIdQuery(7L)))
+                .thenReturn(Optional.of(new EdgeAccessTable(3L, 5L, 13L, List.of())));
+
+        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"11\""))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, "\"13\""))
+                .andExpect(jsonPath("$.version").value(13));
+    }
+
+    @Test
+    void anEdgeWithoutAnActiveInstallationGets404() throws Exception {
+        when(queries.handle(new GetEdgeTableVersionByEdgeIdQuery(7L))).thenReturn(Optional.empty());
+
+        mvc.perform(get(PATH).principal(EDGE))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("edge_without_installation"));
+
+        verify(queries, never()).handle(any(GetEdgeAccessTableByEdgeIdQuery.class));
+    }
+
+    @Test
+    void anEdgeRemovedBetweenBothReadsGets404() throws Exception {
+        when(queries.handle(new GetEdgeAccessTableByEdgeIdQuery(7L))).thenReturn(Optional.empty());
+
+        mvc.perform(get(PATH).principal(EDGE))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("edge_without_installation"));
+    }
+
+    @Test
+    void theTableIsAlwaysTheOneOfTheCallingEdge() throws Exception {
+        var other = new TestingAuthenticationToken("edge:9", null, "ROLE_EDGE_ACTUATOR");
+        when(queries.handle(new GetEdgeTableVersionByEdgeIdQuery(9L))).thenReturn(Optional.of(4L));
+        when(queries.handle(new GetEdgeAccessTableByEdgeIdQuery(9L)))
+                .thenReturn(Optional.of(new EdgeAccessTable(8L, 6L, 4L, List.of())));
+
+        mvc.perform(get(PATH).principal(other)).andExpect(jsonPath("$.installationId").value(8));
+        mvc.perform(get(PATH).principal(EDGE)).andExpect(jsonPath("$.installationId").value(3));
+    }
+
+    @Test
+    void aCallerThatIsNotNamedAsAnEdgeGetsNothing() throws Exception {
+        for (var name : new String[]{"42", "edge:", "edge:abc", "edge:0", "edge:-3", "Edge:7"}) {
+            mvc.perform(get(PATH).principal(new TestingAuthenticationToken(name, null, "ROLE_EDGE_MICROPHONE")))
+                    .andExpect(status().isForbidden());
+        }
+        mvc.perform(get(PATH)).andExpect(status().isForbidden());
+
+        verifyNoInteractions(queries);
+    }
+}
