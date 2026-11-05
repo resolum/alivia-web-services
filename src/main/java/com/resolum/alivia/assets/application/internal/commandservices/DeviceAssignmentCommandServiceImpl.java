@@ -3,6 +3,7 @@ package com.resolum.alivia.assets.application.internal.commandservices;
 import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalHouseholdsService;
 import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalSubscriptionsService;
 import com.resolum.alivia.assets.domain.exceptions.DeviceIncompatibleWithPlan;
+import com.resolum.alivia.assets.domain.exceptions.DeviceNotAssigned;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotAvailable;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
 import com.resolum.alivia.assets.domain.exceptions.InstallationAccessDenied;
@@ -12,6 +13,7 @@ import com.resolum.alivia.assets.domain.model.aggregates.Device;
 import com.resolum.alivia.assets.domain.model.aggregates.DeviceAssignment;
 import com.resolum.alivia.assets.domain.model.aggregates.DeviceNetwork;
 import com.resolum.alivia.assets.domain.model.commands.AssignDeviceToInstallationCommand;
+import com.resolum.alivia.assets.domain.model.commands.UnassignDeviceCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
 import com.resolum.alivia.assets.domain.services.DeviceAssignmentCommandService;
@@ -85,6 +87,30 @@ public class DeviceAssignmentCommandServiceImpl implements DeviceAssignmentComma
             // (uk_device_assignments_active_device).
             throw new DeviceNotAvailable(device.getId(), AssetStatus.IN_USE);
         }
+    }
+
+    @Override
+    @Transactional
+    public DeviceAssignment handle(UnassignDeviceCommand command) {
+        var device = deviceRepository.findById(command.deviceId())
+                .orElseThrow(() -> new DeviceNotFound(command.deviceId()));
+        var active = assignmentRepository.findActiveByDeviceIdForUpdate(command.deviceId());
+        if (active.isEmpty()) {
+            if (!command.unassignedByBusinessAdministrator()) {
+                throw new InstallationAccessDenied();
+            }
+            throw new DeviceNotAssigned(command.deviceId());
+        }
+        var assignment = active.get();
+        if (!command.unassignedByBusinessAdministrator()
+                && !externalHouseholdsService.canManageHousehold(assignment.getHouseholdId(), command.unassignedBy())) {
+            throw new InstallationAccessDenied();
+        }
+
+        // unassign validates before changing anything and returns the device to AVAILABLE when it was IN_USE.
+        assignment.unassign(command.reason(), command.unassignedBy(), LocalDateTime.now(clock));
+        deviceRepository.save(device);
+        return assignmentRepository.saveAndFlush(assignment);
     }
 
     /**

@@ -1,8 +1,10 @@
 package com.resolum.alivia.shared.interfaces.rest;
 
 import com.resolum.alivia.assets.domain.exceptions.DeviceIncompatibleWithPlan;
+import com.resolum.alivia.assets.domain.exceptions.DeviceNotAssigned;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotAvailable;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
+import com.resolum.alivia.assets.domain.exceptions.DeviceStillAssigned;
 import com.resolum.alivia.assets.domain.exceptions.EdgeNotFound;
 import com.resolum.alivia.assets.domain.exceptions.InstallationAccessDenied;
 import com.resolum.alivia.assets.domain.exceptions.InstallationAlreadyRegistered;
@@ -397,6 +399,16 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleDeviceNotAvailable(DeviceNotAvailable exception) {
         var code = exception.isAlreadyAssigned() ? "device_already_assigned" : "device_not_available";
         return problem(HttpStatus.CONFLICT, code, exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(DeviceNotAssigned.class)
+    public ProblemDetail handleDeviceNotAssigned(DeviceNotAssigned exception) {
+        return problem(HttpStatus.CONFLICT, "device_not_assigned", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(DeviceStillAssigned.class)
+    public ProblemDetail handleDeviceStillAssigned(DeviceStillAssigned exception) {
+        return problem(HttpStatus.CONFLICT, "device_still_assigned", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(DeviceIncompatibleWithPlan.class)
