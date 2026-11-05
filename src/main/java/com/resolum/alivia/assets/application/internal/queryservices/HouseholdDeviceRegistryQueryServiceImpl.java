@@ -4,6 +4,7 @@ import com.resolum.alivia.assets.domain.model.aggregates.HouseholdDeviceRegistry
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByInstallationIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeTableVersionByEdgeIdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetTableVersionByInstallationIdQuery;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeAccessTable;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeTableVersion;
 import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryQueryService;
@@ -47,5 +48,11 @@ public class HouseholdDeviceRegistryQueryServiceImpl implements HouseholdDeviceR
     @Transactional(readOnly = true)
     public Optional<EdgeTableVersion> handle(GetEdgeTableVersionByEdgeIdQuery query) {
         return registryRepository.findActiveTableVersionByAssignedEdgeId(query.edgeId());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Long> handle(GetTableVersionByInstallationIdQuery query) {
+        return registryRepository.findActiveTableVersionByInstallationId(query.installationId());
     }
 }

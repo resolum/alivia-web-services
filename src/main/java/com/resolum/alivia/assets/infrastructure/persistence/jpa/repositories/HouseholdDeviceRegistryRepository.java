@@ -57,4 +57,9 @@ public interface HouseholdDeviceRegistryRepository extends JpaRepository<Househo
             + "where (r.microphoneEdge.id = :edgeId or r.actuatorEdge.id = :edgeId) "
             + "and r.status = com.resolum.alivia.assets.domain.model.valueobjects.RegistryStatus.ACTIVE")
     Optional<EdgeTableVersion> findActiveTableVersionByAssignedEdgeId(@Param("edgeId") Long edgeId);
+
+    /** The table version of an installation, while its registry is active: what the waiting edge services are checked against. */
+    @Query("select r.tableVersion from HouseholdDeviceRegistry r where r.installationId.installationId = :installationId "
+            + "and r.status = com.resolum.alivia.assets.domain.model.valueobjects.RegistryStatus.ACTIVE")
+    Optional<Long> findActiveTableVersionByInstallationId(@Param("installationId") Long installationId);
 }

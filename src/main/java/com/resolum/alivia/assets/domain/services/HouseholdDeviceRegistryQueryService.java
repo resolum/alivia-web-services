@@ -3,6 +3,7 @@ package com.resolum.alivia.assets.domain.services;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByInstallationIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeTableVersionByEdgeIdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetTableVersionByInstallationIdQuery;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeAccessTable;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeTableVersion;
 
@@ -28,4 +29,7 @@ public interface HouseholdDeviceRegistryQueryService {
      * edge is not assigned to the registry of an active installation.
      */
     Optional<EdgeTableVersion> handle(GetEdgeTableVersionByEdgeIdQuery query);
+
+    /** The current table version of an installation; empty when it is unknown or its registry is not active. */
+    Optional<Long> handle(GetTableVersionByInstallationIdQuery query);
 }

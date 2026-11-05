@@ -13,6 +13,8 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.stereotype.Component;
@@ -37,6 +39,7 @@ public class EdgeAuthorizationRequestFilter extends OncePerRequestFilter {
     private static final RequestMatcher EDGE_PATHS =
             PathPatternRequestMatcher.withDefaults().matcher("/api/v1/edge/**");
 
+    private final SecurityContextRepository contextRepository = new RequestAttributeSecurityContextRepository();
     private final EdgeCredentialCommandService credentialService;
 
     public EdgeAuthorizationRequestFilter(EdgeCredentialCommandService credentialService) {
@@ -60,7 +63,13 @@ public class EdgeAuthorizationRequestFilter extends OncePerRequestFilter {
                             var authentication = new UsernamePasswordAuthenticationToken("edge:" + edge.edgeId(), null,
                                     List.of(new SimpleGrantedAuthority(EdgeAuthorities.of(edge.edgeKind()))));
                             authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                            SecurityContextHolder.getContext().setAuthentication(authentication);
+                            var context = SecurityContextHolder.createEmptyContext();
+                            context.setAuthentication(authentication);
+                            SecurityContextHolder.setContext(context);
+                            // A request that waits (long polling) is dispatched again when it finishes, and the security
+                            // chain then loads the context from the request, not from this thread: without this the
+                            // answer of an edge that waited would be refused as anonymous.
+                            contextRepository.saveContext(context, request, response);
                         });
             } catch (RuntimeException exception) {
                 log.debug("Edge credential rejected: {}", exception.getMessage());
