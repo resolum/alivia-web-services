@@ -5,6 +5,8 @@ import com.resolum.alivia.operations.domain.exceptions.IncidentNotScheduled;
 import com.resolum.alivia.operations.domain.model.valueobjects.Evidence;
 import com.resolum.alivia.operations.domain.model.valueobjects.IncidentSeverity;
 import com.resolum.alivia.operations.domain.model.valueobjects.IncidentStatus;
+import com.resolum.alivia.operations.domain.model.valueobjects.ReportedDevice;
+import com.resolum.alivia.operations.domain.model.valueobjects.IncidentProblemType;
 import com.resolum.alivia.operations.domain.model.valueobjects.IncidentStatusChange;
 import com.resolum.alivia.operations.domain.model.valueobjects.MaintenanceReport;
 import com.resolum.alivia.operations.domain.model.valueobjects.TestResult;
@@ -12,6 +14,7 @@ import com.resolum.alivia.shared.domain.model.aggregates.AuditableAbstractAggreg
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -59,6 +62,13 @@ public class Incident extends AuditableAbstractAggregateRoot<Incident> {
     private IncidentStatus status;
     @Column(length = 500)
     private String resolution;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "problem_type", length = 20)
+    private IncidentProblemType problemType;
+    @Column(name = "occurred_at")
+    private Instant occurredAt;
+    @Embedded
+    private ReportedDevice device;
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "support_incident_evidences", joinColumns = @JoinColumn(name = "incident_id"))
     @OrderColumn(name = "evidence_order")
@@ -100,11 +110,47 @@ public class Incident extends AuditableAbstractAggregateRoot<Incident> {
         evidences.add(evidence);
     }
 
-    /** A maintenance visit was booked for it. */
-    public void scheduleMaintenance(Instant scheduledAt) {
+    /**
+     * Keeps what the family chose in the report form: the kind of problem, when it happened (not in the future)
+     * and the installed device it is about.
+     */
+    public void describeReport(IncidentProblemType problemType, Instant occurredAt, ReportedDevice device, Instant now) {
+        if (problemType == null) throw new IllegalArgumentException("The problem type is required.");
+        if (device == null) throw new IllegalArgumentException("The device is required.");
+        if (occurredAt != null && now != null && occurredAt.isAfter(now)) {
+            throw new IllegalArgumentException("The incident cannot have happened in the future.");
+        }
+        this.problemType = problemType;
+        this.occurredAt = occurredAt;
+        this.device = device;
+    }
+
+    /** A technician took the report to evaluate it and plan the visit (En evaluación). */
+    public void startEvaluation(Instant startedAt) {
         if (status != IncidentStatus.OPEN) throw new IncidentNotOpen();
+        moveTo(IncidentStatus.IN_EVALUATION, startedAt);
+    }
+
+    /** A maintenance visit was booked for it, after the report or its evaluation. */
+    public void scheduleMaintenance(Instant scheduledAt) {
+        if (status != IncidentStatus.OPEN && status != IncidentStatus.IN_EVALUATION) throw new IncidentNotOpen();
         moveTo(IncidentStatus.SCHEDULED, scheduledAt);
     }
+
+    /** The technician evaluated the report and confirms the visit the family chose (Visita programada). */
+    public void confirmVisit(Instant confirmedAt) {
+        if (status != IncidentStatus.IN_EVALUATION) throw new com.resolum.alivia.operations.domain.exceptions.IncidentNotInEvaluation();
+        moveTo(IncidentStatus.SCHEDULED, confirmedAt);
+    }
+
+    /** "INC-2026-0084": the year it was reported and its number, as the family and the technician see it. */
+    public String code() {
+        var reported = statusHistory.isEmpty() ? null : statusHistory.getFirst().changedAt();
+        var year = reported == null ? java.time.Year.now(LIMA).getValue() : reported.atZone(LIMA).getYear();
+        return "INC-%d-%04d".formatted(year, getId() == null ? 0 : getId());
+    }
+
+    private static final java.time.ZoneId LIMA = java.time.ZoneId.of("America/Lima");
 
     /** The technician arrived for the scheduled visit and started attending it. */
     public void startAttention(Instant startedAt) {

@@ -1,6 +1,7 @@
 package com.resolum.alivia.operations.interfaces.rest.transform;
 
 import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
+import com.resolum.alivia.operations.domain.model.aggregates.Incident;
 import com.resolum.alivia.operations.domain.model.valueobjects.AssignmentRecord;
 import com.resolum.alivia.operations.domain.model.valueobjects.AvailableBlock;
 import com.resolum.alivia.operations.domain.model.valueobjects.MaintenanceReport;
@@ -21,6 +22,11 @@ public final class TechnicalOrderResourceFromEntityAssembler {
     }
 
     public static TechnicalOrderResource toResourceFromEntity(Appointment order) {
+        return toResourceFromEntity(order, null);
+    }
+
+    /** @param incident the incident behind a maintenance order, or null for the other orders */
+    public static TechnicalOrderResource toResourceFromEntity(Appointment order, Incident incident) {
         return new TechnicalOrderResource(order.getId(), order.getDraftId(), order.getServiceType().name(),
                 order.getIncidentId(), order.getStatus().name(), order.slotId().value(), order.getScheduledDate(),
                 order.getStartTime().format(TIME), order.getEndTime().format(TIME), order.getTechnicianId(),
@@ -33,7 +39,8 @@ public final class TechnicalOrderResourceFromEntityAssembler {
                 codeOf(order), order.getStartedAt(), order.getCompletedAt(),
                 order.getInstalledDevices().stream()
                         .map(device -> new InstalledDeviceResource(device.alias(), device.macAddress(), device.type().name()))
-                        .toList());
+                        .toList(),
+                incident == null ? null : IncidentResourceFromEntityAssembler.toSummary(incident));
     }
 
     /** Readable code of the order, such as {@code ORD-2026-0042}, from the year of its visit and its identifier. */

@@ -12,9 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 @Service
 public class SubscriptionsContextFacadeImpl implements SubscriptionsContextFacade {
@@ -89,11 +87,11 @@ public class SubscriptionsContextFacadeImpl implements SubscriptionsContextFacad
 
     @Override
     @Transactional(readOnly = true)
-    public Optional<ContractedActuators> fetchContractedActuatorsOfHousehold(String householdId) {
-        if (householdId == null || householdId.isBlank()) return Optional.empty();
-        return subscriptions.findByActiveHouseholdId(householdId.trim())
-                .filter(Subscription::isActive)
-                .map(subscription -> new ContractedActuators(subscription.getActuators().entrySet().stream()
-                        .collect(Collectors.toMap(entry -> entry.getKey().name(), Map.Entry::getValue))));
+    public Optional<String> fetchActiveDraftOfAccount(Long userId) {
+        if (userId == null) return Optional.empty();
+        return drafts.findByOwnerUserIdOrderByUpdatedAtDesc(userId).stream()
+                .filter(draft -> draft.getPaymentStatus() == PaymentStatus.SUCCEEDED)
+                .map(draft -> draft.getId())
+                .findFirst();
     }
 }

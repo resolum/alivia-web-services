@@ -1,6 +1,5 @@
 package com.resolum.alivia.subscriptions.interfaces.acl;
 
-import java.util.Map;
 import java.util.Optional;
 
 /** Anti-corruption layer of Subscriptions for the contexts that continue the guided contracting flow. */
@@ -25,20 +24,10 @@ public interface SubscriptionsContextFacade {
     Optional<ActiveSubscription> fetchActiveSubscriptionOfHousehold(String householdId);
 
     /**
-     * Actuators the household contracted, by type name ({@code LIGHT}, {@code DOOR}, {@code WINDOW},
-     * {@code CURTAIN}). A type that was not contracted is absent.
+     * The contracting request of the account whose service is active (its installation approved and its payment
+     * captured), latest first; empty while the account has none.
      */
-    record ContractedActuators(Map<String, Integer> quantityByType) {
-        public ContractedActuators {
-            quantityByType = Map.copyOf(quantityByType);
-        }
-    }
-
-    /**
-     * Read-only view of what the {@code ACTIVE} subscription of the household includes, so another
-     * context can tell whether a device fits the plan. Empty when the household has no active subscription.
-     */
-    Optional<ContractedActuators> fetchContractedActuatorsOfHousehold(String householdId);
+    Optional<String> fetchActiveDraftOfAccount(Long userId);
 
     /**
      * Releases the payment the family authorized for a request the technician found not viable, so the held

@@ -44,6 +44,18 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
+import com.resolum.alivia.operations.domain.model.commands.CompleteMaintenanceOrderCommand;
+import com.resolum.alivia.operations.domain.model.commands.ConfirmIncidentVisitCommand;
+import com.resolum.alivia.operations.domain.model.commands.EvaluateIncidentCommand;
+import com.resolum.alivia.operations.domain.model.queries.GetTechnicianScheduleQuery;
+import com.resolum.alivia.operations.interfaces.rest.resources.WorkingDayResource;
+import com.resolum.alivia.operations.domain.model.queries.GetIncidentByIdQuery;
+import com.resolum.alivia.operations.domain.model.valueobjects.TestResult;
+import com.resolum.alivia.operations.domain.services.IncidentQueryService;
+import com.resolum.alivia.operations.interfaces.rest.resources.ResolveIncidentResource;
+import org.springframework.beans.factory.annotation.Autowired;
+
 
 import java.time.LocalDate;
 import java.util.List;
@@ -55,12 +67,22 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Tag(name = "Órdenes técnicas", description = "Disponibilidad, órdenes de evaluación e instalación y asignación de técnicos")
 @PreAuthorize("hasRole('ADMINISTRATOR')")
 public class TechnicalOrdersController {
+    private static final java.time.format.DateTimeFormatter SHIFT_TIME = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
     private final AppointmentCommandService commandService;
     private final AppointmentQueryService queryService;
+    private final IncidentQueryService incidents;
 
-    public TechnicalOrdersController(AppointmentCommandService commandService, AppointmentQueryService queryService) {
+    @Autowired
+    public TechnicalOrdersController(AppointmentCommandService commandService, AppointmentQueryService queryService,
+                                     IncidentQueryService incidents) {
         this.commandService = commandService;
         this.queryService = queryService;
+        this.incidents = incidents;
+    }
+
+    /** Without the incidents behind the maintenance orders. */
+    public TechnicalOrdersController(AppointmentCommandService commandService, AppointmentQueryService queryService) {
+        this(commandService, queryService, null);
     }
 
     @PostMapping(consumes = APPLICATION_JSON_VALUE)
@@ -71,7 +93,7 @@ public class TechnicalOrdersController {
     public TechnicalOrderResource create(@Valid @RequestBody CreateTechnicalOrderResource resource) {
         var order = commandService.handle(new CreateTechnicalOrderCommand(resource.draftId(), resource.serviceType(),
                 SlotId.parse(resource.slotId()), resource.contactName(), resource.contactPhone(), resource.directions()));
-        return TechnicalOrderResourceFromEntityAssembler.toResourceFromEntity(order);
+        return toResource(order);
     }
 
     @GetMapping
@@ -82,7 +104,7 @@ public class TechnicalOrdersController {
             @RequestParam(name = "status", required = false) AppointmentStatus status,
             @RequestParam(name = "draftId", required = false) String draftId) {
         return queryService.handle(new GetTechnicalOrdersQuery(serviceType, date, status, draftId)).stream()
-                .map(TechnicalOrderResourceFromEntityAssembler::toResourceFromEntity).toList();
+                .map(this::toResource).toList();
     }
 
     @GetMapping("/mine")
@@ -91,7 +113,22 @@ public class TechnicalOrdersController {
             description = "Programadas y cerradas, por fecha y hora de inicio. Una cuenta que no es un técnico activo no tiene órdenes.")
     public List<TechnicalOrderResource> mine(Authentication authentication) {
         return queryService.handle(new GetTechnicianOrdersQuery(IncidentsController.userIdOf(authentication))).stream()
-                .map(TechnicalOrderResourceFromEntityAssembler::toResourceFromEntity).toList();
+                .map(this::toResource).toList();
+    }
+
+    @GetMapping("/mine/schedule")
+    @PreAuthorize("hasRole('TECHNICIAN')")
+    @Operation(summary = "Horario laboral del técnico que inició sesión",
+            description = "Los bloques de su horario asignado por día entre from y to (hasta 62 días); los días sin jornada no aparecen.")
+    public List<WorkingDayResource> mySchedule(
+            @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam("to") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            Authentication authentication) {
+        return queryService.handle(new GetTechnicianScheduleQuery(IncidentsController.userIdOf(authentication), from, to)).stream()
+                .map(day -> new WorkingDayResource(day.date(), day.shifts().stream()
+                        .map(shift -> new WorkingDayResource.Shift(shift.start().format(SHIFT_TIME), shift.end().format(SHIFT_TIME)))
+                        .toList()))
+                .toList();
     }
 
     @GetMapping("/{orderId}")
@@ -101,7 +138,7 @@ public class TechnicalOrdersController {
     public TechnicalOrderResource get(@PathVariable Long orderId, Authentication authentication) {
         requireAttendedBy(orderId, authentication);
         return queryService.handle(new GetTechnicalOrderByIdQuery(orderId))
-                .map(TechnicalOrderResourceFromEntityAssembler::toResourceFromEntity)
+                .map(this::toResource)
                 .orElseThrow(() -> new TechnicalOrderNotFound(orderId));
     }
 
@@ -110,7 +147,7 @@ public class TechnicalOrdersController {
             description = "El técnico debe trabajar todo el bloque y no tener otra visita en él. La orden sigue SCHEDULED.")
     public TechnicalOrderResource assign(@PathVariable Long orderId, @Valid @RequestBody AssignTechnicianResource resource) {
         var order = commandService.handle(new AssignTechnicianCommand(orderId, resource.technicianId(), resource.note()));
-        return TechnicalOrderResourceFromEntityAssembler.toResourceFromEntity(order);
+        return toResource(order);
     }
 
     @PostMapping(value = "/{orderId}/reassignment", consumes = APPLICATION_JSON_VALUE)
@@ -120,7 +157,7 @@ public class TechnicalOrdersController {
     public TechnicalOrderResource reassign(@PathVariable Long orderId,
                                            @Valid @RequestBody ReassignTechnicianResource resource) {
         var order = commandService.handle(new ReassignTechnicianCommand(orderId, resource.reason()));
-        return TechnicalOrderResourceFromEntityAssembler.toResourceFromEntity(order);
+        return toResource(order);
     }
 
     @PostMapping(value = "/{orderId}/evaluation-result", consumes = APPLICATION_JSON_VALUE)
@@ -135,7 +172,7 @@ public class TechnicalOrdersController {
                                                          Authentication authentication) {
         requireAttendedBy(orderId, authentication);
         var order = commandService.handle(new RecordEvaluationResultCommand(orderId, resource.result(), resource.notes()));
-        return TechnicalOrderResourceFromEntityAssembler.toResourceFromEntity(order);
+        return toResource(order);
     }
 
     @PostMapping(value = "/{orderId}/installation-result", consumes = APPLICATION_JSON_VALUE)
@@ -147,7 +184,7 @@ public class TechnicalOrdersController {
                                                            Authentication authentication) {
         requireAttendedBy(orderId, authentication);
         var order = commandService.handle(new RecordInstallationResultCommand(orderId, resource.result(), resource.notes()));
-        return TechnicalOrderResourceFromEntityAssembler.toResourceFromEntity(order);
+        return toResource(order);
     }
 
     @PostMapping("/{orderId}/start")
@@ -158,7 +195,7 @@ public class TechnicalOrdersController {
     public TechnicalOrderResource start(@PathVariable Long orderId, Authentication authentication) {
         requireAttendedBy(orderId, authentication);
         var order = commandService.handle(new StartTechnicalOrderCommand(orderId));
-        return TechnicalOrderResourceFromEntityAssembler.toResourceFromEntity(order);
+        return toResource(order);
     }
 
     @PostMapping(value = "/{orderId}/devices", consumes = APPLICATION_JSON_VALUE)
@@ -172,7 +209,7 @@ public class TechnicalOrdersController {
         requireAttendedBy(orderId, authentication);
         var order = commandService.handle(new RegisterInstalledDeviceCommand(orderId, resource.alias(),
                 resource.macAddress(), resource.type()));
-        return TechnicalOrderResourceFromEntityAssembler.toResourceFromEntity(order);
+        return toResource(order);
     }
 
     @DeleteMapping("/{orderId}/devices/{macAddress}")
@@ -182,7 +219,47 @@ public class TechnicalOrdersController {
                                                Authentication authentication) {
         requireAttendedBy(orderId, authentication);
         var order = commandService.handle(new RemoveInstalledDeviceCommand(orderId, macAddress));
-        return TechnicalOrderResourceFromEntityAssembler.toResourceFromEntity(order);
+        return toResource(order);
+    }
+
+    @PostMapping(value = "/{orderId}/maintenance-result", consumes = APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'TECHNICIAN')")
+    @Operation(summary = "Resolver la incidencia de una visita de mantenimiento desde la app",
+            description = "Registra el diagnóstico y el trabajo realizado con la prueba superada: la orden se completa "
+                    + "y la incidencia pasa a RESOLVED. Solo el técnico asignado.")
+    public TechnicalOrderResource resolveIncident(@PathVariable Long orderId,
+                                                  @Valid @RequestBody ResolveIncidentResource resource,
+                                                  Authentication authentication) {
+        requireAttendedBy(orderId, authentication);
+        var order = commandService.handle(new CompleteMaintenanceOrderCommand(orderId, resource.diagnosis(),
+                resource.workPerformed(), TestResult.PASSED, resource.workPerformed()));
+        return toResource(order);
+    }
+
+    @PostMapping("/{orderId}/incident-evaluation")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'TECHNICIAN')")
+    @Operation(summary = "Marcar como evaluada la incidencia de la orden de mantenimiento",
+            description = "Registrada → En evaluación, con su hora. Solo el técnico asignado; 409 si no está Registrada.")
+    public TechnicalOrderResource evaluateIncident(@PathVariable Long orderId, Authentication authentication) {
+        requireAttendedBy(orderId, authentication);
+        return toResource(commandService.handle(new EvaluateIncidentCommand(orderId)));
+    }
+
+    @PostMapping("/{orderId}/visit-confirmation")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'TECHNICIAN')")
+    @Operation(summary = "Confirmar la visita de mantenimiento de la incidencia evaluada",
+            description = "En evaluación → Visita programada, con su hora. Solo el técnico asignado; 409 si no está "
+                    + "En evaluación.")
+    public TechnicalOrderResource confirmVisit(@PathVariable Long orderId, Authentication authentication) {
+        requireAttendedBy(orderId, authentication);
+        return toResource(commandService.handle(new ConfirmIncidentVisitCommand(orderId)));
+    }
+
+    /** The order with the incident behind it when it is a maintenance visit. */
+    private TechnicalOrderResource toResource(Appointment order) {
+        var incident = incidents == null || order.getIncidentId() == null ? null
+                : incidents.handle(new GetIncidentByIdQuery(order.getIncidentId())).orElse(null);
+        return TechnicalOrderResourceFromEntityAssembler.toResourceFromEntity(order, incident);
     }
 
     /**
