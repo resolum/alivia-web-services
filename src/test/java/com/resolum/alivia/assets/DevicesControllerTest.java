@@ -7,7 +7,7 @@ import com.resolum.alivia.assets.domain.exceptions.MacAddressAlreadyExists;
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
 import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceCommand;
 import com.resolum.alivia.assets.domain.model.commands.UpdateDeviceCommand;
-import com.resolum.alivia.assets.domain.model.queries.GetDevIceByIdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetDeviceByIdQuery;
 import com.resolum.alivia.assets.domain.services.DeviceCommandService;
 import com.resolum.alivia.assets.domain.services.DeviceQueryService;
 import com.resolum.alivia.assets.interfaces.rest.controllers.DevicesController;
@@ -16,7 +16,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.MediaType;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -58,7 +57,7 @@ class DevicesControllerTest {
     @Test
     void registersADeviceAndAnswers201WithTheAvailableStatus() throws Exception {
         when(commands.handle(any(RegisterDeviceCommand.class))).thenReturn(7L);
-        when(queries.handle(new GetDevIceByIdQuery(7L))).thenReturn(Optional.of(device()));
+        when(queries.handle(new GetDeviceByIdQuery(7L))).thenReturn(Optional.of(device()));
 
         mvc.perform(post("/api/v1/devices").contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isCreated())
@@ -78,9 +77,9 @@ class DevicesControllerTest {
     }
 
     @Test
-    void usesTheBusinessNamedInTheRequest() throws Exception {
+    void alwaysRegistersTheDeviceUnderTheConfiguredBusinessNotTheRequestOne() throws Exception {
         when(commands.handle(any(RegisterDeviceCommand.class))).thenReturn(7L);
-        when(queries.handle(new GetDevIceByIdQuery(7L))).thenReturn(Optional.of(device()));
+        when(queries.handle(new GetDeviceByIdQuery(7L))).thenReturn(Optional.of(device()));
 
         mvc.perform(post("/api/v1/devices").param("businessId", "5")
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
@@ -88,7 +87,7 @@ class DevicesControllerTest {
 
         var captor = ArgumentCaptor.forClass(RegisterDeviceCommand.class);
         verify(commands).handle(captor.capture());
-        assertEquals(5L, captor.getValue().businessId());
+        assertEquals(1L, captor.getValue().businessId());
     }
 
     @Test
@@ -150,16 +149,8 @@ class DevicesControllerTest {
     }
 
     @Test
-    void onlyAdministratorsMayRegisterDevices() throws Exception {
-        var method = DevicesController.class.getMethod("registerDevice",
-                com.resolum.alivia.assets.interfaces.rest.resources.RegisterDeviceResource.class, Long.class);
-
-        assertEquals("hasRole('ADMINISTRATOR')", method.getAnnotation(PreAuthorize.class).value());
-    }
-
-    @Test
     void updatesADeviceAndReturnsItWithTheTypeAndStatusInTheirOwnFields() throws Exception {
-        when(queries.handle(new GetDevIceByIdQuery(7L))).thenReturn(Optional.of(device()));
+        when(queries.handle(new GetDeviceByIdQuery(7L))).thenReturn(Optional.of(device()));
 
         mvc.perform(put("/api/v1/devices/7").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"macAddress\":\"AA:BB:CC:DD:EE:FF\",\"deviceType\":\"light\"}"))

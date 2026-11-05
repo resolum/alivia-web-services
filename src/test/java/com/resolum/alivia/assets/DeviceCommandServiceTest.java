@@ -1,7 +1,7 @@
 package com.resolum.alivia.assets;
 
 import com.resolum.alivia.assets.application.internal.commandservices.DeviceCommandServiceImpl;
-import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalCompanyService;
+import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalBusinessService;
 import com.resolum.alivia.assets.domain.exceptions.BusinessNotFound;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
 import com.resolum.alivia.assets.domain.exceptions.InvalidAssetStatusTransition;
@@ -34,14 +34,14 @@ class DeviceCommandServiceTest {
 
     private DeviceRepository devices;
     private EdgeRepository edges;
-    private ExternalCompanyService companies;
+    private ExternalBusinessService companies;
     private DeviceCommandServiceImpl service;
 
     @BeforeEach
     void setUp() {
         devices = mock(DeviceRepository.class);
         edges = mock(EdgeRepository.class);
-        companies = mock(ExternalCompanyService.class);
+        companies = mock(ExternalBusinessService.class);
         service = new DeviceCommandServiceImpl(devices, companies, edges);
         when(companies.existsBusiness(1L)).thenReturn(true);
         when(devices.save(any(Device.class))).thenAnswer(invocation -> {
