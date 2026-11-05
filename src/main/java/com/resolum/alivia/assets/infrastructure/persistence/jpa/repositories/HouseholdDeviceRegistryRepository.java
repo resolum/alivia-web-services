@@ -34,4 +34,12 @@ public interface HouseholdDeviceRegistryRepository extends JpaRepository<Househo
     @Query("select r from HouseholdDeviceRegistry r where exists "
             + "(select 1 from DeviceAssignment e where e.registry = r and e.device.id = :deviceId and e.unassignedAt is null)")
     Optional<HouseholdDeviceRegistry> findByActiveDeviceIdForUpdate(@Param("deviceId") Long deviceId);
+
+    /**
+     * The registry that has the edge as one of its edge services, locked until the transaction ends. Changing an edge
+     * that is placed takes this lock before reading the edge, the same order as placing and removing it.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select r from HouseholdDeviceRegistry r where r.microphoneEdge.id = :edgeId or r.actuatorEdge.id = :edgeId")
+    Optional<HouseholdDeviceRegistry> findByAssignedEdgeIdForUpdate(@Param("edgeId") Long edgeId);
 }
