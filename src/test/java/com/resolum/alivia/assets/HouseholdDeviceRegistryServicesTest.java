@@ -38,7 +38,9 @@ class HouseholdDeviceRegistryServicesTest {
     void setUp() {
         registries = mock(HouseholdDeviceRegistryRepository.class);
         businesses = mock(ExternalBusinessService.class);
-        service = new HouseholdDeviceRegistryCommandServiceImpl(registries, businesses);
+        service = new HouseholdDeviceRegistryCommandServiceImpl(registries, businesses,
+                mock(com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.EdgeRepository.class),
+                mock(com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalIamService.class));
         when(businesses.existsBusiness(1L)).thenReturn(true);
         when(registries.saveAndFlush(any(HouseholdDeviceRegistry.class))).thenAnswer(invocation -> {
             var registry = invocation.<HouseholdDeviceRegistry>getArgument(0);

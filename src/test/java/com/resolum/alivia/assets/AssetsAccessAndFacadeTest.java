@@ -18,7 +18,17 @@ import com.resolum.alivia.assets.domain.services.DeviceQueryService;
 import com.resolum.alivia.assets.domain.services.EdgeCommandService;
 import com.resolum.alivia.assets.domain.services.EdgeQueryService;
 import com.resolum.alivia.assets.interfaces.rest.controllers.DevicesController;
+import com.resolum.alivia.assets.interfaces.rest.controllers.EdgeCredentialsController;
 import com.resolum.alivia.assets.interfaces.rest.controllers.EdgesController;
+import com.resolum.alivia.assets.interfaces.rest.controllers.InstallationEdgesController;
+import com.resolum.alivia.assets.domain.model.commands.IssueEdgeCredentialCommand;
+import com.resolum.alivia.assets.domain.model.commands.PlaceEdgeInInstallationCommand;
+import com.resolum.alivia.assets.domain.model.commands.RemoveEdgeFromInstallationCommand;
+import com.resolum.alivia.assets.domain.model.commands.RevokeEdgeCredentialCommand;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeType;
+import com.resolum.alivia.assets.domain.model.valueobjects.InstallationEdges;
+import com.resolum.alivia.assets.domain.model.valueobjects.IssuedEdgeCredential;
+import com.resolum.alivia.assets.domain.services.EdgeCredentialCommandService;
 import com.resolum.alivia.assets.interfaces.rest.resources.RegisterDeviceResource;
 import com.resolum.alivia.assets.interfaces.rest.resources.UpdateDeviceResource;
 import com.resolum.alivia.assets.interfaces.rest.resources.UpdateEdgeResource;
@@ -64,6 +74,23 @@ class AssetsAccessAndFacadeTest {
         EdgesController edgesController() {
             return new EdgesController(mock(EdgeCommandService.class), mock(EdgeQueryService.class));
         }
+
+        @Bean
+        InstallationEdgesController installationEdgesController() {
+            var commands = mock(HouseholdDeviceRegistryCommandService.class);
+            var view = new InstallationEdges(3L, null, null, null);
+            when(commands.handle(any(PlaceEdgeInInstallationCommand.class))).thenReturn(view);
+            when(commands.handle(any(RemoveEdgeFromInstallationCommand.class))).thenReturn(view);
+            return new InstallationEdgesController(commands);
+        }
+
+        @Bean
+        EdgeCredentialsController edgeCredentialsController() {
+            var commands = mock(EdgeCredentialCommandService.class);
+            when(commands.handle(any(IssueEdgeCredentialCommand.class)))
+                    .thenReturn(new IssuedEdgeCredential(7L, EdgeType.ACTUATOR_EDGE, "7.secret"));
+            return new EdgeCredentialsController(commands);
+        }
     }
 
     private static final RegisterDeviceResource REGISTER = new RegisterDeviceResource("AA:BB:CC:DD:EE:FF", "Luz", "LIGHT");
@@ -91,6 +118,10 @@ class AssetsAccessAndFacadeTest {
             assertEquals(7L, context.getBean(DevicesController.class).registerDevice(REGISTER).id());
             assertDoesNotThrow(() -> context.getBean(DevicesController.class).updateDevice(7L, UPDATE));
             assertDoesNotThrow(() -> context.getBean(EdgesController.class).updateEdge(3L, UPDATE_EDGE));
+            assertDoesNotThrow(() -> context.getBean(InstallationEdgesController.class).placeEdge(3L, 7L));
+            assertDoesNotThrow(() -> context.getBean(InstallationEdgesController.class).removeEdge(3L, 7L));
+            assertDoesNotThrow(() -> context.getBean(EdgeCredentialsController.class).issueCredential(7L));
+            assertDoesNotThrow(() -> context.getBean(EdgeCredentialsController.class).revokeCredential(7L));
         }
     }
 
@@ -106,6 +137,14 @@ class AssetsAccessAndFacadeTest {
                         () -> context.getBean(DevicesController.class).updateDevice(7L, UPDATE), role);
                 assertThrows(AccessDeniedException.class,
                         () -> context.getBean(EdgesController.class).updateEdge(3L, UPDATE_EDGE), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(InstallationEdgesController.class).placeEdge(3L, 7L), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(InstallationEdgesController.class).removeEdge(3L, 7L), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(EdgeCredentialsController.class).issueCredential(7L), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(EdgeCredentialsController.class).revokeCredential(7L), role);
             }
         }
     }
