@@ -47,7 +47,7 @@ class DeviceAssignmentPersistenceTest {
     void storesTheAssignmentWithItsRoomFunctionAndActor() {
         var device = registered("LIGHT");
 
-        var saved = assignments.saveAndFlush(device.assignTo(5L, "sala", "Luz principal", 9L, NOW));
+        var saved = assignments.saveAndFlush(device.assignTo(3L, 5L, "sala", "Luz principal", 9L, NOW));
 
         var found = assignments.findById(saved.getId()).orElseThrow();
         assertEquals(device.getId(), found.getDevice().getId());
@@ -62,10 +62,10 @@ class DeviceAssignmentPersistenceTest {
 
     @Test
     void countsActiveAssignmentsByHouseholdAndDeviceType() {
-        assignments.saveAndFlush(registered("LIGHT").assignTo(5L, "sala", "Luz", 9L, NOW));
-        assignments.saveAndFlush(registered("LIGHT").assignTo(5L, "cuarto", "Luz", 9L, NOW));
-        assignments.saveAndFlush(registered("DOOR").assignTo(5L, "sala", "Puerta", 9L, NOW));
-        assignments.saveAndFlush(registered("LIGHT").assignTo(6L, "sala", "Luz", 9L, NOW));
+        assignments.saveAndFlush(registered("LIGHT").assignTo(3L, 5L, "sala", "Luz", 9L, NOW));
+        assignments.saveAndFlush(registered("LIGHT").assignTo(3L, 5L, "cuarto", "Luz", 9L, NOW));
+        assignments.saveAndFlush(registered("DOOR").assignTo(3L, 5L, "sala", "Puerta", 9L, NOW));
+        assignments.saveAndFlush(registered("LIGHT").assignTo(3L, 6L, "sala", "Luz", 9L, NOW));
 
         assertEquals(2, assignments.countActiveByHouseholdIdAndDeviceType(5L, DeviceType.LIGHT));
         assertEquals(1, assignments.countActiveByHouseholdIdAndDeviceType(5L, DeviceType.DOOR));
@@ -75,8 +75,8 @@ class DeviceAssignmentPersistenceTest {
 
     @Test
     void countsActiveAssignmentsByRoom() {
-        assignments.saveAndFlush(registered("MICROPHONE").assignTo(5L, "sala", "Escucha", 9L, NOW));
-        assignments.saveAndFlush(registered("LIGHT").assignTo(5L, "sala", "Luz", 9L, NOW));
+        assignments.saveAndFlush(registered("MICROPHONE").assignTo(3L, 5L, "sala", "Escucha", 9L, NOW));
+        assignments.saveAndFlush(registered("LIGHT").assignTo(3L, 5L, "sala", "Luz", 9L, NOW));
 
         assertEquals(1, assignments.countActiveByHouseholdIdAndRoomKeyAndDeviceType(5L, "sala", DeviceType.MICROPHONE));
         assertEquals(0, assignments.countActiveByHouseholdIdAndRoomKeyAndDeviceType(5L, "cuarto", DeviceType.MICROPHONE));
@@ -85,10 +85,10 @@ class DeviceAssignmentPersistenceTest {
 
     @Test
     void doesNotCountClosedAssignments() {
-        var closed = assignments.saveAndFlush(registered("LIGHT").assignTo(5L, "sala", "Luz", 9L, NOW));
+        var closed = assignments.saveAndFlush(registered("LIGHT").assignTo(3L, 5L, "sala", "Luz", 9L, NOW));
         ReflectionTestUtils.setField(closed, "unassignedAt", NOW.plusDays(1));
         assignments.saveAndFlush(closed);
-        var microphone = assignments.saveAndFlush(registered("MICROPHONE").assignTo(5L, "sala", "Escucha", 9L, NOW));
+        var microphone = assignments.saveAndFlush(registered("MICROPHONE").assignTo(3L, 5L, "sala", "Escucha", 9L, NOW));
         ReflectionTestUtils.setField(microphone, "unassignedAt", NOW.plusDays(1));
         assignments.saveAndFlush(microphone);
 

@@ -2,7 +2,8 @@ package com.resolum.alivia.assets;
 
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotAvailable;
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
-import com.resolum.alivia.assets.domain.model.commands.AssignDeviceToHouseholdCommand;
+import com.resolum.alivia.assets.domain.model.commands.AssignDeviceToInstallationCommand;
+import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceNetworkCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.model.valueobjects.ContractedActuators;
 import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
@@ -37,7 +38,7 @@ class DeviceAssignmentTest {
     void assignsAnAvailableDeviceToAHouseholdRoomAndLeavesItInUse() {
         var device = device();
 
-        var assignment = device.assignTo(5L, "  sala ", " Luz principal ", 9L, NOW);
+        var assignment = device.assignTo(3L, 5L, "  sala ", " Luz principal ", 9L, NOW);
 
         assertEquals(AssetStatus.IN_USE, device.getAssetStatus());
         assertSame(device, assignment.getDevice());
@@ -55,7 +56,7 @@ class DeviceAssignmentTest {
     void rejectsEveryStatusThatIsNotAvailableWithoutChangingTheDevice(AssetStatus status) {
         var device = deviceIn(status);
 
-        var exception = assertThrows(DeviceNotAvailable.class, () -> device.assignTo(5L, "sala", "Luz", 9L, NOW));
+        var exception = assertThrows(DeviceNotAvailable.class, () -> device.assignTo(3L, 5L, "sala", "Luz", 9L, NOW));
 
         assertEquals(status, exception.getStatus());
         assertEquals(status == AssetStatus.IN_USE, exception.isAlreadyAssigned());
@@ -65,9 +66,9 @@ class DeviceAssignmentTest {
     @Test
     void cannotBeAssignedTwiceInARow() {
         var device = device();
-        device.assignTo(5L, "sala", "Luz", 9L, NOW);
+        device.assignTo(3L, 5L, "sala", "Luz", 9L, NOW);
 
-        var exception = assertThrows(DeviceNotAvailable.class, () -> device.assignTo(6L, "cuarto", "Luz", 9L, NOW));
+        var exception = assertThrows(DeviceNotAvailable.class, () -> device.assignTo(3L, 6L, "cuarto", "Luz", 9L, NOW));
 
         assertTrue(exception.isAlreadyAssigned());
     }
@@ -76,27 +77,42 @@ class DeviceAssignmentTest {
     void doesNotChangeTheDeviceWhenTheAssignmentDataIsInvalid() {
         var device = device();
 
-        assertThrows(IllegalArgumentException.class, () -> device.assignTo(null, "sala", "Luz", 9L, NOW));
-        assertThrows(IllegalArgumentException.class, () -> device.assignTo(0L, "sala", "Luz", 9L, NOW));
-        assertThrows(IllegalArgumentException.class, () -> device.assignTo(5L, " ", "Luz", 9L, NOW));
-        assertThrows(IllegalArgumentException.class, () -> device.assignTo(5L, "sala", null, 9L, NOW));
-        assertThrows(IllegalArgumentException.class, () -> device.assignTo(5L, "a".repeat(61), "Luz", 9L, NOW));
-        assertThrows(IllegalArgumentException.class, () -> device.assignTo(5L, "sala", "a".repeat(81), 9L, NOW));
-        assertThrows(IllegalArgumentException.class, () -> device.assignTo(5L, "sala", "Luz", null, NOW));
-        assertThrows(IllegalArgumentException.class, () -> device.assignTo(5L, "sala", "Luz", 9L, null));
+        assertThrows(IllegalArgumentException.class, () -> device.assignTo(3L, null, "sala", "Luz", 9L, NOW));
+        assertThrows(IllegalArgumentException.class, () -> device.assignTo(3L, 0L, "sala", "Luz", 9L, NOW));
+        assertThrows(IllegalArgumentException.class, () -> device.assignTo(3L, 5L, " ", "Luz", 9L, NOW));
+        assertThrows(IllegalArgumentException.class, () -> device.assignTo(3L, 5L, "sala", null, 9L, NOW));
+        assertThrows(IllegalArgumentException.class, () -> device.assignTo(3L, 5L, "a".repeat(61), "Luz", 9L, NOW));
+        assertThrows(IllegalArgumentException.class, () -> device.assignTo(3L, 5L, "sala", "a".repeat(81), 9L, NOW));
+        assertThrows(IllegalArgumentException.class, () -> device.assignTo(3L, 5L, "sala", "Luz", null, NOW));
+        assertThrows(IllegalArgumentException.class, () -> device.assignTo(3L, 5L, "sala", "Luz", 9L, null));
 
         assertEquals(AssetStatus.AVAILABLE, device.getAssetStatus());
         assertTrue(device.isAvailable());
     }
 
     @Test
+    void remembersTheInstallationOfTheAssignment() {
+        assertEquals(3L, device().assignTo(3L, 5L, "sala", "Luz", 9L, NOW).getInstallationId());
+        assertThrows(IllegalArgumentException.class, () -> device().assignTo(null, 5L, "sala", "Luz", 9L, NOW));
+        assertThrows(IllegalArgumentException.class, () -> device().assignTo(0L, 5L, "sala", "Luz", 9L, NOW));
+    }
+
+    @Test
     void validatesTheAssignCommand() {
-        assertDoesNotThrow(() -> new AssignDeviceToHouseholdCommand(7L, 5L, "sala", "Luz", 9L));
-        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToHouseholdCommand(null, 5L, "sala", "Luz", 9L));
-        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToHouseholdCommand(7L, 0L, "sala", "Luz", 9L));
-        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToHouseholdCommand(7L, 5L, "", "Luz", 9L));
-        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToHouseholdCommand(7L, 5L, "sala", " ", 9L));
-        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToHouseholdCommand(7L, 5L, "sala", "Luz", null));
+        assertDoesNotThrow(() -> new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", 9L, false));
+        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToInstallationCommand(null, 7L, "sala", "Luz", 9L, false));
+        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToInstallationCommand(3L, 0L, "sala", "Luz", 9L, false));
+        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToInstallationCommand(3L, 7L, "", "Luz", 9L, false));
+        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToInstallationCommand(3L, 7L, "sala", " ", 9L, false));
+        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", null, true));
+    }
+
+    @Test
+    void validatesTheRegisterNetworkCommand() {
+        assertDoesNotThrow(() -> new RegisterDeviceNetworkCommand(3L, 5L, 1L));
+        assertThrows(IllegalArgumentException.class, () -> new RegisterDeviceNetworkCommand(null, 5L, 1L));
+        assertThrows(IllegalArgumentException.class, () -> new RegisterDeviceNetworkCommand(3L, 0L, 1L));
+        assertThrows(IllegalArgumentException.class, () -> new RegisterDeviceNetworkCommand(3L, 5L, null));
     }
 
     @ParameterizedTest

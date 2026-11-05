@@ -1,53 +1,70 @@
 package com.resolum.alivia.assets;
 
 import com.resolum.alivia.assets.application.internal.commandservices.DeviceAssignmentCommandServiceImpl;
+import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalHouseholdsService;
 import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalSubscriptionsService;
 import com.resolum.alivia.assets.domain.exceptions.DeviceIncompatibleWithPlan;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotAvailable;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
+import com.resolum.alivia.assets.domain.exceptions.InstallationAccessDenied;
+import com.resolum.alivia.assets.domain.exceptions.InstallationNotActive;
+import com.resolum.alivia.assets.domain.exceptions.InstallationNotFound;
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
 import com.resolum.alivia.assets.domain.model.aggregates.DeviceAssignment;
-import com.resolum.alivia.assets.domain.model.commands.AssignDeviceToHouseholdCommand;
+import com.resolum.alivia.assets.domain.model.aggregates.DeviceNetwork;
+import com.resolum.alivia.assets.domain.model.commands.AssignDeviceToInstallationCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.model.valueobjects.ContractedActuators;
 import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
+import com.resolum.alivia.assets.domain.model.valueobjects.NetworkStatus;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceAssignmentRepository;
+import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceNetworkRepository;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceRepository;
+import com.resolum.alivia.shared.domain.model.valueobjects.InstallationId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class DeviceAssignmentCommandServiceTest {
 
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-11-04T15:00:00Z"), ZoneOffset.UTC);
-    private static final AssignDeviceToHouseholdCommand COMMAND =
-            new AssignDeviceToHouseholdCommand(7L, 5L, " sala ", "Luz principal", 9L);
+    private static final InstallationId INSTALLATION = new InstallationId(3L);
+    /** A caregiver who manages household 5. */
+    private static final AssignDeviceToInstallationCommand COMMAND =
+            new AssignDeviceToInstallationCommand(3L, 7L, " sala ", "Luz principal", 9L, false);
 
     private DeviceRepository devices;
+    private DeviceNetworkRepository networks;
     private DeviceAssignmentRepository assignments;
     private ExternalSubscriptionsService subscriptions;
+    private ExternalHouseholdsService households;
     private DeviceAssignmentCommandServiceImpl service;
+    private DeviceNetwork network;
 
     @BeforeEach
     void setUp() {
         devices = mock(DeviceRepository.class);
+        networks = mock(DeviceNetworkRepository.class);
         assignments = mock(DeviceAssignmentRepository.class);
         subscriptions = mock(ExternalSubscriptionsService.class);
-        service = new DeviceAssignmentCommandServiceImpl(devices, assignments, subscriptions, CLOCK);
+        households = mock(ExternalHouseholdsService.class);
+        service = new DeviceAssignmentCommandServiceImpl(devices, networks, assignments, subscriptions, households, CLOCK);
+        network = new DeviceNetwork(3L, 5L, 1L);
+        when(networks.findByInstallationIdForUpdate(INSTALLATION)).thenReturn(Optional.of(network));
+        when(households.canManageHousehold(5L, 9L)).thenReturn(true);
         when(assignments.saveAndFlush(any(DeviceAssignment.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
@@ -69,7 +86,7 @@ class DeviceAssignmentCommandServiceTest {
     }
 
     @Test
-    void assignsACompatibleDeviceAndStoresTheActiveAssignment() {
+    void assignsACompatibleDeviceToTheHouseholdOfTheInstallation() {
         var device = storedDevice("LIGHT", AssetStatus.AVAILABLE);
         contracted(Map.of(DeviceType.LIGHT, 2));
         when(assignments.countActiveByHouseholdIdAndDeviceType(5L, DeviceType.LIGHT)).thenReturn(1L);
@@ -78,6 +95,7 @@ class DeviceAssignmentCommandServiceTest {
 
         assertEquals(AssetStatus.IN_USE, device.getAssetStatus());
         assertSame(device, assignment.getDevice());
+        assertEquals(3L, assignment.getInstallationId());
         assertEquals(5L, assignment.getHouseholdId());
         assertEquals("sala", assignment.getRoomKey());
         assertEquals("Luz principal", assignment.getFunction());
@@ -85,6 +103,69 @@ class DeviceAssignmentCommandServiceTest {
         assertEquals(LocalDateTime.of(2026, 11, 4, 15, 0), assignment.getAssignedAt());
         assertTrue(assignment.isActive());
         verify(devices).save(device);
+    }
+
+    @Test
+    void locksTheInstallationBeforeCountingWhatIsAssigned() {
+        storedDevice("LIGHT", AssetStatus.AVAILABLE);
+        contracted(Map.of(DeviceType.LIGHT, 2));
+
+        service.handle(COMMAND);
+
+        InOrder order = inOrder(networks, assignments);
+        order.verify(networks).findByInstallationIdForUpdate(INSTALLATION);
+        order.verify(assignments).countActiveByHouseholdIdAndDeviceType(5L, DeviceType.LIGHT);
+        order.verify(assignments).saveAndFlush(any(DeviceAssignment.class));
+    }
+
+    @Test
+    void failsWhenTheInstallationDoesNotExistBeforeAnythingElse() {
+        when(networks.findByInstallationIdForUpdate(INSTALLATION)).thenReturn(Optional.empty());
+
+        assertThrows(InstallationNotFound.class, () -> service.handle(COMMAND));
+
+        verifyNoInteractions(households, subscriptions, devices);
+        assertNothingWasStored();
+    }
+
+    @Test
+    void treatsANetworkWithoutHouseholdAsAnInstallationThatDoesNotExist() {
+        var legacy = new DeviceNetwork();
+        when(networks.findByInstallationIdForUpdate(INSTALLATION)).thenReturn(Optional.of(legacy));
+
+        assertThrows(InstallationNotFound.class, () -> service.handle(COMMAND));
+    }
+
+    @Test
+    void deniesAnAccountThatDoesNotManageTheHouseholdBeforeLookingAtTheDevice() {
+        when(households.canManageHousehold(5L, 9L)).thenReturn(false);
+
+        assertThrows(InstallationAccessDenied.class, () -> service.handle(COMMAND));
+
+        verifyNoInteractions(devices, subscriptions);
+        assertNothingWasStored();
+    }
+
+    @Test
+    void lettsTheBusinessAdministratorAssignWithoutBelongingToTheHousehold() {
+        when(households.canManageHousehold(5L, 8L)).thenReturn(false);
+        storedDevice("LIGHT", AssetStatus.AVAILABLE);
+        contracted(Map.of(DeviceType.LIGHT, 1));
+
+        var assignment = service.handle(new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", 8L, true));
+
+        assertEquals(8L, assignment.getAssignedBy());
+        verifyNoInteractions(households);
+    }
+
+    @Test
+    void rejectsAnInstallationThatIsNotActive() {
+        ReflectionTestUtils.setField(network, "networkStatus", NetworkStatus.DEACTIVATED);
+
+        assertThrows(InstallationNotActive.class, () -> service.handle(COMMAND));
+
+        verifyNoInteractions(devices, subscriptions);
+        assertNothingWasStored();
     }
 
     @Test
@@ -182,7 +263,7 @@ class DeviceAssignmentCommandServiceTest {
         contracted(Map.of(DeviceType.LIGHT, 2));
 
         assertThrows(IllegalArgumentException.class, () -> service.handle(
-                new AssignDeviceToHouseholdCommand(7L, 5L, "a".repeat(61), "Luz", 9L)));
+                new AssignDeviceToInstallationCommand(3L, 7L, "a".repeat(61), "Luz", 9L, false)));
 
         assertEquals(AssetStatus.AVAILABLE, device.getAssetStatus());
         assertNothingWasStored();
@@ -210,15 +291,13 @@ class DeviceAssignmentCommandServiceTest {
     }
 
     @Test
-    void asksTheHouseholdOnceWithItsNumericId() {
+    void asksSubscriptionsForTheHouseholdOfTheInstallationNotForTheCaller() {
         storedDevice("LIGHT", AssetStatus.AVAILABLE);
         contracted(Map.of(DeviceType.LIGHT, 2));
-        var captor = ArgumentCaptor.forClass(Long.class);
 
         service.handle(COMMAND);
 
-        verify(subscriptions, times(1)).fetchContractedActuators(captor.capture());
-        assertEquals(5L, captor.getValue());
-        verify(assignments, never()).countActiveByHouseholdIdAndRoomKeyAndDeviceType(any(), eq("sala"), any());
+        verify(subscriptions, times(1)).fetchContractedActuators(5L);
+        verify(assignments, never()).countActiveByHouseholdIdAndRoomKeyAndDeviceType(any(), any(), any());
     }
 }

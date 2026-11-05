@@ -10,6 +10,7 @@ import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceCommand;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceByMacAddressQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeByMacAddressQuery;
 import com.resolum.alivia.assets.domain.services.DeviceCommandService;
+import com.resolum.alivia.assets.domain.services.DeviceNetworkCommandService;
 import com.resolum.alivia.assets.domain.services.DeviceQueryService;
 import com.resolum.alivia.assets.domain.services.EdgeCommandService;
 import com.resolum.alivia.assets.domain.services.EdgeQueryService;
@@ -112,7 +113,7 @@ class AssetsAccessAndFacadeTest {
         var devices = mock(DeviceQueryService.class);
         var edges = mock(EdgeQueryService.class);
         var facade = new AssetsContextFacadeImpl(devices, mock(DeviceCommandService.class),
-                mock(EdgeCommandService.class), edges);
+                mock(EdgeCommandService.class), edges, mock(DeviceNetworkCommandService.class));
         var device = new Device("AA:BB:CC:DD:EE:FF", "Luz", "LIGHT", 1L);
         ReflectionTestUtils.setField(device, "id", 7L);
         var edge = new Edge(1L, "AA:BB:CC:DD:EE:00", "ACTUATOR_EDGE");
@@ -142,7 +143,7 @@ class AssetsAccessAndFacadeTest {
 
     @Test
     void networkOperationsFailLoudlyUntilTheyAreImplemented() {
-        var service = new DeviceNetworkCommandServiceImpl(mock(DeviceNetworkRepository.class));
+        var service = new DeviceNetworkCommandServiceImpl(mock(DeviceNetworkRepository.class), mock(ExternalBusinessService.class));
 
         assertThrows(UnsupportedOperationException.class, () -> service.handle(new AddDeviceToNetworkCommand(1L)));
     }
