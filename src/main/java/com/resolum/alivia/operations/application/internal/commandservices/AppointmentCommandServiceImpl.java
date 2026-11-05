@@ -47,6 +47,7 @@ import com.resolum.alivia.operations.domain.model.valueobjects.TechnicianOccupan
 import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.AppointmentRepository;
 import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.EvaluationSlotHoldRepository;
 import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.IncidentPersistenceRepository;
+import com.resolum.alivia.shared.infrastructure.persistence.jpa.exceptions.ConstraintViolations;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -70,6 +71,8 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
     static final ZoneId HOME_ZONE = ZoneId.of("America/Lima");
     /** Latest start of an installation opened at the home, so its window stays within the day. */
     static final LocalTime LAST_INSTALLATION_START = LocalTime.of(23, 58);
+    /** Unique constraint that keeps one visit per technician and window (Appointment, Flyway V4). */
+    static final String TECHNICIAN_WINDOW_CONSTRAINT = "uk_appointments_technician_window";
 
     private final AppointmentRepository appointments;
     private final EvaluationSlotHoldRepository holds;
@@ -120,7 +123,9 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
             return appointment;
         } catch (DataIntegrityViolationException exception) {
             // Two families confirmed the same technician and window at once; the unique constraint kept one.
-            throw new AppointmentSlotTaken();
+            // Any other violation is a real data error and must not look like a taken window.
+            if (ConstraintViolations.isViolationOf(exception, TECHNICIAN_WINDOW_CONSTRAINT)) throw new AppointmentSlotTaken();
+            throw exception;
         }
     }
 
