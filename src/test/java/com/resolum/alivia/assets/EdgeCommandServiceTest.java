@@ -3,6 +3,7 @@ package com.resolum.alivia.assets;
 import com.resolum.alivia.assets.application.internal.commandservices.EdgeCommandServiceImpl;
 import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalBusinessService;
 import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalIamService;
+import com.resolum.alivia.assets.domain.exceptions.BusinessNotFound;
 import com.resolum.alivia.assets.domain.exceptions.EdgeNotFound;
 import com.resolum.alivia.assets.domain.exceptions.EdgeStillAssigned;
 import com.resolum.alivia.assets.domain.exceptions.MacAddressAlreadyExists;
@@ -19,6 +20,7 @@ import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.Edg
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.HouseholdDeviceRegistryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -36,6 +38,7 @@ class EdgeCommandServiceTest {
     private DeviceRepository devices;
     private HouseholdDeviceRegistryRepository registries;
     private ExternalIamService iam;
+    private ExternalBusinessService businesses;
     private EdgeCommandServiceImpl service;
 
     @BeforeEach
@@ -44,7 +47,9 @@ class EdgeCommandServiceTest {
         devices = mock(DeviceRepository.class);
         registries = mock(HouseholdDeviceRegistryRepository.class);
         iam = mock(ExternalIamService.class);
-        service = new EdgeCommandServiceImpl(edges, devices, mock(ExternalBusinessService.class), registries, iam);
+        businesses = mock(ExternalBusinessService.class);
+        when(businesses.existsBusiness(1L)).thenReturn(true);
+        service = new EdgeCommandServiceImpl(edges, devices, businesses, registries, iam);
         when(edges.saveAndFlush(any(Edge.class))).thenAnswer(invocation -> {
             var edge = invocation.<Edge>getArgument(0);
             ReflectionTestUtils.setField(edge, "id", 3L);
@@ -246,5 +251,71 @@ class EdgeCommandServiceTest {
 
         assertEquals(AssetStatus.BROKEN, edge.getAssetStatus());
         verify(edges).saveAndFlush(edge);
+    }
+
+    // --- registering in the inventory ---
+
+    @Test
+    void aRegisteredEdgeIsOnlyInTheInventory() {
+        var stored = ArgumentCaptor.forClass(Edge.class);
+
+        service.handle(new RegisterEdgeCommand(1L, MAC, "MICROPHONE_EDGE"));
+
+        verify(edges).saveAndFlush(stored.capture());
+        assertEquals(AssetStatus.AVAILABLE, stored.getValue().getAssetStatus());
+        assertEquals(EdgeType.MICROPHONE_EDGE, stored.getValue().getEdgeType());
+        // It belongs to no installation and has no credential until an installation work places it.
+        verifyNoInteractions(registries, iam);
+    }
+
+    @Test
+    void anUnknownBusinessCannotOwnAnEdge() {
+        when(businesses.existsBusiness(2L)).thenReturn(false);
+
+        assertThrows(BusinessNotFound.class, () -> service.handle(new RegisterEdgeCommand(2L, MAC, "ACTUATOR_EDGE")));
+
+        verify(edges, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void anInvalidTypeOrMacIsRejectedBeforeAnythingIsLookedUp() {
+        assertThrows(IllegalArgumentException.class, () -> service.handle(new RegisterEdgeCommand(1L, MAC, "CAMERA")));
+        assertThrows(RuntimeException.class, () -> service.handle(new RegisterEdgeCommand(1L, "not-a-mac", "ACTUATOR_EDGE")));
+
+        verifyNoInteractions(businesses);
+        verify(edges, never()).saveAndFlush(any());
+    }
+
+    // --- status: IN_USE only by placing ---
+
+    @Test
+    void anEdgeCannotBeMovedToInUseByChangingItsStatus() {
+        var edge = storedEdge();
+        when(edges.findById(3L)).thenReturn(Optional.of(edge));
+
+        assertThrows(IllegalArgumentException.class, () -> service.handle(new ChangeEdgeStatusCommand(3L, "in_use")));
+
+        assertEquals(AssetStatus.AVAILABLE, edge.getAssetStatus());
+        verify(edges, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void anUnknownOrBlankStatusIsRejected() {
+        when(edges.findById(3L)).thenReturn(Optional.of(storedEdge()));
+
+        assertThrows(IllegalArgumentException.class, () -> service.handle(new ChangeEdgeStatusCommand(3L, "SLEEPING")));
+        assertThrows(IllegalArgumentException.class, () -> service.handle(new ChangeEdgeStatusCommand(3L, " ")));
+
+        verify(edges, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void aRetiredEdgeCannotChangeStatusAnymore() {
+        var edge = storedEdge();
+        edge.changeStatusTo(AssetStatus.RETIRED);
+        when(edges.findById(3L)).thenReturn(Optional.of(edge));
+
+        assertThrows(com.resolum.alivia.assets.domain.exceptions.InvalidAssetStatusTransition.class,
+                () -> service.handle(new ChangeEdgeStatusCommand(3L, "AVAILABLE")));
     }
 }

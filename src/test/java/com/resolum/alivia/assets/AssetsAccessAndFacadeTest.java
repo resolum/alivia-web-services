@@ -72,7 +72,15 @@ class AssetsAccessAndFacadeTest {
 
         @Bean
         EdgesController edgesController() {
-            return new EdgesController(mock(EdgeCommandService.class), mock(EdgeQueryService.class));
+            var commands = mock(EdgeCommandService.class);
+            var queries = mock(EdgeQueryService.class);
+            when(commands.handle(any(com.resolum.alivia.assets.domain.model.commands.RegisterEdgeCommand.class))).thenReturn(3L);
+            when(commands.handle(any(com.resolum.alivia.assets.domain.model.commands.ChangeEdgeStatusCommand.class))).thenReturn(3L);
+            var edge = new Edge(1L, "AA:BB:CC:DD:EE:FF", "ACTUATOR_EDGE");
+            ReflectionTestUtils.setField(edge, "id", 3L);
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetEdgeByIdQuery.class)))
+                    .thenReturn(Optional.of(edge));
+            return new EdgesController(commands, queries, 1L);
         }
 
         @Bean
@@ -95,6 +103,10 @@ class AssetsAccessAndFacadeTest {
 
     private static final RegisterDeviceResource REGISTER = new RegisterDeviceResource("AA:BB:CC:DD:EE:FF", "Luz", "LIGHT");
     private static final UpdateDeviceResource UPDATE = new UpdateDeviceResource("AA:BB:CC:DD:EE:FF", "LIGHT");
+    private static final com.resolum.alivia.assets.interfaces.rest.resources.RegisterEdgeResource REGISTER_EDGE =
+            new com.resolum.alivia.assets.interfaces.rest.resources.RegisterEdgeResource("AA:BB:CC:DD:EE:FF", "ACTUATOR_EDGE");
+    private static final com.resolum.alivia.assets.interfaces.rest.resources.ChangeEdgeStatusResource EDGE_STATUS =
+            new com.resolum.alivia.assets.interfaces.rest.resources.ChangeEdgeStatusResource("MAINTENANCE");
     private static final UpdateEdgeResource UPDATE_EDGE = new UpdateEdgeResource("AA:BB:CC:DD:EE:FF", "ACTUATOR_EDGE");
 
     @AfterEach
@@ -118,6 +130,8 @@ class AssetsAccessAndFacadeTest {
             assertEquals(7L, context.getBean(DevicesController.class).registerDevice(REGISTER).id());
             assertDoesNotThrow(() -> context.getBean(DevicesController.class).updateDevice(7L, UPDATE));
             assertDoesNotThrow(() -> context.getBean(EdgesController.class).updateEdge(3L, UPDATE_EDGE));
+            assertEquals(3L, context.getBean(EdgesController.class).registerEdge(REGISTER_EDGE).id());
+            assertEquals(3L, context.getBean(EdgesController.class).changeEdgeStatus(3L, EDGE_STATUS).id());
             assertDoesNotThrow(() -> context.getBean(InstallationEdgesController.class).placeEdge(3L, 7L));
             assertDoesNotThrow(() -> context.getBean(InstallationEdgesController.class).removeEdge(3L, 7L));
             assertDoesNotThrow(() -> context.getBean(EdgeCredentialsController.class).issueCredential(7L));
@@ -137,6 +151,10 @@ class AssetsAccessAndFacadeTest {
                         () -> context.getBean(DevicesController.class).updateDevice(7L, UPDATE), role);
                 assertThrows(AccessDeniedException.class,
                         () -> context.getBean(EdgesController.class).updateEdge(3L, UPDATE_EDGE), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(EdgesController.class).registerEdge(REGISTER_EDGE), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(EdgesController.class).changeEdgeStatus(3L, EDGE_STATUS), role);
                 assertThrows(AccessDeniedException.class,
                         () -> context.getBean(InstallationEdgesController.class).placeEdge(3L, 7L), role);
                 assertThrows(AccessDeniedException.class,
