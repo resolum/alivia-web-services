@@ -14,6 +14,7 @@ import com.resolum.alivia.operations.domain.services.EvaluationSlotPlanner;
 import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.AppointmentRepository;
 import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.EvaluationSlotHoldRepository;
 import com.resolum.alivia.shared.domain.model.valueobjects.TimeRange;
+import com.resolum.alivia.shared.infrastructure.persistence.jpa.exceptions.ConstraintViolations;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +24,9 @@ import java.time.Instant;
 
 @Service
 public class EvaluationSlotHoldCommandServiceImpl implements EvaluationSlotHoldCommandService {
+    /** Unique constraint that keeps one hold per technician and window (EvaluationSlotHold, Flyway V9). */
+    static final String TECHNICIAN_WINDOW_CONSTRAINT = "uk_evaluation_slot_holds_technician_window";
+
     private final EvaluationSlotHoldRepository holds;
     private final AppointmentRepository appointments;
     private final ExternalHcmService hcm;
@@ -73,8 +77,9 @@ public class EvaluationSlotHoldCommandServiceImpl implements EvaluationSlotHoldC
         try {
             return holds.saveAndFlush(hold);
         } catch (DataIntegrityViolationException exception) {
-            // Another family held the same technician and window at the same instant.
-            throw new AppointmentSlotTaken();
+            // Another family held the same technician and window at the same instant; anything else is rethrown.
+            if (ConstraintViolations.isViolationOf(exception, TECHNICIAN_WINDOW_CONSTRAINT)) throw new AppointmentSlotTaken();
+            throw exception;
         }
     }
 

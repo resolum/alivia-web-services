@@ -113,12 +113,35 @@ class AppointmentServicesTest {
         assertThrows(AppointmentSlotTaken.class, () -> commands.handle(command(TOMORROW, 14, 7L)));
         assertThrows(AppointmentSlotTaken.class, () -> commands.handle(command(TOMORROW, 10, 8L)));
 
-        when(appointments.saveAndFlush(any(Appointment.class))).thenThrow(new DataIntegrityViolationException("dup"));
+        when(appointments.saveAndFlush(any(Appointment.class)))
+                .thenThrow(violationOf("uk_appointments_technician_window"));
         assertThrows(AppointmentSlotTaken.class, () -> commands.handle(command(TOMORROW, 10, 7L)));
+    }
+
+    @Test
+    void rethrowsViolationsOtherThanTheTechnicianWindow() {
+        when(subscriptions.isReadyForEvaluation("draft")).thenReturn(true);
+        var notNull = new DataIntegrityViolationException("null value in column \"contact_name\" violates not-null constraint");
+        when(appointments.saveAndFlush(any(Appointment.class))).thenThrow(notNull);
+
+        assertSame(notNull, assertThrows(DataIntegrityViolationException.class,
+                () -> commands.handle(command(TOMORROW, 10, 7L))));
+
+        var draft = violationOf("uk_appointments_draft");
+        when(appointments.saveAndFlush(any(Appointment.class))).thenThrow(draft);
+        assertSame(draft, assertThrows(DataIntegrityViolationException.class,
+                () -> commands.handle(command(TOMORROW, 10, 7L))));
     }
 
     private static ScheduleAppointmentCommand command(LocalDate date, int hour, Long technicianId) {
         return new ScheduleAppointmentCommand("draft", date, LocalTime.of(hour, 0), LocalTime.of(hour + 2, 0),
                 technicianId, "María Villanueva", "984123456", "Puerta verde");
+    }
+
+    /** What Spring raises when PostgreSQL rejects a row for the named unique constraint. */
+    private static DataIntegrityViolationException violationOf(String constraint) {
+        var sql = new java.sql.SQLException("ERROR: duplicate key value violates unique constraint \"" + constraint + "\"", "23505");
+        return new DataIntegrityViolationException("could not execute statement",
+                new org.hibernate.exception.ConstraintViolationException("could not execute statement", sql, constraint));
     }
 }
