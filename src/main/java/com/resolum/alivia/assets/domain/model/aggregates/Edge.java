@@ -24,7 +24,7 @@ public class Edge extends Asset {
 
 public Edge(Long businessId, String macAddress,String edgeType){
  super(businessId,macAddress);
-    this.edgeType=EdgeType.valueOf(edgeType);
+    this.edgeType=parseType(edgeType);
 }
 
 boolean isMicrophoneEdge(){
@@ -38,10 +38,22 @@ boolean isActuatorEdge() {
 }
 public Edge update(String macAddress,String edgeType){
 
-   this.edgeType = EdgeType.valueOf(edgeType);
- this.updateMacAddress(macAddress);
- return this;
+   var newType = parseType(edgeType);
+   this.updateMacAddress(macAddress);
+   this.edgeType = newType;
+   return this;
 
 }
+
+    private static EdgeType parseType(String edgeType) {
+        if (edgeType == null || edgeType.isBlank()) {
+            throw new IllegalArgumentException("Edge type cannot be null or blank.");
+        }
+        try {
+            return EdgeType.valueOf(edgeType.strip().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Unknown edge type: " + edgeType.strip() + ".");
+        }
+    }
 
 }

@@ -1,5 +1,7 @@
 package com.resolum.alivia.assets.application.acl;
 
+import com.resolum.alivia.assets.domain.model.aggregates.Device;
+import com.resolum.alivia.assets.domain.model.aggregates.Edge;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceByMacAddressQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceCountByBusinessIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeByMacAddressQuery;
@@ -10,6 +12,8 @@ import com.resolum.alivia.assets.domain.services.EdgeCommandService;
 import com.resolum.alivia.assets.domain.services.EdgeQueryService;
 import com.resolum.alivia.assets.interfaces.acl.AssetsContextFacade;
 import org.springframework.stereotype.Service;
+
+import java.util.Optional;
 
 @Service
 public class AssetsContextFacadeImpl implements AssetsContextFacade {
@@ -27,16 +31,13 @@ public class AssetsContextFacadeImpl implements AssetsContextFacade {
 
 
     @Override
-    public Long fetchDeviceByMacAddress(String macAddress) {
-      var device=  deviceQueryService.handle(new GetDeviceByMacAddressQuery(macAddress));
-        return device.isEmpty()?Long.valueOf(0L):device.get().getId();
+    public Optional<Long> fetchDeviceByMacAddress(String macAddress) {
+        return deviceQueryService.handle(new GetDeviceByMacAddressQuery(macAddress)).map(Device::getId);
     }
 
     @Override
-    public Long fetchEdgeByMacAddress(String macAddress) {
-
-        var edge= edgeQueryService.handle(new GetEdgeByMacAddressQuery(macAddress));
-        return edge.isEmpty()?Long.valueOf(0L):edge.get().getId();
+    public Optional<Long> fetchEdgeByMacAddress(String macAddress) {
+        return edgeQueryService.handle(new GetEdgeByMacAddressQuery(macAddress)).map(Edge::getId);
 
     }
 

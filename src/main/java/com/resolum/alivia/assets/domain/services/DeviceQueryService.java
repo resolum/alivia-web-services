@@ -8,7 +8,7 @@ import java.util.Optional;
 
 public interface DeviceQueryService {
 
-    Optional<Device>handle(GetDevIceByIdQuery query);
+    Optional<Device>handle(GetDeviceByIdQuery query);
     List<Device> handle(GetAllDevicesByBusinessIdQuery query);
     boolean handle(ExistsDeviceByMacAddressQuery query);
 Optional<Device>handle(GetDeviceByMacAddressQuery query);

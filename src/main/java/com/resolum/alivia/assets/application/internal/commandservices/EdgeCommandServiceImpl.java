@@ -1,6 +1,6 @@
 package com.resolum.alivia.assets.application.internal.commandservices;
 
-import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalCompanyService;
+import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalBusinessService;
 import com.resolum.alivia.assets.domain.exceptions.EdgeNotFound;
 import com.resolum.alivia.assets.domain.exceptions.MacAddressAlreadyExists;
 import com.resolum.alivia.assets.domain.model.aggregates.Edge;
@@ -18,11 +18,11 @@ import org.springframework.stereotype.Service;
 public class EdgeCommandServiceImpl implements EdgeCommandService {
     private final EdgeRepository edgeRepository;
     private final DeviceRepository deviceRepository;
-    private  final ExternalCompanyService externalCompanyService;
-    public EdgeCommandServiceImpl(EdgeRepository edgeRepository, DeviceRepository deviceRepository, ExternalCompanyService externalCompanyService) {
+    private  final ExternalBusinessService externalBusinessService;
+    public EdgeCommandServiceImpl(EdgeRepository edgeRepository, DeviceRepository deviceRepository, ExternalBusinessService externalBusinessService) {
         this.edgeRepository = edgeRepository;
         this.deviceRepository = deviceRepository;
-        this.externalCompanyService = externalCompanyService;
+        this.externalBusinessService = externalBusinessService;
     }
 
     @Override

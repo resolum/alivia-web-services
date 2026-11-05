@@ -1,6 +1,6 @@
 package com.resolum.alivia.assets.application.internal.commandservices;
 
-import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalCompanyService;
+import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalBusinessService;
 import com.resolum.alivia.assets.domain.exceptions.BusinessNotFound;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
 import com.resolum.alivia.assets.domain.exceptions.MacAddressAlreadyExists;
@@ -18,11 +18,11 @@ import org.springframework.stereotype.Service;
 @Service
 public class DeviceCommandServiceImpl implements DeviceCommandService {
     private final DeviceRepository deviceRepository;
-    private final ExternalCompanyService externalCompanyService;
+    private final ExternalBusinessService externalBusinessService;
     private final EdgeRepository edgeRepository;
-    public DeviceCommandServiceImpl(DeviceRepository deviceRepository, ExternalCompanyService externalCompanyService, EdgeRepository edgeRepository) {
+    public DeviceCommandServiceImpl(DeviceRepository deviceRepository, ExternalBusinessService externalBusinessService, EdgeRepository edgeRepository) {
         this.deviceRepository = deviceRepository;
-        this.externalCompanyService = externalCompanyService;
+        this.externalBusinessService = externalBusinessService;
         this.edgeRepository = edgeRepository;
     }
 
@@ -31,7 +31,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         // Building the device validates the MAC, alias and type before anything is looked up.
         var device = new Device(command.macAddress(), command.alias(), command.deviceType(), command.businessId());
         var macAddress = device.getMacAddress();
-        if (!externalCompanyService.existsBusiness(command.businessId())) {
+        if (!externalBusinessService.existsBusiness(command.businessId())) {
             throw new BusinessNotFound(String.format("business with id %d not found", command.businessId()));
         }
         ensureMacAddressIsFree(macAddress);

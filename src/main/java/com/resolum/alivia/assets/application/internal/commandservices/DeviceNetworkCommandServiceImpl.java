@@ -15,26 +15,31 @@ public class DeviceNetworkCommandServiceImpl implements DeviceNetworkCommandServ
 
     @Override
     public Long handle(AddDeviceToNetworkCommand command) {
-        return 0L;
+        throw notImplemented();
     }
 
     @Override
     public void handle(RemoveDeviceFromNetworkCommand command) {
-
+        throw notImplemented();
     }
 
     @Override
     public Long handle(AddEdgeToNetworkCommand command) {
-        return 0L;
+        throw notImplemented();
     }
 
     @Override
     public void handle(RemoveEdgeFromNetworkCommand command) {
-
+        throw notImplemented();
     }
 
     @Override
     public void handle(DeactivateDeviceNetworkCommand command) {
+        throw notImplemented();
+    }
 
+    /** Network operations arrive with the assignment rules (P-376); failing is better than answering id 0. */
+    private static UnsupportedOperationException notImplemented() {
+        return new UnsupportedOperationException("Device network operations are not implemented yet.");
     }
 }

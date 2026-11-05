@@ -13,10 +13,8 @@ import java.util.List;
 @Entity
 public class DeviceNetwork extends AuditableAbstractAggregateRoot<DeviceNetwork> {
     @Embedded
-    @JoinColumn(name = "business_id")
     private BusinessId businessId;
     @Embedded
-    @JoinColumn(name = "installation_id")
     private InstallationId installationId;
     @Enumerated(EnumType.STRING)
     private NetworkStatus networkStatus;

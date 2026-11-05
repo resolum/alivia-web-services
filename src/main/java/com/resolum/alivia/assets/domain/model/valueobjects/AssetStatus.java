@@ -3,8 +3,9 @@ package com.resolum.alivia.assets.domain.model.valueobjects;
 /**
  * Life-cycle status of a device or edge.
  *
- * <p>{@code IN_USE} is the status of an asset assigned to an installation (TS-10 calls it
- * {@code ASSIGNED}). {@code RETIRED} is terminal: a retired asset can no longer change status.
+ * <p>{@code IN_USE} is the status of an asset assigned to the installation of a household (TS-10
+ * calls it {@code ASSIGNED}); an asset that only belongs to the business inventory is
+ * {@code AVAILABLE}. {@code RETIRED} is terminal: a retired asset can no longer change status.
  * An asset in use must be unassigned (back to {@code AVAILABLE}) before it can be retired, so
  * the assignment history is closed first.</p>
  */

@@ -1,4 +1,6 @@
 package com.resolum.alivia.assets.interfaces.rest.resources;
 
-public record UpdateEdgeResource(String macAddress,String edgeType) {
+import jakarta.validation.constraints.NotBlank;
+
+public record UpdateEdgeResource(@NotBlank String macAddress, @NotBlank String edgeType) {
 }

@@ -20,7 +20,7 @@ public class DeviceQueryServiceImpl implements DeviceQueryService {
     }
 
     @Override
-    public Optional<Device> handle(GetDevIceByIdQuery query) {
+    public Optional<Device> handle(GetDeviceByIdQuery query) {
         return deviceRepository.findById(query.id());
     }
 
