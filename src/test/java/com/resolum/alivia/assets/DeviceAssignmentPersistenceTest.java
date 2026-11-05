@@ -139,6 +139,19 @@ class DeviceAssignmentPersistenceTest {
     }
 
     @Test
+    void locksTheActiveAssignmentOfADeviceForUpdateOnlyWhileItIsOpen() {
+        var device = registered("LIGHT");
+        var saved = assignments.saveAndFlush(device.assignTo(3L, 5L, "sala", "Luz", 9L, NOW));
+
+        assertEquals(saved.getId(), assignments.findActiveByDeviceIdForUpdate(device.getId()).orElseThrow().getId());
+
+        saved.unassign("Mudanza", 8L, NOW.plusDays(1));
+        assignments.saveAndFlush(saved);
+
+        assertTrue(assignments.findActiveByDeviceIdForUpdate(device.getId()).isEmpty());
+    }
+
+    @Test
     void keepsEveryPlacementOfADeviceInItsHistoryMostRecentFirst() {
         var device = registered("LIGHT");
         var first = assignments.saveAndFlush(device.assignTo(3L, 5L, "sala", "Luz", 9L, NOW));

@@ -4,16 +4,19 @@ import com.resolum.alivia.assets.application.internal.commandservices.DeviceComm
 import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalBusinessService;
 import com.resolum.alivia.assets.domain.exceptions.BusinessNotFound;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
+import com.resolum.alivia.assets.domain.exceptions.DeviceStillAssigned;
 import com.resolum.alivia.assets.domain.exceptions.InvalidAssetStatusTransition;
 import com.resolum.alivia.assets.domain.exceptions.InvalidMacAddress;
 import com.resolum.alivia.assets.domain.exceptions.MacAddressAlreadyExists;
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
+import com.resolum.alivia.assets.domain.model.aggregates.DeviceAssignment;
 import com.resolum.alivia.assets.domain.model.commands.ChangeDeviceStatusCommand;
 import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceCommand;
 import com.resolum.alivia.assets.domain.model.commands.UpdateDeviceCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
 import com.resolum.alivia.assets.domain.model.valueobjects.MacAddress;
+import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceAssignmentRepository;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceRepository;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.EdgeRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,6 +37,7 @@ class DeviceCommandServiceTest {
 
     private DeviceRepository devices;
     private EdgeRepository edges;
+    private DeviceAssignmentRepository assignments;
     private ExternalBusinessService companies;
     private DeviceCommandServiceImpl service;
 
@@ -41,8 +45,9 @@ class DeviceCommandServiceTest {
     void setUp() {
         devices = mock(DeviceRepository.class);
         edges = mock(EdgeRepository.class);
+        assignments = mock(DeviceAssignmentRepository.class);
         companies = mock(ExternalBusinessService.class);
-        service = new DeviceCommandServiceImpl(devices, companies, edges);
+        service = new DeviceCommandServiceImpl(devices, companies, edges, assignments);
         when(companies.existsBusiness(1L)).thenReturn(true);
         when(devices.save(any(Device.class))).thenAnswer(invocation -> {
             var device = invocation.<Device>getArgument(0);
@@ -176,5 +181,55 @@ class DeviceCommandServiceTest {
                 () -> service.handle(new ChangeDeviceStatusCommand(7L, "AVAILABLE")));
         assertEquals(AssetStatus.RETIRED, device.getAssetStatus());
         verify(devices, times(1)).save(device);
+    }
+
+    @Test
+    void aDeviceBecomesInUseOnlyByBeingAssigned() {
+        var device = storedDevice();
+        when(devices.findById(7L)).thenReturn(Optional.of(device));
+
+        var exception = assertThrows(IllegalArgumentException.class,
+                () -> service.handle(new ChangeDeviceStatusCommand(7L, "IN_USE")));
+
+        assertTrue(exception.getMessage().contains("assigned"));
+        assertEquals(AssetStatus.AVAILABLE, device.getAssetStatus());
+        verify(devices, never()).save(any());
+    }
+
+    @Test
+    void anAssignedDeviceCannotBecomeAvailableOrRetiredUntilItIsUnassigned() {
+        var device = storedDevice();
+        device.changeStatusTo(AssetStatus.IN_USE);
+        when(devices.findById(7L)).thenReturn(Optional.of(device));
+        when(assignments.findActiveByDeviceId(7L)).thenReturn(Optional.of(mock(DeviceAssignment.class)));
+
+        assertThrows(DeviceStillAssigned.class, () -> service.handle(new ChangeDeviceStatusCommand(7L, "AVAILABLE")));
+        assertThrows(DeviceStillAssigned.class, () -> service.handle(new ChangeDeviceStatusCommand(7L, "retired")));
+
+        assertEquals(AssetStatus.IN_USE, device.getAssetStatus());
+        verify(devices, never()).save(any());
+    }
+
+    @Test
+    void anAssignedDeviceMayGoToMaintenanceOrBrokenBecauseTheEquipmentCanFailInTheHousehold() {
+        var device = storedDevice();
+        device.changeStatusTo(AssetStatus.IN_USE);
+        when(devices.findById(7L)).thenReturn(Optional.of(device));
+
+        service.handle(new ChangeDeviceStatusCommand(7L, "MAINTENANCE"));
+
+        assertEquals(AssetStatus.MAINTENANCE, device.getAssetStatus());
+        verify(assignments, never()).findActiveByDeviceId(any());
+    }
+
+    @Test
+    void aDeviceWithoutAssignmentChangesStatusFreely() {
+        var device = storedDevice();
+        when(devices.findById(7L)).thenReturn(Optional.of(device));
+        when(assignments.findActiveByDeviceId(7L)).thenReturn(Optional.empty());
+
+        service.handle(new ChangeDeviceStatusCommand(7L, "RETIRED"));
+
+        assertEquals(AssetStatus.RETIRED, device.getAssetStatus());
     }
 }
