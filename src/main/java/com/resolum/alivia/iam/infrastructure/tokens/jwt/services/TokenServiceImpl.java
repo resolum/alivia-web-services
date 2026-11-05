@@ -182,6 +182,22 @@ public class TokenServiceImpl implements BearerTokenService {
         return hash(rawToken);
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String generateEdgeSecret() {
+        return generateRawToken();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String hashEdgeSecret(String rawSecret) {
+        return hash(rawSecret);
+    }
+
     private String generateRawToken() {
         var bytes = new byte[TOKEN_BYTES];
         secureRandom.nextBytes(bytes);
