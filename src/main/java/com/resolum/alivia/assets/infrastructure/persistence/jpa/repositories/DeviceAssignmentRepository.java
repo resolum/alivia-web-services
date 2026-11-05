@@ -7,8 +7,19 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+import java.util.Optional;
+
 @Repository
 public interface DeviceAssignmentRepository extends JpaRepository<DeviceAssignment, Long> {
+
+    /** The assignment the device has now, if any. */
+    @Query("select a from DeviceAssignment a where a.device.id = :deviceId and a.unassignedAt is null")
+    Optional<DeviceAssignment> findActiveByDeviceId(@Param("deviceId") Long deviceId);
+
+    /** Every placement of the device, closed or not, most recent first. */
+    @Query("select a from DeviceAssignment a where a.device.id = :deviceId order by a.assignedAt desc, a.id desc")
+    List<DeviceAssignment> findHistoryByDeviceId(@Param("deviceId") Long deviceId);
 
     /** Devices of that type currently assigned to the household. */
     @Query("select count(a) from DeviceAssignment a "
