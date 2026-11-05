@@ -1,11 +1,11 @@
 package com.resolum.alivia.assets;
 
 import com.resolum.alivia.assets.application.acl.AssetsContextFacadeImpl;
-import com.resolum.alivia.assets.application.internal.commandservices.DeviceNetworkCommandServiceImpl;
 import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalBusinessService;
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
 import com.resolum.alivia.assets.domain.model.aggregates.Edge;
-import com.resolum.alivia.assets.domain.model.commands.AddDeviceToNetworkCommand;
+import com.resolum.alivia.assets.domain.model.commands.ConfirmInstallationCommand;
+import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceNetworkCommand;
 import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceCommand;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceByMacAddressQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeByMacAddressQuery;
@@ -14,7 +14,6 @@ import com.resolum.alivia.assets.domain.services.DeviceNetworkCommandService;
 import com.resolum.alivia.assets.domain.services.DeviceQueryService;
 import com.resolum.alivia.assets.domain.services.EdgeCommandService;
 import com.resolum.alivia.assets.domain.services.EdgeQueryService;
-import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceNetworkRepository;
 import com.resolum.alivia.assets.interfaces.rest.controllers.DevicesController;
 import com.resolum.alivia.assets.interfaces.rest.controllers.EdgesController;
 import com.resolum.alivia.assets.interfaces.rest.resources.RegisterDeviceResource;
@@ -39,7 +38,7 @@ import static org.mockito.Mockito.*;
 
 /**
  * Who may call the inventory endpoints (the real method security of the application), how the
- * Assets facade answers other contexts and what the not-yet-built network operations do.
+ * Assets facade answers other contexts.
  */
 class AssetsAccessAndFacadeTest {
 
@@ -142,9 +141,16 @@ class AssetsAccessAndFacadeTest {
     }
 
     @Test
-    void networkOperationsFailLoudlyUntilTheyAreImplemented() {
-        var service = new DeviceNetworkCommandServiceImpl(mock(DeviceNetworkRepository.class), mock(ExternalBusinessService.class));
+    void theFacadeRegistersAndConfirmsInstallationsThroughTheNetworkService() {
+        var networks = mock(DeviceNetworkCommandService.class);
+        when(networks.handle(any(RegisterDeviceNetworkCommand.class))).thenReturn(11L);
+        var facade = new AssetsContextFacadeImpl(mock(DeviceQueryService.class), mock(DeviceCommandService.class),
+                mock(EdgeCommandService.class), mock(EdgeQueryService.class), networks);
 
-        assertThrows(UnsupportedOperationException.class, () -> service.handle(new AddDeviceToNetworkCommand(1L)));
+        assertEquals(11L, facade.registerInstallation(3L, 5L, 1L));
+        facade.confirmInstallation(3L);
+
+        verify(networks).handle(new RegisterDeviceNetworkCommand(3L, 5L, 1L));
+        verify(networks).handle(new ConfirmInstallationCommand(3L));
     }
 }

@@ -11,7 +11,9 @@ import java.util.List;
  * database).
  *
  * <p>It is always a complete snapshot of the active assignments of the installation. The edge replaces its copy with
- * it, so receiving the same table twice, or out of date and then up to date, ends in the same state.</p>
+ * it, so receiving the same table twice ends in the same state. Messages that arrive out of order are a different
+ * matter: an old table arriving after a newer one would overwrite it. The transport has to number the tables per
+ * installation so the edge ignores any older than the one it has.</p>
  *
  * @param installationId installation the table belongs to
  * @param householdId    household of that installation

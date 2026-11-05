@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,11 +25,11 @@ public interface DeviceNetworkRepository extends JpaRepository<DeviceNetwork, Lo
     @Query("select n from DeviceNetwork n where n.microphoneEdge.id = :edgeId or n.actuatorEdge.id = :edgeId")
     List<DeviceNetwork> findAllByEdgeId(@Param("edgeId") Long edgeId);
 
-    boolean existsByHouseholdIdAndNetworkStatus(Long householdId, NetworkStatus networkStatus);
+    boolean existsByHouseholdIdAndNetworkStatusIn(Long householdId, Collection<NetworkStatus> networkStatuses);
 
     /**
-     * The network of the installation, locked until the transaction ends. A household has one active network,
-     * so locking it serializes the assignments made to that household.
+     * The network of the installation, locked until the transaction ends. A household has one open (pending or
+     * active) network, so locking it serializes the changes made to the devices of that household.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select n from DeviceNetwork n where n.installationId = :installationId")

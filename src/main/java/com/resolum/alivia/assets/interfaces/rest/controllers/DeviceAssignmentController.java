@@ -2,6 +2,7 @@ package com.resolum.alivia.assets.interfaces.rest.controllers;
 
 import com.resolum.alivia.assets.domain.model.commands.UnassignDeviceCommand;
 import com.resolum.alivia.assets.domain.services.DeviceAssignmentCommandService;
+import com.resolum.alivia.assets.interfaces.rest.transform.BusinessRoleFromAuthenticationAssembler;
 import com.resolum.alivia.assets.interfaces.rest.resources.UnassignDeviceResource;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -19,8 +20,6 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @RequestMapping(value = "/api/v1/devices/{deviceId}/assignment", produces = APPLICATION_JSON_VALUE)
 @Tag(name = "Asignación de un dispositivo", description = "Retiro de un dispositivo del hogar al que está asignado")
 public class DeviceAssignmentController {
-    private static final String ADMINISTRATOR_ROLE = "ROLE_ADMINISTRATOR";
-
     private final DeviceAssignmentCommandService assignmentCommandService;
 
     public DeviceAssignmentController(DeviceAssignmentCommandService assignmentCommandService) {
@@ -34,7 +33,8 @@ public class DeviceAssignmentController {
                     + "El motivo va en el cuerpo JSON {\"reason\": \"...\"} o, para los clientes que descartan el cuerpo "
                     + "de un DELETE, en el parámetro de consulta `reason`; si llegan ambos, vale el del cuerpo. "
                     + "La asignación se conserva como historial; no se borra ninguna fila. "
-                    + "Puede hacerlo quien administra el hogar o el administrador del negocio.")
+                    + "Pueden hacerlo el administrador del negocio, los técnicos del negocio mientras la instalación está "
+                    + "pendiente de confirmación, y quien administra el hogar.")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Dispositivo desasignado"),
             @ApiResponse(responseCode = "400", description = "Motivo ausente o demasiado largo"),
@@ -46,10 +46,9 @@ public class DeviceAssignmentController {
                                @Valid @RequestBody(required = false) UnassignDeviceResource body,
                                @RequestParam(name = "reason", required = false) String reasonParameter,
                                @Parameter(hidden = true) Authentication authentication) {
-        var administrator = authentication.getAuthorities().stream()
-                .anyMatch(authority -> ADMINISTRATOR_ROLE.equals(authority.getAuthority()));
         var reason = body != null ? body.reason() : reasonParameter;
         assignmentCommandService.handle(new UnassignDeviceCommand(
-                deviceId, reason, Long.valueOf(authentication.getName()), administrator));
+                deviceId, reason, Long.valueOf(authentication.getName()),
+                BusinessRoleFromAuthenticationAssembler.toBusinessRole(authentication)));
     }
 }

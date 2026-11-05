@@ -2,6 +2,7 @@ package com.resolum.alivia.assets.domain.model.aggregates;
 
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotAssigned;
 import com.resolum.alivia.assets.domain.model.events.DeviceUnassignedEvent;
+import com.resolum.alivia.assets.domain.model.valueobjects.DevicePlacement;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
 import jakarta.persistence.Column;
@@ -102,6 +103,12 @@ public class DeviceAssignment extends AuditableAbstractAggregateRoot<DeviceAssig
         return unassignedAt == null;
     }
 
+    /** A copy of where the device is placed, with the status it has right now. */
+    DevicePlacement placement() {
+        return new DevicePlacement(installationId, householdId, device.getId(), device.getMacAddress().macAddress(),
+                device.getDeviceType(), device.getAssetStatus(), roomKey, function);
+    }
+
     /**
      * Closes the assignment: the record stays as history with who closed it, when and why, and the device
      * goes back to {@code AVAILABLE} when it was {@code IN_USE}. A device that meanwhile went to maintenance or
@@ -132,7 +139,7 @@ public class DeviceAssignment extends AuditableAbstractAggregateRoot<DeviceAssig
         this.unassignedAt = at;
         this.unassignedBy = actor;
         this.unassignReason = cleanReason;
-        addDomainEvent(new DeviceUnassignedEvent(this));
+        addDomainEvent(new DeviceUnassignedEvent(placement()));
     }
 
     private static String requireText(String value, String name, int maxLength) {

@@ -2,6 +2,7 @@ package com.resolum.alivia.assets.application.acl;
 
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
 import com.resolum.alivia.assets.domain.model.aggregates.Edge;
+import com.resolum.alivia.assets.domain.model.commands.ConfirmInstallationCommand;
 import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceNetworkCommand;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceByMacAddressQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceCountByBusinessIdQuery;
@@ -49,6 +50,11 @@ public class AssetsContextFacadeImpl implements AssetsContextFacade {
     @Override
     public Long registerInstallation(Long installationId, Long householdId, Long businessId) {
         return deviceNetworkCommandService.handle(new RegisterDeviceNetworkCommand(installationId, householdId, businessId));
+    }
+
+    @Override
+    public void confirmInstallation(Long installationId) {
+        deviceNetworkCommandService.handle(new ConfirmInstallationCommand(installationId));
     }
 
     @Override

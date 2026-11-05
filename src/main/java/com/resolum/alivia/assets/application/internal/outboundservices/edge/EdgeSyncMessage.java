@@ -1,5 +1,6 @@
 package com.resolum.alivia.assets.application.internal.outboundservices.edge;
 
+import com.resolum.alivia.assets.domain.model.valueobjects.AssetKind;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeAccessTable;
 
 /**
@@ -28,10 +29,5 @@ public record EdgeSyncMessage(Type type, Long installationId, Long householdId, 
         DEVICE_UNASSIGNED,
         ASSET_STATUS_CHANGED,
         ASSET_UPDATED
-    }
-
-    public enum AssetKind {
-        DEVICE,
-        EDGE
     }
 }

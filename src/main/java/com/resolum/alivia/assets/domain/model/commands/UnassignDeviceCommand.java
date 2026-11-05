@@ -1,16 +1,16 @@
 package com.resolum.alivia.assets.domain.model.commands;
 
+import com.resolum.alivia.assets.domain.model.valueobjects.BusinessRole;
+
 /**
  * Takes a device out of the household it is assigned to. The assignment is closed, never deleted.
  *
- * @param deviceId                         device to unassign
- * @param reason                           why it leaves the household (free text)
- * @param unassignedBy                     account that unassigns it
- * @param unassignedByBusinessAdministrator whether that account administers the business (it does not have to
- *                                         belong to the household)
+ * @param deviceId     device to unassign
+ * @param reason       why it leaves the household (free text)
+ * @param unassignedBy account that unassigns it
+ * @param businessRole what that account is to the business; a household member has {@code NONE}
  */
-public record UnassignDeviceCommand(Long deviceId, String reason, Long unassignedBy,
-                                    boolean unassignedByBusinessAdministrator) {
+public record UnassignDeviceCommand(Long deviceId, String reason, Long unassignedBy, BusinessRole businessRole) {
 
     public UnassignDeviceCommand {
         if (deviceId == null || deviceId <= 0) {
@@ -18,6 +18,9 @@ public record UnassignDeviceCommand(Long deviceId, String reason, Long unassigne
         }
         if (reason == null || reason.isBlank()) {
             throw new IllegalArgumentException("Reason cannot be null or blank.");
+        }
+        if (businessRole == null) {
+            throw new IllegalArgumentException("The business role is required.");
         }
         if (unassignedBy == null || unassignedBy <= 0) {
             throw new IllegalArgumentException("The account that unassigns the device is required.");

@@ -1,8 +1,8 @@
 package com.resolum.alivia.assets.domain.model.aggregates;
 
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotAvailable;
-import com.resolum.alivia.assets.domain.model.events.AssetUpdatedEvent;
 import com.resolum.alivia.assets.domain.model.events.DeviceAssignedEvent;
+import com.resolum.alivia.assets.domain.model.valueobjects.AssetKind;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
 import jakarta.persistence.Column;
@@ -50,9 +50,19 @@ public class Device extends Asset {
         updateMacAddress(macAddress);
         this.deviceType = newType;
         if (!getMacAddress().equals(previousMacAddress) || newType != previousType) {
-            addDomainEvent(new AssetUpdatedEvent(this));
+            announceUpdate();
         }
         return this;
+    }
+
+    @Override
+    protected AssetKind assetKind() {
+        return AssetKind.DEVICE;
+    }
+
+    @Override
+    protected String assetTypeName() {
+        return deviceType.name();
     }
 
     /** Only an {@code AVAILABLE} device can be assigned; any other status is a conflict. */
@@ -73,7 +83,7 @@ public class Device extends Asset {
         var assignment = new DeviceAssignment(this, installationId, householdId, roomKey, function, assignedBy,
                 assignedAt);
         transitionTo(AssetStatus.IN_USE);
-        assignment.addDomainEvent(new DeviceAssignedEvent(assignment));
+        assignment.addDomainEvent(new DeviceAssignedEvent(assignment.placement()));
         return assignment;
     }
 

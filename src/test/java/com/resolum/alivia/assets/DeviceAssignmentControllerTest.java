@@ -6,6 +6,7 @@ import com.resolum.alivia.assets.domain.exceptions.DeviceStillAssigned;
 import com.resolum.alivia.assets.domain.exceptions.InstallationAccessDenied;
 import com.resolum.alivia.assets.domain.model.commands.UnassignDeviceCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
+import com.resolum.alivia.assets.domain.model.valueobjects.BusinessRole;
 import com.resolum.alivia.assets.domain.services.DeviceAssignmentCommandService;
 import com.resolum.alivia.assets.interfaces.rest.controllers.DeviceAssignmentController;
 import com.resolum.alivia.shared.interfaces.rest.GlobalExceptionHandler;
@@ -31,6 +32,7 @@ class DeviceAssignmentControllerTest {
     private static final String PATH = "/api/v1/devices/7/assignment";
     private static final String BODY = "{\"reason\":\"Reemplazo por falla del equipo\"}";
     private static final Authentication CAREGIVER = new TestingAuthenticationToken("9", "n/a", "ROLE_CAREGIVER");
+    private static final Authentication TECHNICIAN = new TestingAuthenticationToken("6", "n/a", "ROLE_TECHNICIAN");
     private static final Authentication ADMINISTRATOR = new TestingAuthenticationToken("8", "n/a", "ROLE_ADMINISTRATOR");
 
     private DeviceAssignmentCommandService service;
@@ -54,7 +56,7 @@ class DeviceAssignmentControllerTest {
         assertEquals(7L, captor.getValue().deviceId());
         assertEquals("Reemplazo por falla del equipo", captor.getValue().reason());
         assertEquals(9L, captor.getValue().unassignedBy());
-        assertFalse(captor.getValue().unassignedByBusinessAdministrator());
+        assertEquals(BusinessRole.NONE, captor.getValue().businessRole());
     }
 
     @Test
@@ -65,7 +67,17 @@ class DeviceAssignmentControllerTest {
         var captor = ArgumentCaptor.forClass(UnassignDeviceCommand.class);
         verify(service).handle(captor.capture());
         assertEquals(8L, captor.getValue().unassignedBy());
-        assertTrue(captor.getValue().unassignedByBusinessAdministrator());
+        assertEquals(BusinessRole.ADMINISTRATOR, captor.getValue().businessRole());
+    }
+
+    @Test
+    void tellsTheServiceWhenTheCallerIsATechnicianOfTheBusiness() throws Exception {
+        mvc.perform(delete(PATH).principal(TECHNICIAN).contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isNoContent());
+
+        var captor = ArgumentCaptor.forClass(UnassignDeviceCommand.class);
+        verify(service).handle(captor.capture());
+        assertEquals(BusinessRole.TECHNICIAN, captor.getValue().businessRole());
     }
 
     @Test

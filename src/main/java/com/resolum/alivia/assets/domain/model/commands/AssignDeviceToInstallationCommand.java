@@ -1,5 +1,7 @@
 package com.resolum.alivia.assets.domain.model.commands;
 
+import com.resolum.alivia.assets.domain.model.valueobjects.BusinessRole;
+
 /**
  * Places an available device of the business inventory in an installation, in a room and with a function.
  *
@@ -8,11 +10,10 @@ package com.resolum.alivia.assets.domain.model.commands;
  * @param roomKey             room of the contracted configuration it serves
  * @param function            what the device does in that room
  * @param assignedBy          account that makes the assignment
- * @param assignedByBusinessAdministrator whether that account administers the business (it does not have to
- *                            belong to the household)
+ * @param businessRole        what that account is to the business; a household member has {@code NONE}
  */
 public record AssignDeviceToInstallationCommand(Long installationId, Long deviceId, String roomKey, String function,
-                                                Long assignedBy, boolean assignedByBusinessAdministrator) {
+                                                Long assignedBy, BusinessRole businessRole) {
 
     public AssignDeviceToInstallationCommand {
         if (installationId == null || installationId <= 0) {
@@ -26,6 +27,9 @@ public record AssignDeviceToInstallationCommand(Long installationId, Long device
         }
         if (function == null || function.isBlank()) {
             throw new IllegalArgumentException("Function cannot be null or blank.");
+        }
+        if (businessRole == null) {
+            throw new IllegalArgumentException("The business role is required.");
         }
         if (assignedBy == null || assignedBy <= 0) {
             throw new IllegalArgumentException("The account that assigns the device is required.");

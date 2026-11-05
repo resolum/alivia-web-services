@@ -1,8 +1,6 @@
 package com.resolum.alivia.assets.application.internal.queryservices;
 
 import com.resolum.alivia.assets.domain.model.aggregates.DeviceNetwork;
-import com.resolum.alivia.assets.domain.model.queries.GetDeviceNetworkByDeviceIdQuery;
-import com.resolum.alivia.assets.domain.model.queries.GetDeviceNetworkByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceNetworkByIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceNetworkByInstallationIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByInstallationIdQuery;
@@ -46,13 +44,4 @@ public class DeviceNetworkQueryServiceImpl implements DeviceNetworkQueryService 
         return deviceNetworkRepository.findByInstallationId(new InstallationId(query.installationId()));
     }
 
-    @Override
-    public Optional<DeviceNetwork> handle(GetDeviceNetworkByEdgeIdQuery query) {
-        return Optional.empty();
-    }
-
-    @Override
-    public Optional<DeviceNetwork> handle(GetDeviceNetworkByDeviceIdQuery query) {
-        return Optional.empty();
-    }
 }

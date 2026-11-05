@@ -1,5 +1,6 @@
 package com.resolum.alivia.assets.domain.model.aggregates;
 
+import com.resolum.alivia.assets.domain.exceptions.InstallationNotActive;
 import com.resolum.alivia.assets.domain.model.valueobjects.NetworkStatus;
 import com.resolum.alivia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
 import com.resolum.alivia.shared.domain.model.valueobjects.BusinessId;
@@ -7,12 +8,13 @@ import com.resolum.alivia.shared.domain.model.valueobjects.InstallationId;
 import jakarta.persistence.*;
 import lombok.Getter;
 
-import java.util.List;
-
 /**
- * The IoT devices of one installation in a household. The business (Alivia) owns the devices; the
- * household is the one the installation was done for, and it is the household that decides who may
- * place devices in it. A household has at most one {@code ACTIVE} network.
+ * The network of one installation in a household. The business (Alivia) owns the devices; the household is the one
+ * the installation was done for. The devices of the network are the ones with an active assignment to its
+ * installation (every {@code DeviceType}), and the edge services that run them are the two edges below.
+ *
+ * <p>It starts {@code PENDING_CONFIRMATION}, while the technicians of the business place the devices, and becomes
+ * {@code ACTIVE} when they confirm the installation. A household has at most one network that is pending or active.</p>
  */
 @Getter
 @Entity
@@ -27,30 +29,18 @@ public class DeviceNetwork extends AuditableAbstractAggregateRoot<DeviceNetwork>
     private Long householdId;
     @Enumerated(EnumType.STRING)
     private NetworkStatus networkStatus;
-   @OneToOne
-   @JoinColumn(name = "microphone_edge")
+    /** Edge service that listens to the microphones of the household. */
+    @OneToOne
+    @JoinColumn(name = "microphone_edge")
     private Edge microphoneEdge;
+    /** Edge service that runs the actuators of the household. */
     @OneToOne
     @JoinColumn(name = "actuator_id")
     private Edge actuatorEdge;
-    @OneToOne
-    private Device microphone;
-
-    @ManyToMany
-    @JoinTable(
-            name = "network_actuators",
-            joinColumns = @JoinColumn(name = "network_id"),
-            inverseJoinColumns = @JoinColumn(name = "device_id"),
-            uniqueConstraints = @UniqueConstraint(
-                    name = "uk_network_actuators_device_id",
-                    columnNames = "device_id"
-            )
-    )
-    private List<Device> actuators;
 
     public DeviceNetwork(){}
 
-    /** Registers the network of an installation; it starts {@code ACTIVE} without edges or devices. */
+    /** Registers the network of an installation; it starts {@code PENDING_CONFIRMATION} without edges. */
     public DeviceNetwork(Long installationId, Long householdId, Long businessId) {
         if (householdId == null || householdId <= 0) {
             throw new IllegalArgumentException("Household ID must be a positive number.");
@@ -58,46 +48,30 @@ public class DeviceNetwork extends AuditableAbstractAggregateRoot<DeviceNetwork>
         this.businessId = new BusinessId(businessId);
         this.installationId = new InstallationId(installationId);
         this.householdId = householdId;
-        this.networkStatus = NetworkStatus.ACTIVE;
+        this.networkStatus = NetworkStatus.PENDING_CONFIRMATION;
+    }
+
+    public boolean isPendingConfirmation() {
+        return networkStatus == NetworkStatus.PENDING_CONFIRMATION;
     }
 
     public boolean isActive() {
         return networkStatus == NetworkStatus.ACTIVE;
     }
 
-   void addActuatorEdge(Edge actuatorEdge){
-
-    if (this.actuatorEdge ==null && networkStatus== NetworkStatus.ACTIVE){
-     this.actuatorEdge= actuatorEdge;
+    /** Devices can be placed in the network while it is pending confirmation or active. */
+    public boolean isOpen() {
+        return isPendingConfirmation() || isActive();
     }
 
-    else {
-        throw new IllegalStateException("Actuator edge already exists or network is not active.");
+    /** The technicians confirmed the installation. Confirming it again changes nothing. */
+    public void confirm() {
+        if (isActive()) {
+            return;
+        }
+        if (!isPendingConfirmation()) {
+            throw new InstallationNotActive(installationId.installationId());
+        }
+        this.networkStatus = NetworkStatus.ACTIVE;
     }
-   }
-   void addMicrophoneEdge(Edge microphoneEdge){
-
-        if (this.microphoneEdge ==null && networkStatus== NetworkStatus.ACTIVE){
-            this.microphoneEdge= microphoneEdge;
-        }
-        else {
-            throw new IllegalStateException("Microphone edge already exists or network is not active.");
-        }
-   }
-
-
-    void removeEdge(Long edgeId) {
-        if (edgeId<=0){
-            throw new IllegalArgumentException("Edge ID must be a positive number.");
-        }
-    }
-
-   void removeDevice(Long deviceId){
-
-      if (deviceId<=0){
-          throw new IllegalArgumentException("Device ID must be a positive number.");
-      }
-   }
-
-
 }

@@ -5,6 +5,7 @@ import com.resolum.alivia.assets.domain.model.aggregates.Device;
 import com.resolum.alivia.assets.domain.model.commands.AssignDeviceToInstallationCommand;
 import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceNetworkCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
+import com.resolum.alivia.assets.domain.model.valueobjects.BusinessRole;
 import com.resolum.alivia.assets.domain.model.valueobjects.ContractedActuators;
 import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
 import org.junit.jupiter.api.Test;
@@ -99,12 +100,13 @@ class DeviceAssignmentTest {
 
     @Test
     void validatesTheAssignCommand() {
-        assertDoesNotThrow(() -> new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", 9L, false));
-        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToInstallationCommand(null, 7L, "sala", "Luz", 9L, false));
-        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToInstallationCommand(3L, 0L, "sala", "Luz", 9L, false));
-        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToInstallationCommand(3L, 7L, "", "Luz", 9L, false));
-        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToInstallationCommand(3L, 7L, "sala", " ", 9L, false));
-        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", null, true));
+        assertDoesNotThrow(() -> new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", 9L, BusinessRole.NONE));
+        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToInstallationCommand(null, 7L, "sala", "Luz", 9L, BusinessRole.NONE));
+        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToInstallationCommand(3L, 0L, "sala", "Luz", 9L, BusinessRole.NONE));
+        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToInstallationCommand(3L, 7L, "", "Luz", 9L, BusinessRole.NONE));
+        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToInstallationCommand(3L, 7L, "sala", " ", 9L, BusinessRole.NONE));
+        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", null, BusinessRole.ADMINISTRATOR));
+        assertThrows(IllegalArgumentException.class, () -> new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", 9L, null));
     }
 
     @Test

@@ -9,10 +9,14 @@ import com.resolum.alivia.assets.domain.exceptions.InstallationAccessDenied;
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
 import com.resolum.alivia.assets.domain.model.aggregates.DeviceAssignment;
 import com.resolum.alivia.assets.domain.model.commands.UnassignDeviceCommand;
+import com.resolum.alivia.assets.domain.model.aggregates.DeviceNetwork;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
+import com.resolum.alivia.assets.domain.model.valueobjects.BusinessRole;
+import com.resolum.alivia.assets.domain.model.valueobjects.NetworkStatus;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceAssignmentRepository;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceNetworkRepository;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceRepository;
+import com.resolum.alivia.shared.domain.model.valueobjects.InstallationId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -32,10 +36,12 @@ class DeviceUnassignmentCommandServiceTest {
 
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-11-20T21:30:00Z"), ZoneOffset.UTC);
     /** A caregiver who manages household 5. */
-    private static final UnassignDeviceCommand BY_CAREGIVER = new UnassignDeviceCommand(7L, " Reemplazo por falla ", 9L, false);
+    private static final UnassignDeviceCommand BY_CAREGIVER = new UnassignDeviceCommand(7L, " Reemplazo por falla ", 9L, BusinessRole.NONE);
 
     private DeviceRepository devices;
     private DeviceAssignmentRepository assignments;
+    private DeviceNetworkRepository networks;
+    private DeviceNetwork network;
     private ExternalHouseholdsService households;
     private DeviceAssignmentCommandServiceImpl service;
     private Device device;
@@ -46,7 +52,11 @@ class DeviceUnassignmentCommandServiceTest {
         devices = mock(DeviceRepository.class);
         assignments = mock(DeviceAssignmentRepository.class);
         households = mock(ExternalHouseholdsService.class);
-        service = new DeviceAssignmentCommandServiceImpl(devices, mock(DeviceNetworkRepository.class), assignments,
+        networks = mock(DeviceNetworkRepository.class);
+        network = new DeviceNetwork(3L, 5L, 1L);
+        network.confirm();
+        when(networks.findByInstallationId(new InstallationId(3L))).thenReturn(Optional.of(network));
+        service = new DeviceAssignmentCommandServiceImpl(devices, networks, assignments,
                 mock(ExternalSubscriptionsService.class), households, CLOCK);
         device = new Device("AA:BB:CC:DD:EE:FF", "Luz de la sala", "LIGHT", 1L);
         ReflectionTestUtils.setField(device, "id", 7L);
@@ -93,6 +103,42 @@ class DeviceUnassignmentCommandServiceTest {
     }
 
     @Test
+    void aTechnicianMayUnassignWhileTheInstallationIsPendingConfirmation() {
+        ReflectionTestUtils.setField(network, "networkStatus", NetworkStatus.PENDING_CONFIRMATION);
+
+        var closed = service.handle(new UnassignDeviceCommand(7L, "Se coloca en otra habitación", 6L, BusinessRole.TECHNICIAN));
+
+        assertEquals(6L, closed.getUnassignedBy());
+        assertEquals(AssetStatus.AVAILABLE, device.getAssetStatus());
+        verifyNoInteractions(households);
+    }
+
+    @Test
+    void onceTheInstallationIsConfirmedATechnicianCannotUnassign() {
+        assertThrows(InstallationAccessDenied.class,
+                () -> service.handle(new UnassignDeviceCommand(7L, "Motivo", 6L, BusinessRole.TECHNICIAN)));
+
+        assertTrue(assignment.isActive());
+        verify(assignments, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void aTechnicianCannotUnassignAnAssignmentThatHasNoInstallationRecorded() {
+        ReflectionTestUtils.setField(assignment, "installationId", null);
+
+        assertThrows(InstallationAccessDenied.class,
+                () -> service.handle(new UnassignDeviceCommand(7L, "Motivo", 6L, BusinessRole.TECHNICIAN)));
+    }
+
+    @Test
+    void aTechnicianWhoCannotChangeAnythingIsNotToldWhetherTheDeviceIsAssigned() {
+        when(assignments.findActiveByDeviceIdForUpdate(7L)).thenReturn(Optional.empty());
+
+        assertThrows(InstallationAccessDenied.class,
+                () -> service.handle(new UnassignDeviceCommand(7L, "Motivo", 6L, BusinessRole.TECHNICIAN)));
+    }
+
+    @Test
     void failsWhenTheDeviceDoesNotExist() {
         when(devices.findById(7L)).thenReturn(Optional.empty());
 
@@ -117,7 +163,7 @@ class DeviceUnassignmentCommandServiceTest {
     void theBusinessAdministratorMayUnassignWithoutBelongingToTheHousehold() {
         when(households.canManageHousehold(5L, 8L)).thenReturn(false);
 
-        var closed = service.handle(new UnassignDeviceCommand(7L, "Baja del servicio", 8L, true));
+        var closed = service.handle(new UnassignDeviceCommand(7L, "Baja del servicio", 8L, BusinessRole.ADMINISTRATOR));
 
         assertEquals(8L, closed.getUnassignedBy());
         verifyNoInteractions(households);
@@ -127,7 +173,7 @@ class DeviceUnassignmentCommandServiceTest {
     void answersNotAssignedToTheBusinessAdministratorWhenThereIsNoActiveAssignment() {
         when(assignments.findActiveByDeviceIdForUpdate(7L)).thenReturn(Optional.empty());
 
-        assertThrows(DeviceNotAssigned.class, () -> service.handle(new UnassignDeviceCommand(7L, "Baja", 8L, true)));
+        assertThrows(DeviceNotAssigned.class, () -> service.handle(new UnassignDeviceCommand(7L, "Baja", 8L, BusinessRole.ADMINISTRATOR)));
 
         verify(assignments, never()).saveAndFlush(any());
     }
@@ -153,12 +199,12 @@ class DeviceUnassignmentCommandServiceTest {
 
     @Test
     void rejectsAnInvalidReasonWithoutChangingAnything() {
-        assertThrows(IllegalArgumentException.class, () -> new UnassignDeviceCommand(7L, " ", 9L, false));
-        assertThrows(IllegalArgumentException.class, () -> new UnassignDeviceCommand(7L, null, 9L, false));
-        assertThrows(IllegalArgumentException.class, () -> new UnassignDeviceCommand(null, "Motivo", 9L, false));
-        assertThrows(IllegalArgumentException.class, () -> new UnassignDeviceCommand(7L, "Motivo", null, false));
+        assertThrows(IllegalArgumentException.class, () -> new UnassignDeviceCommand(7L, " ", 9L, BusinessRole.NONE));
+        assertThrows(IllegalArgumentException.class, () -> new UnassignDeviceCommand(7L, null, 9L, BusinessRole.NONE));
+        assertThrows(IllegalArgumentException.class, () -> new UnassignDeviceCommand(null, "Motivo", 9L, BusinessRole.NONE));
+        assertThrows(IllegalArgumentException.class, () -> new UnassignDeviceCommand(7L, "Motivo", null, BusinessRole.NONE));
         assertThrows(IllegalArgumentException.class, () -> service.handle(
-                new UnassignDeviceCommand(7L, "a".repeat(DeviceAssignment.UNASSIGN_REASON_MAX_LENGTH + 1), 9L, false)));
+                new UnassignDeviceCommand(7L, "a".repeat(DeviceAssignment.UNASSIGN_REASON_MAX_LENGTH + 1), 9L, BusinessRole.NONE)));
 
         assertTrue(assignment.isActive());
         assertEquals(AssetStatus.IN_USE, device.getAssetStatus());

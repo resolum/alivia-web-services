@@ -7,7 +7,9 @@ import com.resolum.alivia.assets.domain.model.events.AssetStatusChangedEvent;
 import com.resolum.alivia.assets.domain.model.events.AssetUpdatedEvent;
 import com.resolum.alivia.assets.domain.model.events.DeviceAssignedEvent;
 import com.resolum.alivia.assets.domain.model.events.DeviceUnassignedEvent;
+import com.resolum.alivia.assets.domain.model.valueobjects.AssetKind;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
+import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
 import com.resolum.alivia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -49,7 +51,10 @@ class AssetEventsTest {
         var events = eventsOf(device);
         assertEquals(2, events.size());
         var first = assertInstanceOf(AssetStatusChangedEvent.class, events.get(0));
-        assertSame(device, first.asset());
+        assertEquals(AssetKind.DEVICE, first.assetKind());
+        assertEquals(7L, first.assetId());
+        assertEquals("AA:BB:CC:DD:EE:FF", first.macAddress());
+        assertEquals("LIGHT", first.assetType());
         assertEquals(AssetStatus.AVAILABLE, first.previousStatus());
         assertEquals(AssetStatus.MAINTENANCE, first.newStatus());
         var second = assertInstanceOf(AssetStatusChangedEvent.class, events.get(1));
@@ -89,7 +94,13 @@ class AssetEventsTest {
 
         var events = eventsOf(device);
         assertEquals(2, events.size());
-        assertSame(device, assertInstanceOf(AssetUpdatedEvent.class, events.get(0)).asset());
+        var changedMac = assertInstanceOf(AssetUpdatedEvent.class, events.get(0));
+        assertEquals(AssetKind.DEVICE, changedMac.assetKind());
+        assertEquals(7L, changedMac.assetId());
+        assertEquals("AA:BB:CC:DD:EE:01", changedMac.macAddress());
+        assertEquals("LIGHT", changedMac.assetType());
+        assertEquals(AssetStatus.AVAILABLE, changedMac.status());
+        assertEquals("DOOR", assertInstanceOf(AssetUpdatedEvent.class, events.get(1)).assetType());
     }
 
     @Test
@@ -121,7 +132,15 @@ class AssetEventsTest {
 
         var events = eventsOf(assignment);
         assertEquals(1, events.size());
-        assertSame(assignment, assertInstanceOf(DeviceAssignedEvent.class, events.get(0)).assignment());
+        var placement = assertInstanceOf(DeviceAssignedEvent.class, events.get(0)).placement();
+        assertEquals(3L, placement.installationId());
+        assertEquals(5L, placement.householdId());
+        assertEquals(7L, placement.deviceId());
+        assertEquals("AA:BB:CC:DD:EE:FF", placement.macAddress());
+        assertEquals(DeviceType.LIGHT, placement.deviceType());
+        assertEquals(AssetStatus.IN_USE, placement.deviceStatus(), "the placement says how the device is right after the change");
+        assertEquals("sala", placement.roomKey());
+        assertEquals("Luz", placement.function());
         assertTrue(eventsOf(device).isEmpty());
         assertEquals(AssetStatus.IN_USE, device.getAssetStatus());
     }
@@ -145,9 +164,26 @@ class AssetEventsTest {
 
         var events = eventsOf(assignment);
         assertEquals(1, events.size());
-        assertSame(assignment, assertInstanceOf(DeviceUnassignedEvent.class, events.get(0)).assignment());
+        var placement = assertInstanceOf(DeviceUnassignedEvent.class, events.get(0)).placement();
+        assertEquals(3L, placement.installationId());
+        assertEquals(7L, placement.deviceId());
+        assertEquals(AssetStatus.AVAILABLE, placement.deviceStatus());
+        assertEquals("sala", placement.roomKey());
         assertTrue(eventsOf(device).isEmpty());
         assertEquals(AssetStatus.AVAILABLE, device.getAssetStatus());
+    }
+
+    @Test
+    void anEventKeepsWhatHappenedEvenIfTheAssetChangesAfterwards() {
+        var device = device();
+        device.changeStatusTo(AssetStatus.MAINTENANCE);
+        var event = assertInstanceOf(AssetStatusChangedEvent.class, eventsOf(device).get(0));
+
+        device.update("AA:BB:CC:DD:EE:77", "DOOR");
+
+        assertEquals("AA:BB:CC:DD:EE:FF", event.macAddress());
+        assertEquals("LIGHT", event.assetType());
+        assertEquals(AssetStatus.MAINTENANCE, event.newStatus());
     }
 
     @Test
