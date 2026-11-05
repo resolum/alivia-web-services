@@ -1,5 +1,6 @@
 package com.resolum.alivia.operations.interfaces.acl;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Collection;
@@ -48,4 +49,31 @@ public interface OperationsContextFacade {
      * @param draftId the configuration draft of the request
      */
     void openInstallationOfConfirmedRequest(String draftId);
+
+    /** A device installed in a home: its alias, MAC address and type ({@code MICROPHONE}, {@code SENSOR}...). */
+    record HomeDevice(String alias, String macAddress, String type) {
+    }
+
+    /** A technical order of a home, with the incident it attends when it is a maintenance visit. */
+    record HomeOrder(Long id, String code, String serviceType, String status, LocalDate date, LocalTime startTime,
+                     LocalTime endTime, String technicianName, Instant startedAt, Instant completedAt,
+                     String incidentCode, String incidentStatus) {
+    }
+
+    /**
+     * A home in service: its installation closed approved.
+     *
+     * @param installedAt when the installation was completed
+     * @param installedBy technician who installed it
+     * @param orders      every technical order of the request, latest visit first
+     */
+    record InstalledHome(String draftId, String contactName, String contactPhone, String directions, Instant installedAt,
+                         String installedBy, List<HomeDevice> devices, List<HomeOrder> orders) {
+    }
+
+    /**
+     * Homes whose installation closed approved. With {@code technicianUserId}, only the homes where that
+     * technician has or had an order; a user who is not a technician gets none.
+     */
+    List<InstalledHome> fetchInstalledHomes(Long technicianUserId);
 }
