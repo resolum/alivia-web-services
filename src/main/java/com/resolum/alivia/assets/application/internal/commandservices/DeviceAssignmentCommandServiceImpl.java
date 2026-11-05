@@ -93,9 +93,11 @@ public class DeviceAssignmentCommandServiceImpl implements DeviceAssignmentComma
     @Override
     @Transactional
     public DeviceAssignment handle(UnassignDeviceCommand command) {
+        // The registry is locked before the device is read, so a change of the device that was waiting for the lock is
+        // already stored when it is read (and the device is written after the registry, as everywhere else).
+        var found = registryRepository.findByActiveDeviceIdForUpdate(command.deviceId());
         var device = deviceRepository.findById(command.deviceId())
                 .orElseThrow(() -> new DeviceNotFound(command.deviceId()));
-        var found = registryRepository.findByActiveDeviceIdForUpdate(command.deviceId());
         if (found.isEmpty()) {
             // Whoever cannot act on any household is not told whether the device is assigned.
             if (command.authority() == CallerAuthority.HOUSEHOLD_MEMBER) {

@@ -97,6 +97,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.ErrorResponse;
@@ -421,6 +422,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DeviceStillAssigned.class)
     public ProblemDetail handleDeviceStillAssigned(DeviceStillAssigned exception) {
         return problem(HttpStatus.CONFLICT, "device_still_assigned", exception.getMessage(), List.of());
+    }
+
+    /** Another request changed the same asset first; the caller can read it again and retry. */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ProblemDetail handleConcurrentModification(ObjectOptimisticLockingFailureException exception) {
+        return problem(HttpStatus.CONFLICT, "resource_modified_concurrently",
+                "The resource was changed by another request. Read it again and retry.", List.of());
     }
 
     @ExceptionHandler(DeviceIncompatibleWithPlan.class)

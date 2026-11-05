@@ -25,6 +25,15 @@ public abstract class Asset extends AuditableAbstractAggregateRoot<Asset> {
     @Column(name = "asset_status", nullable = false, length = 16)
     private AssetStatus assetStatus;
 
+    /**
+     * Counts the changes of the asset. Two requests that change the same asset from the same state cannot both be
+     * stored: the later one fails instead of overwriting the first (a status change, for example, would erase an
+     * assignment made at the same time).
+     */
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
+
     public Asset(Long businessId, String macAddress){
         this.businessId= new BusinessId(businessId);
         this.macAddress= new MacAddress(macAddress);

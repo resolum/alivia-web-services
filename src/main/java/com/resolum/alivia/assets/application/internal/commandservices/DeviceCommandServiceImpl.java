@@ -6,6 +6,7 @@ import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
 import com.resolum.alivia.assets.domain.exceptions.DeviceStillAssigned;
 import com.resolum.alivia.assets.domain.exceptions.MacAddressAlreadyExists;
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
+import com.resolum.alivia.assets.domain.model.aggregates.HouseholdDeviceRegistry;
 import com.resolum.alivia.assets.domain.model.commands.ChangeDeviceStatusCommand;
 import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceCommand;
 import com.resolum.alivia.assets.domain.model.commands.UpdateDeviceCommand;
@@ -19,6 +20,8 @@ import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.Hou
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Optional;
 
 @Service
 public class DeviceCommandServiceImpl implements DeviceCommandService {
@@ -53,17 +56,19 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     @Override
     @Transactional
     public Long handle(ChangeDeviceStatusCommand command) {
+        var registry = lockRegistryHolding(command.deviceId());
         var device= deviceRepository.findById(command.deviceId()).orElseThrow(()->new DeviceNotFound(command.deviceId()));
         ensureStatusMatchesAssignment(device, command.status());
         device.updateAssetStatus(command.status());
         saveDevice(device);
-        refreshRegistryOf(device);
+        refresh(registry, device);
         return device.getId();
     }
 
     @Override
     @Transactional
     public Long handle(UpdateDeviceCommand command) {
+        var registry = lockRegistryHolding(command.deviceId());
         var device = deviceRepository.findById(command.deviceId()).orElseThrow(()->new DeviceNotFound(command.deviceId()));
         var newMacAddress = new MacAddress(command.macAddress());
         // Another type could exceed what the household contracted, which is only checked when assigning.
@@ -75,8 +80,18 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         }
         device.update(command.macAddress(),command.deviceType());
         saveDevice(device);
-        refreshRegistryOf(device);
+        refresh(registry, device);
         return device.getId();
+    }
+
+    /**
+     * Locks the registry that holds the device, if any, before the device is written. Unassigning also takes the
+     * registry first and the device second, so both orders agree and two requests on the same device cannot wait for
+     * each other. The lock is held until the transaction ends, so the assignment cannot change under this request, and
+     * the device is read after it, so a change that was waiting for the lock is already visible.
+     */
+    private Optional<HouseholdDeviceRegistry> lockRegistryHolding(Long deviceId) {
+        return registryRepository.findByActiveDeviceIdForUpdate(deviceId);
     }
 
     /**
@@ -84,10 +99,10 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
      * type of its devices: when one of them changes, the registry that holds it gives the table a new version and
      * announces it. It is done in the same transaction as the change, with the registry locked.
      */
-    private void refreshRegistryOf(Device device) {
-        registryRepository.findByActiveDeviceIdForUpdate(device.getId()).ifPresent(registry -> {
-            registry.deviceChanged(device.getId());
-            registryRepository.saveAndFlush(registry);
+    private void refresh(Optional<HouseholdDeviceRegistry> registry, Device device) {
+        registry.ifPresent(held -> {
+            held.deviceChanged(device.getId());
+            registryRepository.saveAndFlush(held);
         });
     }
 
