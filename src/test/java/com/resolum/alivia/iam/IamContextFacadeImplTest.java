@@ -3,8 +3,13 @@ package com.resolum.alivia.iam;
 import com.resolum.alivia.iam.application.acl.IamContextFacadeImpl;
 import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
 import com.resolum.alivia.iam.domain.model.aggregates.User;
+import com.resolum.alivia.iam.domain.model.commands.IssueEdgeCredentialCommand;
+import com.resolum.alivia.iam.domain.model.commands.RevokeEdgeCredentialCommand;
 import com.resolum.alivia.iam.domain.model.commands.SignUpCommand;
 import com.resolum.alivia.iam.domain.model.valueobjects.AccessRole;
+import com.resolum.alivia.iam.domain.model.valueobjects.EdgeKind;
+import com.resolum.alivia.iam.domain.model.valueobjects.IssuedEdgeCredential;
+import com.resolum.alivia.iam.domain.services.EdgeCredentialCommandService;
 import com.resolum.alivia.iam.domain.repositories.UserRepository;
 import com.resolum.alivia.iam.domain.services.UserCommandService;
 import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
@@ -30,8 +35,33 @@ class IamContextFacadeImplTest {
 
     private final UserRepository userRepository = mock(UserRepository.class);
     private final UserCommandService userCommandService = mock(UserCommandService.class);
+    private final EdgeCredentialCommandService edgeCredentials = mock(EdgeCredentialCommandService.class);
     private final IamContextFacadeImpl facade = new IamContextFacadeImpl(userRepository, userCommandService,
-            mock(com.resolum.alivia.iam.domain.services.AccountActivationService.class));
+            mock(com.resolum.alivia.iam.domain.services.AccountActivationService.class), edgeCredentials);
+
+    @Test
+    void issuesTheCredentialOfAnEdgeAndReturnsWhatTheEdgeMustSend() {
+        when(edgeCredentials.handle(new IssueEdgeCredentialCommand(7L, EdgeKind.MICROPHONE)))
+                .thenReturn(new IssuedEdgeCredential(7L, EdgeKind.MICROPHONE, "7.secret"));
+
+        assertEquals("7.secret", facade.issueEdgeCredential(7L, " microphone "));
+    }
+
+    @Test
+    void rejectsAnUnknownEdgeKindOrIdWithoutIssuingAnything() {
+        assertThrows(IllegalArgumentException.class, () -> facade.issueEdgeCredential(7L, "CAMERA"));
+        assertThrows(IllegalArgumentException.class, () -> facade.issueEdgeCredential(0L, "ACTUATOR"));
+        assertThrows(IllegalArgumentException.class, () -> facade.issueEdgeCredential(null, "ACTUATOR"));
+
+        verifyNoInteractions(edgeCredentials);
+    }
+
+    @Test
+    void revokesTheCredentialOfAnEdge() {
+        facade.revokeEdgeCredential(7L);
+
+        verify(edgeCredentials).handle(new RevokeEdgeCredentialCommand(7L));
+    }
 
     @Test
     void returnsTrueWhenTheEmailIsRegistered() {
