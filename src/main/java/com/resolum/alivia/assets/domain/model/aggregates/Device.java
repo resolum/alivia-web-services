@@ -56,13 +56,15 @@ public class Device extends Asset {
     }
 
     /**
-     * Places the device in a household room with a function and leaves it {@code IN_USE}. The assignment is
+     * Places the device in a room of the household of an installation, with a function, and leaves it
+     * {@code IN_USE}. The assignment is
      * built and validated before the status changes, so the device is untouched when anything is invalid.
      */
-    public DeviceAssignment assignTo(Long householdId, String roomKey, String function, Long assignedBy,
-                                     LocalDateTime assignedAt) {
+    public DeviceAssignment assignTo(Long installationId, Long householdId, String roomKey, String function,
+                                     Long assignedBy, LocalDateTime assignedAt) {
         ensureAssignable();
-        var assignment = new DeviceAssignment(this, householdId, roomKey, function, assignedBy, assignedAt);
+        var assignment = new DeviceAssignment(this, installationId, householdId, roomKey, function, assignedBy,
+                assignedAt);
         changeStatusTo(AssetStatus.IN_USE);
         return assignment;
     }

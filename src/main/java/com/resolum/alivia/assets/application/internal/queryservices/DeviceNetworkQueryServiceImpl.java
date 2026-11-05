@@ -7,6 +7,7 @@ import com.resolum.alivia.assets.domain.model.queries.GetDeviceNetworkByIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceNetworkByInstallationIdQuery;
 import com.resolum.alivia.assets.domain.services.DeviceNetworkQueryService;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceNetworkRepository;
+import com.resolum.alivia.shared.domain.model.valueobjects.InstallationId;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -26,7 +27,7 @@ public class DeviceNetworkQueryServiceImpl implements DeviceNetworkQueryService 
 
     @Override
     public Optional<DeviceNetwork> handle(GetDeviceNetworkByInstallationIdQuery query) {
-        return Optional.empty();
+        return deviceNetworkRepository.findByInstallationId(new InstallationId(query.installationId()));
     }
 
     @Override

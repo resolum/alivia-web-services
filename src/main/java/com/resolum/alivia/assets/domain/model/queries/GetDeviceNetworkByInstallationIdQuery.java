@@ -1,4 +1,4 @@
 package com.resolum.alivia.assets.domain.model.queries;
 
-public record GetDeviceNetworkByInstallationIdQuery() {
+public record GetDeviceNetworkByInstallationIdQuery(Long installationId) {
 }

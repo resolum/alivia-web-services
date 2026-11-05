@@ -9,13 +9,22 @@ import lombok.Getter;
 
 import java.util.List;
 
+/**
+ * The IoT devices of one installation in a household. The business (Alivia) owns the devices; the
+ * household is the one the installation was done for, and it is the household that decides who may
+ * place devices in it. A household has at most one {@code ACTIVE} network.
+ */
 @Getter
 @Entity
+@Table(uniqueConstraints = @UniqueConstraint(name = "uk_device_networks_installation", columnNames = "installation_id"))
 public class DeviceNetwork extends AuditableAbstractAggregateRoot<DeviceNetwork> {
     @Embedded
     private BusinessId businessId;
     @Embedded
     private InstallationId installationId;
+    /** Household of the installation (a Profiles id). Plain number: no foreign key crosses contexts. */
+    @Column(name = "household_id")
+    private Long householdId;
     @Enumerated(EnumType.STRING)
     private NetworkStatus networkStatus;
    @OneToOne
@@ -40,15 +49,21 @@ public class DeviceNetwork extends AuditableAbstractAggregateRoot<DeviceNetwork>
     private List<Device> actuators;
 
     public DeviceNetwork(){}
-   public  DeviceNetwork(Long installationId,Long businessId,Edge microphoneEdge, Edge actuatorEdge,Device microphone, List<Device> actuators){
-       this.businessId= new BusinessId(businessId);
-       this.installationId= new InstallationId(installationId);
-       this.actuatorEdge= actuatorEdge;
-       this.microphoneEdge= microphoneEdge;
-       this.microphone= microphone;
-       this.actuators=actuators;
-       this.networkStatus=  NetworkStatus.ACTIVE;
-   }
+
+    /** Registers the network of an installation; it starts {@code ACTIVE} without edges or devices. */
+    public DeviceNetwork(Long installationId, Long householdId, Long businessId) {
+        if (householdId == null || householdId <= 0) {
+            throw new IllegalArgumentException("Household ID must be a positive number.");
+        }
+        this.businessId = new BusinessId(businessId);
+        this.installationId = new InstallationId(installationId);
+        this.householdId = householdId;
+        this.networkStatus = NetworkStatus.ACTIVE;
+    }
+
+    public boolean isActive() {
+        return networkStatus == NetworkStatus.ACTIVE;
+    }
 
    void addActuatorEdge(Edge actuatorEdge){
 

@@ -4,6 +4,10 @@ import com.resolum.alivia.assets.domain.exceptions.DeviceIncompatibleWithPlan;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotAvailable;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
 import com.resolum.alivia.assets.domain.exceptions.EdgeNotFound;
+import com.resolum.alivia.assets.domain.exceptions.InstallationAccessDenied;
+import com.resolum.alivia.assets.domain.exceptions.InstallationAlreadyRegistered;
+import com.resolum.alivia.assets.domain.exceptions.InstallationNotActive;
+import com.resolum.alivia.assets.domain.exceptions.InstallationNotFound;
 import com.resolum.alivia.assets.domain.exceptions.InvalidAssetStatusTransition;
 import com.resolum.alivia.assets.domain.exceptions.InvalidMacAddress;
 import com.resolum.alivia.assets.domain.exceptions.MacAddressAlreadyExists;
@@ -398,6 +402,26 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DeviceIncompatibleWithPlan.class)
     public ProblemDetail handleDeviceIncompatibleWithPlan(DeviceIncompatibleWithPlan exception) {
         return problem(HttpStatus.UNPROCESSABLE_ENTITY, "device_incompatible_with_plan", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InstallationNotFound.class)
+    public ProblemDetail handleInstallationNotFound(InstallationNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "installation_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InstallationAccessDenied.class)
+    public ProblemDetail handleInstallationAccessDenied(InstallationAccessDenied exception) {
+        return problem(HttpStatus.FORBIDDEN, "installation_access_denied", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InstallationNotActive.class)
+    public ProblemDetail handleInstallationNotActive(InstallationNotActive exception) {
+        return problem(HttpStatus.CONFLICT, "installation_not_active", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InstallationAlreadyRegistered.class)
+    public ProblemDetail handleInstallationAlreadyRegistered(InstallationAlreadyRegistered exception) {
+        return problem(HttpStatus.CONFLICT, "installation_already_registered", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(EdgeNotFound.class)

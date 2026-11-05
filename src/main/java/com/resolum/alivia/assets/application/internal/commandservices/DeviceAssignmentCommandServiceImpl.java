@@ -1,17 +1,24 @@
 package com.resolum.alivia.assets.application.internal.commandservices;
 
+import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalHouseholdsService;
 import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalSubscriptionsService;
 import com.resolum.alivia.assets.domain.exceptions.DeviceIncompatibleWithPlan;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotAvailable;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
+import com.resolum.alivia.assets.domain.exceptions.InstallationAccessDenied;
+import com.resolum.alivia.assets.domain.exceptions.InstallationNotActive;
+import com.resolum.alivia.assets.domain.exceptions.InstallationNotFound;
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
 import com.resolum.alivia.assets.domain.model.aggregates.DeviceAssignment;
-import com.resolum.alivia.assets.domain.model.commands.AssignDeviceToHouseholdCommand;
+import com.resolum.alivia.assets.domain.model.aggregates.DeviceNetwork;
+import com.resolum.alivia.assets.domain.model.commands.AssignDeviceToInstallationCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
 import com.resolum.alivia.assets.domain.services.DeviceAssignmentCommandService;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceAssignmentRepository;
+import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceNetworkRepository;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceRepository;
+import com.resolum.alivia.shared.domain.model.valueobjects.InstallationId;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,35 +29,59 @@ import java.time.LocalDateTime;
 @Service
 public class DeviceAssignmentCommandServiceImpl implements DeviceAssignmentCommandService {
     private final DeviceRepository deviceRepository;
+    private final DeviceNetworkRepository networkRepository;
     private final DeviceAssignmentRepository assignmentRepository;
     private final ExternalSubscriptionsService externalSubscriptionsService;
+    private final ExternalHouseholdsService externalHouseholdsService;
     private final Clock clock;
 
     public DeviceAssignmentCommandServiceImpl(DeviceRepository deviceRepository,
+                                              DeviceNetworkRepository networkRepository,
                                               DeviceAssignmentRepository assignmentRepository,
-                                              ExternalSubscriptionsService externalSubscriptionsService, Clock clock) {
+                                              ExternalSubscriptionsService externalSubscriptionsService,
+                                              ExternalHouseholdsService externalHouseholdsService, Clock clock) {
         this.deviceRepository = deviceRepository;
+        this.networkRepository = networkRepository;
         this.assignmentRepository = assignmentRepository;
         this.externalSubscriptionsService = externalSubscriptionsService;
+        this.externalHouseholdsService = externalHouseholdsService;
         this.clock = clock;
     }
 
+    /**
+     * Order of the checks: installation (404), access (403), installation state (409), device (404), device
+     * state (409) and plan (422). Nothing is stored before every rule passed.
+     */
     @Override
     @Transactional
-    public DeviceAssignment handle(AssignDeviceToHouseholdCommand command) {
+    public DeviceAssignment handle(AssignDeviceToInstallationCommand command) {
+        // The lock is held until the transaction ends: the quantity check below and the insert cannot interleave
+        // with another assignment to the same household.
+        var network = networkRepository.findByInstallationIdForUpdate(new InstallationId(command.installationId()))
+                .filter(found -> found.getHouseholdId() != null)
+                .orElseThrow(() -> new InstallationNotFound(command.installationId()));
+        var householdId = network.getHouseholdId();
+        if (!command.assignedByBusinessAdministrator()
+                && !externalHouseholdsService.canManageHousehold(householdId, command.assignedBy())) {
+            throw new InstallationAccessDenied();
+        }
+        if (!network.isActive()) {
+            throw new InstallationNotActive(command.installationId());
+        }
+
         var device = deviceRepository.findById(command.deviceId())
                 .orElseThrow(() -> new DeviceNotFound(command.deviceId()));
         device.ensureAssignable();
-        ensureCompatibleWithPlan(device, command);
+        ensureCompatibleWithPlan(device, network, command);
 
-        // Nothing is stored before every rule passed, and assignTo itself fails before changing the device.
-        var assignment = device.assignTo(command.householdId(), command.roomKey(), command.function(),
+        // assignTo fails before changing the device when the assignment data is invalid.
+        var assignment = device.assignTo(command.installationId(), householdId, command.roomKey(), command.function(),
                 command.assignedBy(), LocalDateTime.now(clock));
         try {
             deviceRepository.save(device);
             return assignmentRepository.saveAndFlush(assignment);
         } catch (DataIntegrityViolationException exception) {
-            // Another request assigned the same device between the check and the insert
+            // The same device was assigned by a request that does not share the household lock
             // (uk_device_assignments_active_device).
             throw new DeviceNotAvailable(device.getId(), AssetStatus.IN_USE);
         }
@@ -61,14 +92,14 @@ public class DeviceAssignmentCommandServiceImpl implements DeviceAssignmentComma
      * fits when its type was contracted and not all of that type are already assigned; the microphone fits when
      * its room has none yet (the plan includes one per room).
      */
-    private void ensureCompatibleWithPlan(Device device, AssignDeviceToHouseholdCommand command) {
-        var contracted = externalSubscriptionsService.fetchContractedActuators(command.householdId())
+    private void ensureCompatibleWithPlan(Device device, DeviceNetwork network, AssignDeviceToInstallationCommand command) {
+        var householdId = network.getHouseholdId();
+        var contracted = externalSubscriptionsService.fetchContractedActuators(householdId)
                 .orElseThrow(() -> new DeviceIncompatibleWithPlan("The household has no active subscription."));
         var type = device.getDeviceType();
         var roomKey = command.roomKey().strip();
         if (type == DeviceType.MICROPHONE) {
-            if (assignmentRepository.countActiveByHouseholdIdAndRoomKeyAndDeviceType(
-                    command.householdId(), roomKey, type) > 0) {
+            if (assignmentRepository.countActiveByHouseholdIdAndRoomKeyAndDeviceType(householdId, roomKey, type) > 0) {
                 throw new DeviceIncompatibleWithPlan("The room already has its microphone.");
             }
             return;
@@ -77,8 +108,7 @@ public class DeviceAssignmentCommandServiceImpl implements DeviceAssignmentComma
         if (contractedQuantity == 0) {
             throw new DeviceIncompatibleWithPlan("The plan does not include " + type + " devices.");
         }
-        if (assignmentRepository.countActiveByHouseholdIdAndDeviceType(command.householdId(), type)
-                >= contractedQuantity) {
+        if (assignmentRepository.countActiveByHouseholdIdAndDeviceType(householdId, type) >= contractedQuantity) {
             throw new DeviceIncompatibleWithPlan(
                     "All " + contractedQuantity + " " + type + " devices of the plan are already assigned.");
         }

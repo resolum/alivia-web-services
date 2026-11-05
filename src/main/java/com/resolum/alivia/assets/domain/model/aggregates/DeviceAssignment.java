@@ -27,6 +27,13 @@ public class DeviceAssignment extends AuditableAbstractAggregateRoot<DeviceAssig
     @JoinColumn(name = "device_id", nullable = false, foreignKey = @ForeignKey(name = "fk_device_assignments_device"))
     private Device device;
 
+    /**
+     * Installation (a {@link DeviceNetwork}) the device was placed in. Nullable in the table only because it was
+     * added after the table existed; every new assignment requires it.
+     */
+    @Column(name = "installation_id")
+    private Long installationId;
+
     @Column(name = "household_id", nullable = false)
     private Long householdId;
 
@@ -50,10 +57,13 @@ public class DeviceAssignment extends AuditableAbstractAggregateRoot<DeviceAssig
     protected DeviceAssignment() {
     }
 
-    DeviceAssignment(Device device, Long householdId, String roomKey, String function, Long assignedBy,
-                     LocalDateTime assignedAt) {
+    DeviceAssignment(Device device, Long installationId, Long householdId, String roomKey, String function,
+                     Long assignedBy, LocalDateTime assignedAt) {
         if (device == null) {
             throw new IllegalArgumentException("The device is required.");
+        }
+        if (installationId == null || installationId <= 0) {
+            throw new IllegalArgumentException("Installation ID must be a positive number.");
         }
         if (householdId == null || householdId <= 0) {
             throw new IllegalArgumentException("Household ID must be a positive number.");
@@ -65,6 +75,7 @@ public class DeviceAssignment extends AuditableAbstractAggregateRoot<DeviceAssig
             throw new IllegalArgumentException("The assignment date is required.");
         }
         this.device = device;
+        this.installationId = installationId;
         this.householdId = householdId;
         this.roomKey = requireText(roomKey, "Room", ROOM_KEY_MAX_LENGTH);
         this.function = requireText(function, "Function", FUNCTION_MAX_LENGTH);

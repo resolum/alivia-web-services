@@ -2,11 +2,13 @@ package com.resolum.alivia.assets.application.acl;
 
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
 import com.resolum.alivia.assets.domain.model.aggregates.Edge;
+import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceNetworkCommand;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceByMacAddressQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceCountByBusinessIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeByMacAddressQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeCountByBusinessIdQuery;
 import com.resolum.alivia.assets.domain.services.DeviceCommandService;
+import com.resolum.alivia.assets.domain.services.DeviceNetworkCommandService;
 import com.resolum.alivia.assets.domain.services.DeviceQueryService;
 import com.resolum.alivia.assets.domain.services.EdgeCommandService;
 import com.resolum.alivia.assets.domain.services.EdgeQueryService;
@@ -21,8 +23,11 @@ public class AssetsContextFacadeImpl implements AssetsContextFacade {
     private final DeviceCommandService deviceCommandService;
     private final EdgeCommandService edgeCommandService;
     private final EdgeQueryService edgeQueryService;
+    private final DeviceNetworkCommandService deviceNetworkCommandService;
 
-    public AssetsContextFacadeImpl(DeviceQueryService deviceQueryService, DeviceCommandService deviceCommandService, EdgeCommandService edgeCommandService, EdgeQueryService edgeQueryService) {
+    public AssetsContextFacadeImpl(DeviceQueryService deviceQueryService, DeviceCommandService deviceCommandService, EdgeCommandService edgeCommandService, EdgeQueryService edgeQueryService,
+                                   DeviceNetworkCommandService deviceNetworkCommandService) {
+        this.deviceNetworkCommandService = deviceNetworkCommandService;
         this.deviceQueryService = deviceQueryService;
         this.deviceCommandService = deviceCommandService;
         this.edgeCommandService = edgeCommandService;
@@ -39,6 +44,11 @@ public class AssetsContextFacadeImpl implements AssetsContextFacade {
     public Optional<Long> fetchEdgeByMacAddress(String macAddress) {
         return edgeQueryService.handle(new GetEdgeByMacAddressQuery(macAddress)).map(Edge::getId);
 
+    }
+
+    @Override
+    public Long registerInstallation(Long installationId, Long householdId, Long businessId) {
+        return deviceNetworkCommandService.handle(new RegisterDeviceNetworkCommand(installationId, householdId, businessId));
     }
 
     @Override
