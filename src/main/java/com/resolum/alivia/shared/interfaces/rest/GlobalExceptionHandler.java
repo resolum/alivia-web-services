@@ -1,5 +1,10 @@
 package com.resolum.alivia.shared.interfaces.rest;
 
+import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
+import com.resolum.alivia.assets.domain.exceptions.EdgeNotFound;
+import com.resolum.alivia.assets.domain.exceptions.InvalidAssetStatusTransition;
+import com.resolum.alivia.assets.domain.exceptions.InvalidMacAddress;
+import com.resolum.alivia.assets.domain.exceptions.MacAddressAlreadyExists;
 import com.resolum.alivia.hcm.domain.exceptions.EmployeeNotFound;
 import com.resolum.alivia.hcm.domain.exceptions.EmployeeNotInBusiness;
 import com.resolum.alivia.hcm.domain.exceptions.ContractNotActive;
@@ -375,6 +380,36 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleLegalNameAlreadyExists(LegalNameAlreadyExistsException exception) {
         return problem(HttpStatus.CONFLICT, "legal_name_already_exists",
                 "The legal name is already registered.", List.of());
+    }
+
+    @ExceptionHandler(DeviceNotFound.class)
+    public ProblemDetail handleDeviceNotFound(DeviceNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "device_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(EdgeNotFound.class)
+    public ProblemDetail handleEdgeNotFound(EdgeNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "edge_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(MacAddressAlreadyExists.class)
+    public ProblemDetail handleMacAddressAlreadyExists(MacAddressAlreadyExists exception) {
+        return problem(HttpStatus.CONFLICT, "device_already_registered", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InvalidMacAddress.class)
+    public ProblemDetail handleInvalidMacAddress(InvalidMacAddress exception) {
+        return problem(HttpStatus.BAD_REQUEST, "invalid_mac_address", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InvalidAssetStatusTransition.class)
+    public ProblemDetail handleInvalidAssetStatusTransition(InvalidAssetStatusTransition exception) {
+        return problem(HttpStatus.CONFLICT, "invalid_asset_status_transition", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(com.resolum.alivia.assets.domain.exceptions.BusinessNotFound.class)
+    public ProblemDetail handleAssetsBusinessNotFound(com.resolum.alivia.assets.domain.exceptions.BusinessNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "business_not_found", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(BusinessNotFound.class)

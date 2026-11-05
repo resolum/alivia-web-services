@@ -6,6 +6,7 @@ import com.resolum.alivia.assets.interfaces.rest.resources.DeviceResource;
 public class DeviceResourceFromEntityAssembler {
     public static DeviceResource toResourceFromEntity(Device entity){
 
-        return new DeviceResource( entity.getId(),entity.getBusinessId().businessId(),entity.getMacAddress().macAddress(),entity.getAssetStatus().name(),entity.getDeviceType().name());
+        return new DeviceResource(entity.getId(), entity.getBusinessId().businessId(), entity.getMacAddress().macAddress(),
+                entity.getAlias(), entity.getDeviceType().name(), entity.getAssetStatus().name());
     }
 }

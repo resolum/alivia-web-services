@@ -59,6 +59,10 @@ public class Device extends Asset {
         if (deviceType == null || deviceType.isBlank()) {
             throw new IllegalArgumentException("Device type cannot be null or blank.");
         }
-        return DeviceType.valueOf(deviceType.strip().toUpperCase(java.util.Locale.ROOT));
+        try {
+            return DeviceType.valueOf(deviceType.strip().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Unknown device type: " + deviceType.strip() + ".");
+        }
     }
 }

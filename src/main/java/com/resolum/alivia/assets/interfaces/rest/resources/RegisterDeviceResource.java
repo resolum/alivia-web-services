@@ -1,4 +1,10 @@
 package com.resolum.alivia.assets.interfaces.rest.resources;
 
-public record RegisterDeviceResource(String macAddress, String alias, String deviceType) {
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
+public record RegisterDeviceResource(
+        @NotBlank String macAddress,
+        @NotBlank @Size(max = 80) String alias,
+        @NotBlank String deviceType) {
 }
