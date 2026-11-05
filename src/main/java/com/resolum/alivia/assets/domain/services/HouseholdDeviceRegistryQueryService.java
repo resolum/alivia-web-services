@@ -4,6 +4,7 @@ import com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByEdgeId
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByInstallationIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeTableVersionByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeAccessTable;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeTableVersion;
 
 import java.util.Optional;
 
@@ -23,8 +24,8 @@ public interface HouseholdDeviceRegistryQueryService {
     Optional<EdgeAccessTable> handle(GetEdgeAccessTableByEdgeIdQuery query);
 
     /**
-     * Only the version of that table, which is enough to tell an edge service that it is up to date; empty when the
+     * Only the installation and the version of that table, which is enough to tell an edge service that it is up to date; empty when the
      * edge is not assigned to the registry of an active installation.
      */
-    Optional<Long> handle(GetEdgeTableVersionByEdgeIdQuery query);
+    Optional<EdgeTableVersion> handle(GetEdgeTableVersionByEdgeIdQuery query);
 }

@@ -133,6 +133,12 @@ public class HouseholdDeviceRegistry extends AuditableAbstractAggregateRoot<Hous
         return Optional.ofNullable(current);
     }
 
+    /** Whether the edge is one of the edge services of this installation. */
+    public boolean hasEdge(Long edgeId) {
+        return (microphoneEdge != null && microphoneEdge.getId().equals(edgeId))
+                || (actuatorEdge != null && actuatorEdge.getId().equals(edgeId));
+    }
+
     /**
      * Takes an edge out of the installation; it goes back to the inventory (available, unless it was in maintenance or
      * broken). It is allowed even when the registry is no longer active, so a deactivated installation can be cleaned up.

@@ -6,6 +6,9 @@ import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeAccessTable;
 import com.resolum.alivia.assets.domain.model.valueobjects.NodeRef;
+import com.resolum.alivia.assets.domain.model.commands.RecordEdgeSeenCommand;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeTableVersion;
+import com.resolum.alivia.assets.domain.services.EdgeSyncCommandService;
 import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryQueryService;
 import com.resolum.alivia.assets.interfaces.rest.controllers.EdgeDeviceTableController;
 import com.resolum.alivia.shared.interfaces.rest.GlobalExceptionHandler;
@@ -38,14 +41,16 @@ class EdgeDeviceTableControllerTest {
             new NodeRef(2L, "AA:BB:CC:DD:EE:02", DeviceType.MICROPHONE, AssetStatus.MAINTENANCE, "sala", "Micrófono")));
 
     private HouseholdDeviceRegistryQueryService queries;
+    private EdgeSyncCommandService sync;
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
         queries = mock(HouseholdDeviceRegistryQueryService.class);
-        mvc = MockMvcBuilders.standaloneSetup(new EdgeDeviceTableController(queries))
+        sync = mock(EdgeSyncCommandService.class);
+        mvc = MockMvcBuilders.standaloneSetup(new EdgeDeviceTableController(queries, sync))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
-        when(queries.handle(new GetEdgeTableVersionByEdgeIdQuery(7L))).thenReturn(Optional.of(12L));
+        when(queries.handle(new GetEdgeTableVersionByEdgeIdQuery(7L))).thenReturn(Optional.of(new EdgeTableVersion(3L, 12L)));
         when(queries.handle(new GetEdgeAccessTableByEdgeIdQuery(7L))).thenReturn(Optional.of(TABLE));
     }
 
@@ -70,7 +75,7 @@ class EdgeDeviceTableControllerTest {
 
     @Test
     void anEmptyTableIsStillATable() throws Exception {
-        when(queries.handle(new GetEdgeTableVersionByEdgeIdQuery(7L))).thenReturn(Optional.of(0L));
+        when(queries.handle(new GetEdgeTableVersionByEdgeIdQuery(7L))).thenReturn(Optional.of(new EdgeTableVersion(3L, 0L)));
         when(queries.handle(new GetEdgeAccessTableByEdgeIdQuery(7L)))
                 .thenReturn(Optional.of(new EdgeAccessTable(3L, 5L, 0L, List.of())));
 
@@ -143,7 +148,7 @@ class EdgeDeviceTableControllerTest {
     @Test
     void theTableIsAlwaysTheOneOfTheCallingEdge() throws Exception {
         var other = new TestingAuthenticationToken("edge:9", null, "ROLE_EDGE_ACTUATOR");
-        when(queries.handle(new GetEdgeTableVersionByEdgeIdQuery(9L))).thenReturn(Optional.of(4L));
+        when(queries.handle(new GetEdgeTableVersionByEdgeIdQuery(9L))).thenReturn(Optional.of(new EdgeTableVersion(8L, 4L)));
         when(queries.handle(new GetEdgeAccessTableByEdgeIdQuery(9L)))
                 .thenReturn(Optional.of(new EdgeAccessTable(8L, 6L, 4L, List.of())));
 
@@ -160,5 +165,32 @@ class EdgeDeviceTableControllerTest {
         mvc.perform(get(PATH)).andExpect(status().isForbidden());
 
         verifyNoInteractions(queries);
+    }
+
+    // --- the edge was heard ---
+
+    @Test
+    void everyAskIsRecordedWhetherTheEdgeGetsTheTableOrA304() throws Exception {
+        mvc.perform(get(PATH).principal(EDGE)).andExpect(status().isOk());
+        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"12\"")).andExpect(status().isNotModified());
+
+        verify(sync, times(2)).handle(new RecordEdgeSeenCommand(7L, 3L));
+    }
+
+    @Test
+    void anEdgeWithoutInstallationIsNotRecorded() throws Exception {
+        when(queries.handle(new GetEdgeTableVersionByEdgeIdQuery(7L))).thenReturn(Optional.empty());
+
+        mvc.perform(get(PATH).principal(EDGE)).andExpect(status().isNotFound());
+
+        verifyNoInteractions(sync);
+    }
+
+    @Test
+    void failingToRecordThatTheEdgeAskedNeverKeepsItFromItsTable() throws Exception {
+        doThrow(new IllegalStateException("database busy")).when(sync).handle(any(RecordEdgeSeenCommand.class));
+
+        mvc.perform(get(PATH).principal(EDGE)).andExpect(status().isOk()).andExpect(jsonPath("$.version").value(12));
+        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"12\"")).andExpect(status().isNotModified());
     }
 }

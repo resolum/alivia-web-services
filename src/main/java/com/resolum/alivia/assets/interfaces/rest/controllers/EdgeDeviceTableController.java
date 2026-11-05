@@ -1,8 +1,10 @@
 package com.resolum.alivia.assets.interfaces.rest.controllers;
 
 import com.resolum.alivia.assets.domain.exceptions.EdgeWithoutInstallation;
+import com.resolum.alivia.assets.domain.model.commands.RecordEdgeSeenCommand;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeTableVersionByEdgeIdQuery;
+import com.resolum.alivia.assets.domain.services.EdgeSyncCommandService;
 import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryQueryService;
 import com.resolum.alivia.assets.interfaces.rest.resources.EdgeDeviceTableResource;
 import com.resolum.alivia.assets.interfaces.rest.transform.EdgeDeviceTableResourceFromViewAssembler;
@@ -12,6 +14,8 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -38,10 +42,15 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 // IAM gives the authenticated edge services these roles; no user has them.
 @PreAuthorize("hasAnyRole('EDGE_MICROPHONE', 'EDGE_ACTUATOR')")
 public class EdgeDeviceTableController {
-    private final HouseholdDeviceRegistryQueryService queryService;
+    private static final Logger log = LoggerFactory.getLogger(EdgeDeviceTableController.class);
 
-    public EdgeDeviceTableController(HouseholdDeviceRegistryQueryService queryService) {
+    private final HouseholdDeviceRegistryQueryService queryService;
+    private final EdgeSyncCommandService syncService;
+
+    public EdgeDeviceTableController(HouseholdDeviceRegistryQueryService queryService,
+                                     EdgeSyncCommandService syncService) {
         this.queryService = queryService;
+        this.syncService = syncService;
     }
 
     @GetMapping
@@ -62,10 +71,11 @@ public class EdgeDeviceTableController {
         var edgeId = EdgeIdFromAuthenticationAssembler.toEdgeId(authentication);
 
         // The version alone settles an edge that is up to date, without reading any entry of the table.
-        var currentVersion = queryService.handle(new GetEdgeTableVersionByEdgeIdQuery(edgeId))
+        var current = queryService.handle(new GetEdgeTableVersionByEdgeIdQuery(edgeId))
                 .orElseThrow(() -> new EdgeWithoutInstallation(edgeId));
-        if (EntityTagMatcher.matches(ifNoneMatch, currentVersion)) {
-            return ResponseEntity.status(HttpStatus.NOT_MODIFIED).eTag(EntityTagMatcher.tagOf(currentVersion))
+        recordSeen(edgeId, current.installationId());
+        if (EntityTagMatcher.matches(ifNoneMatch, current.version())) {
+            return ResponseEntity.status(HttpStatus.NOT_MODIFIED).eTag(EntityTagMatcher.tagOf(current.version()))
                     .cacheControl(CacheControl.noStore()).build();
         }
         // The table carries its own version, which may be newer than the one read above: it is what the ETag says.
@@ -73,6 +83,17 @@ public class EdgeDeviceTableController {
                 .orElseThrow(() -> new EdgeWithoutInstallation(edgeId));
         return ResponseEntity.ok().eTag(EntityTagMatcher.tagOf(table.version())).cacheControl(CacheControl.noStore())
                 .body(EdgeDeviceTableResourceFromViewAssembler.toResourceFromView(table));
+    }
+
+    /**
+     * That the edge asked is bookkeeping for the business: failing to write it must never keep the edge from its table.
+     */
+    private void recordSeen(Long edgeId, Long installationId) {
+        try {
+            syncService.handle(new RecordEdgeSeenCommand(edgeId, installationId));
+        } catch (RuntimeException exception) {
+            log.warn("Could not record that edge {} asked for its table: {}", edgeId, exception.toString());
+        }
     }
 
     /** The version of the table is its entity tag. */

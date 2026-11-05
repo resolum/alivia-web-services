@@ -99,10 +99,26 @@ class AssetsAccessAndFacadeTest {
         EdgeDeviceTableController edgeDeviceTableController() {
             var queries = mock(HouseholdDeviceRegistryQueryService.class);
             when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetEdgeTableVersionByEdgeIdQuery.class)))
-                    .thenReturn(Optional.of(1L));
+                    .thenReturn(Optional.of(new com.resolum.alivia.assets.domain.model.valueobjects.EdgeTableVersion(3L, 1L)));
             when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByEdgeIdQuery.class)))
                     .thenReturn(Optional.of(new EdgeAccessTable(3L, 5L, 1L, java.util.List.of())));
-            return new EdgeDeviceTableController(queries);
+            return new EdgeDeviceTableController(queries, mock(com.resolum.alivia.assets.domain.services.EdgeSyncCommandService.class));
+        }
+
+        @Bean
+        com.resolum.alivia.assets.interfaces.rest.controllers.EdgeSyncStateController edgeSyncStateController() {
+            var commands = mock(com.resolum.alivia.assets.domain.services.EdgeSyncCommandService.class);
+            when(commands.handle(any(com.resolum.alivia.assets.domain.model.commands.AcknowledgeEdgeVersionCommand.class)))
+                    .thenReturn(new com.resolum.alivia.assets.domain.model.valueobjects.AppliedEdgeVersion(7L, 1L, java.time.LocalDateTime.of(2026, 11, 5, 10, 0)));
+            return new com.resolum.alivia.assets.interfaces.rest.controllers.EdgeSyncStateController(commands);
+        }
+
+        @Bean
+        com.resolum.alivia.assets.interfaces.rest.controllers.InstallationEdgeSyncController installationEdgeSyncController() {
+            var queries = mock(com.resolum.alivia.assets.domain.services.EdgeSyncQueryService.class);
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetInstallationEdgeSyncQuery.class)))
+                    .thenReturn(Optional.of(new com.resolum.alivia.assets.domain.model.valueobjects.InstallationEdgeSync(3L, 1L, java.util.List.of())));
+            return new com.resolum.alivia.assets.interfaces.rest.controllers.InstallationEdgeSyncController(queries);
         }
 
         @Bean
@@ -256,6 +272,33 @@ class AssetsAccessAndFacadeTest {
                 signInAs(role);
                 assertThrows(AccessDeniedException.class,
                         () -> context.getBean(EdgeDeviceTableController.class).getDeviceTable(null, edge), role);
+            }
+        }
+    }
+
+    @Test
+    void onlyEdgeServicesMayConfirmAndOnlyAdministratorsMayReadTheSyncState() {
+        var edge = new TestingAuthenticationToken("edge:7", "n/a", "ROLE_EDGE_ACTUATOR");
+        var confirm = new com.resolum.alivia.assets.interfaces.rest.resources.AcknowledgeEdgeVersionResource(1L);
+        try (var context = context()) {
+            SecurityContextHolder.getContext().setAuthentication(edge);
+            assertEquals(1L, context.getBean(com.resolum.alivia.assets.interfaces.rest.controllers.EdgeSyncStateController.class)
+                    .acknowledge(confirm, edge).getBody().appliedVersion());
+            assertThrows(AccessDeniedException.class, () -> context.getBean(
+                    com.resolum.alivia.assets.interfaces.rest.controllers.InstallationEdgeSyncController.class).getEdgeSync(3L));
+
+            for (var role : new String[]{"ROLE_ADMINISTRATOR", "ROLE_CAREGIVER", "ROLE_TECHNICIAN", "ROLE_SUBSCRIPTION_MANAGER"}) {
+                signInAs(role);
+                assertThrows(AccessDeniedException.class, () -> context.getBean(
+                        com.resolum.alivia.assets.interfaces.rest.controllers.EdgeSyncStateController.class).acknowledge(confirm, edge), role);
+            }
+            signInAs("ROLE_ADMINISTRATOR");
+            assertDoesNotThrow(() -> context.getBean(
+                    com.resolum.alivia.assets.interfaces.rest.controllers.InstallationEdgeSyncController.class).getEdgeSync(3L));
+            for (var role : new String[]{"ROLE_CAREGIVER", "ROLE_TECHNICIAN", "ROLE_SUBSCRIPTION_MANAGER"}) {
+                signInAs(role);
+                assertThrows(AccessDeniedException.class, () -> context.getBean(
+                        com.resolum.alivia.assets.interfaces.rest.controllers.InstallationEdgeSyncController.class).getEdgeSync(3L), role);
             }
         }
     }

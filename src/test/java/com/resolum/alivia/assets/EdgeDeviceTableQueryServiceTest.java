@@ -7,6 +7,7 @@ import com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByEdgeId
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeTableVersionByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.valueobjects.ContractedActuators;
 import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeTableVersion;
 import com.resolum.alivia.assets.domain.model.valueobjects.RegistryStatus;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.HouseholdDeviceRegistryRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -72,10 +73,10 @@ class EdgeDeviceTableQueryServiceTest {
 
     @Test
     void theVersionIsReadWithoutLoadingTheRegistry() {
-        when(registries.findActiveTableVersionByAssignedEdgeId(7L)).thenReturn(Optional.of(12L));
+        when(registries.findActiveTableVersionByAssignedEdgeId(7L)).thenReturn(Optional.of(new EdgeTableVersion(3L, 12L)));
         when(registries.findActiveTableVersionByAssignedEdgeId(8L)).thenReturn(Optional.empty());
 
-        assertEquals(Optional.of(12L), service.handle(new GetEdgeTableVersionByEdgeIdQuery(7L)));
+        assertEquals(Optional.of(new EdgeTableVersion(3L, 12L)), service.handle(new GetEdgeTableVersionByEdgeIdQuery(7L)));
         assertTrue(service.handle(new GetEdgeTableVersionByEdgeIdQuery(8L)).isEmpty());
 
         verify(registries, never()).findByAssignedEdgeId(anyLong());

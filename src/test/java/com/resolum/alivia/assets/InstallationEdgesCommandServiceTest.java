@@ -15,6 +15,7 @@ import com.resolum.alivia.assets.domain.model.commands.RemoveEdgeFromInstallatio
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.model.valueobjects.RegistryStatus;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.EdgeRepository;
+import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.EdgeSyncStateRepository;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.HouseholdDeviceRegistryRepository;
 import com.resolum.alivia.shared.domain.model.valueobjects.InstallationId;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +37,7 @@ class InstallationEdgesCommandServiceTest {
     private HouseholdDeviceRegistryRepository registries;
     private EdgeRepository edges;
     private ExternalIamService iam;
+    private EdgeSyncStateRepository syncStates;
     private HouseholdDeviceRegistryCommandServiceImpl service;
     private HouseholdDeviceRegistry registry;
 
@@ -44,7 +46,8 @@ class InstallationEdgesCommandServiceTest {
         registries = mock(HouseholdDeviceRegistryRepository.class);
         edges = mock(EdgeRepository.class);
         iam = mock(ExternalIamService.class);
-        service = new HouseholdDeviceRegistryCommandServiceImpl(registries, mock(ExternalBusinessService.class), edges, iam);
+        syncStates = mock(EdgeSyncStateRepository.class);
+        service = new HouseholdDeviceRegistryCommandServiceImpl(registries, mock(ExternalBusinessService.class), edges, iam, syncStates);
         registry = HouseholdDeviceRegistry.open(3L, 5L, 1L);
         when(registries.findByInstallationIdForUpdate(INSTALLATION)).thenReturn(Optional.of(registry));
     }
@@ -172,5 +175,62 @@ class InstallationEdgesCommandServiceTest {
 
         verifyNoInteractions(iam);
         verify(registries, never()).saveAndFlush(any());
+    }
+
+    // --- what the edges confirmed before is forgotten when they arrive or leave ---
+
+    @Test
+    void anEdgeThatArrivesStartsWithoutAnythingConfirmed() {
+        storedEdge(1, "MICROPHONE_EDGE");
+
+        service.handle(new PlaceEdgeInInstallationCommand(3L, 1L));
+
+        verify(syncStates).deleteByEdgeId(1L);
+    }
+
+    @Test
+    void placingTheEdgeThatIsAlreadyThereKeepsWhatItConfirmed() {
+        storedEdge(1, "ACTUATOR_EDGE");
+        service.handle(new PlaceEdgeInInstallationCommand(3L, 1L));
+        clearInvocations(syncStates);
+
+        service.handle(new PlaceEdgeInInstallationCommand(3L, 1L));
+
+        verifyNoInteractions(syncStates);
+    }
+
+    @Test
+    void theEdgeThatIsReplacedAndTheOneThatArrivesBothStartOver() {
+        storedEdge(1, "ACTUATOR_EDGE");
+        service.handle(new PlaceEdgeInInstallationCommand(3L, 1L));
+        storedEdge(2, "ACTUATOR_EDGE");
+        clearInvocations(syncStates);
+
+        service.handle(new PlaceEdgeInInstallationCommand(3L, 2L));
+
+        verify(syncStates).deleteByEdgeId(1L);
+        verify(syncStates).deleteByEdgeId(2L);
+    }
+
+    @Test
+    void anEdgeThatLeavesLosesWhatItConfirmed() {
+        storedEdge(1, "MICROPHONE_EDGE");
+        service.handle(new PlaceEdgeInInstallationCommand(3L, 1L));
+        clearInvocations(syncStates);
+
+        service.handle(new RemoveEdgeFromInstallationCommand(3L, 1L));
+
+        verify(syncStates).deleteByEdgeId(1L);
+    }
+
+    @Test
+    void nothingIsForgottenWhenThePlacementFails() {
+        var taken = storedEdge(1, "ACTUATOR_EDGE");
+        taken.changeStatusTo(AssetStatus.IN_USE);
+
+        assertThrows(EdgeNotAvailable.class, () -> service.handle(new PlaceEdgeInInstallationCommand(3L, 1L)));
+        assertThrows(EdgeNotAssigned.class, () -> service.handle(new RemoveEdgeFromInstallationCommand(3L, 9L)));
+
+        verifyNoInteractions(syncStates);
     }
 }

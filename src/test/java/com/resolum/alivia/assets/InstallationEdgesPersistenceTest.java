@@ -116,8 +116,9 @@ class InstallationEdgesPersistenceTest {
         registries.saveAndFlush(registry);
         entityManager.clear();
 
-        assertEquals(12L, registries.findActiveTableVersionByAssignedEdgeId(microphone.getId()).orElseThrow());
-        assertEquals(12L, registries.findActiveTableVersionByAssignedEdgeId(actuator.getId()).orElseThrow());
+        assertEquals(12L, registries.findActiveTableVersionByAssignedEdgeId(microphone.getId()).orElseThrow().version());
+        assertEquals(3L, registries.findActiveTableVersionByAssignedEdgeId(microphone.getId()).orElseThrow().installationId());
+        assertEquals(12L, registries.findActiveTableVersionByAssignedEdgeId(actuator.getId()).orElseThrow().version());
         assertTrue(registries.findActiveTableVersionByAssignedEdgeId(loose.getId()).isEmpty());
         assertEquals(registry.getId(), registries.findByAssignedEdgeId(actuator.getId()).orElseThrow().getId());
         assertTrue(registries.findByAssignedEdgeId(loose.getId()).isEmpty());

@@ -1,5 +1,6 @@
 package com.resolum.alivia.shared.interfaces.rest;
 
+import com.resolum.alivia.assets.domain.exceptions.AppliedVersionAhead;
 import com.resolum.alivia.assets.domain.exceptions.DeviceIncompatibleWithPlan;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotAssigned;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotAvailable;
@@ -481,6 +482,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(EdgeStillAssigned.class)
     public ProblemDetail handleEdgeStillAssigned(EdgeStillAssigned exception) {
         return problem(HttpStatus.CONFLICT, "edge_still_assigned", exception.getMessage(), List.of());
+    }
+
+    /** The edge reported a version that the table has not reached. */
+    @ExceptionHandler(AppliedVersionAhead.class)
+    public ProblemDetail handleAppliedVersionAhead(AppliedVersionAhead exception) {
+        return problem(HttpStatus.UNPROCESSABLE_ENTITY, "applied_version_ahead", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(EdgeWithoutInstallation.class)
