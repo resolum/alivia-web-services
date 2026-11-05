@@ -1,5 +1,7 @@
 package com.resolum.alivia.assets.domain.model.aggregates;
 
+import com.resolum.alivia.assets.domain.exceptions.EdgeNotAvailable;
+import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeType;
 
 import jakarta.persistence.Column;
@@ -36,6 +38,31 @@ boolean isActuatorEdge() {
 
     return this.edgeType.equals(EdgeType.ACTUATOR_EDGE);
 }
+
+    /** Only an {@code AVAILABLE} edge can be placed in an installation; any other status is a conflict. */
+    void ensureAssignable() {
+        if (!isAvailable()) {
+            throw new EdgeNotAvailable(getId(), getAssetStatus());
+        }
+    }
+
+    /** Leaves the edge {@code IN_USE} because it was placed in an installation. Untouched when it is not available. */
+    void placeInUse() {
+        ensureAssignable();
+        changeStatusTo(AssetStatus.IN_USE);
+    }
+
+    /** The edge left its installation: it is available again, unless it was in maintenance or broken. */
+    void release() {
+        if (getAssetStatus() == AssetStatus.IN_USE) {
+            changeStatusTo(AssetStatus.AVAILABLE);
+        }
+    }
+
+    /** Whether {@link #update} with this type would change the type of the edge (it also validates the type). */
+    public boolean changesTypeTo(String edgeType) {
+        return parseType(edgeType) != this.edgeType;
+    }
 public Edge update(String macAddress,String edgeType){
 
    var newType = parseType(edgeType);
