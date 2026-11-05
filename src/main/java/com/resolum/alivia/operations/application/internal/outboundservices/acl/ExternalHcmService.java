@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 /** Operations' view of HCM: which technicians work on a date and in which blocks. */
 @Service("operationsExternalHcmService")
@@ -20,5 +21,9 @@ public class ExternalHcmService {
         return hcmContextFacade.fetchTechniciansWorkingOn(date).stream()
                 .map(technician -> new TechnicianAvailability(technician.employeeId(), technician.fullName(), technician.shifts()))
                 .toList();
+    }
+
+    public Optional<Long> fetchTechnicianIdOfUser(Long userId) {
+        return hcmContextFacade.fetchTechnicianIdOfUser(userId);
     }
 }

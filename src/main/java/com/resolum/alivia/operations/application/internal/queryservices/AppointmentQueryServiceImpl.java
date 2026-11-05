@@ -7,6 +7,10 @@ import com.resolum.alivia.operations.domain.model.queries.GetMaintenanceOrdersBy
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalAvailabilityQuery;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalOrderByIdQuery;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalOrdersQuery;
+import com.resolum.alivia.operations.domain.model.queries.GetTechnicianIdByUserIdQuery;
+import com.resolum.alivia.operations.domain.model.queries.GetTechnicianOrdersQuery;
+import com.resolum.alivia.operations.domain.model.queries.GetTechnicianScheduleQuery;
+import com.resolum.alivia.operations.domain.model.valueobjects.WorkingDay;
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
 import com.resolum.alivia.operations.domain.model.valueobjects.AvailableBlock;
 import com.resolum.alivia.operations.domain.model.valueobjects.AvailableSlot;
@@ -78,6 +82,44 @@ public class AppointmentQueryServiceImpl implements AppointmentQueryService {
                 .filter(order -> query.draftId() == null || order.getDraftId().equals(query.draftId()))
                 .sorted(Comparator.comparing(Appointment::getScheduledDate).thenComparing(Appointment::getStartTime))
                 .toList();
+    }
+
+    /**
+     * Orders of the technician signed in as the user, scheduled and closed, by date and start. An account
+     * that is not an active technician has no orders.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<Appointment> handle(GetTechnicianOrdersQuery query) {
+        return hcm.fetchTechnicianIdOfUser(query.userId())
+                .map(appointments::findByTechnicianIdOrderByScheduledDateAscStartTimeAsc)
+                .orElse(List.of());
+    }
+
+    @Override
+    public Optional<Long> handle(GetTechnicianIdByUserIdQuery query) {
+        return hcm.fetchTechnicianIdOfUser(query.userId());
+    }
+
+    /** The technician's shifts per day, read from their work schedule in HCM. */
+    @Override
+    public List<WorkingDay> handle(GetTechnicianScheduleQuery query) {
+        if (query.from() == null || query.to() == null || query.to().isBefore(query.from())) {
+            throw new IllegalArgumentException("Choose a valid range of dates.");
+        }
+        if (query.from().plusDays(62).isBefore(query.to())) throw new IllegalArgumentException("The range can span up to 62 days.");
+        var technician = hcm.fetchTechnicianIdOfUser(query.userId());
+        if (technician.isEmpty()) return List.of();
+        var days = new ArrayList<WorkingDay>();
+        for (var date = query.from(); !date.isAfter(query.to()); date = date.plusDays(1)) {
+            final var day = date;
+            hcm.fetchTechniciansWorkingOn(day).stream()
+                    .filter(availability -> availability.technicianId().equals(technician.get()))
+                    .findFirst()
+                    .filter(availability -> !availability.shifts().isEmpty())
+                    .ifPresent(availability -> days.add(new WorkingDay(day, availability.shifts())));
+        }
+        return days;
     }
 
     @Override

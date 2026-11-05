@@ -28,4 +28,19 @@ public class ExternalSubscriptionsService {
                 .map(subscription -> subscription.draftId())
                 .filter(draftId -> !draftId.isBlank());
     }
+
+    /** The account's contracting request with an active service, if any: its home can report incidents. */
+    public Optional<String> fetchActiveDraftOf(Long userId) {
+        return subscriptionsContextFacade.fetchActiveDraftOfAccount(userId);
+    }
+
+    /** Returns to the family the payment held for a request that turned out not viable. */
+    public boolean releasePaymentOf(String draftId) {
+        return subscriptionsContextFacade.releaseConfigurationDraftPayment(draftId);
+    }
+
+    /** Captures the family's held amount after an approved installation. */
+    public boolean capturePaymentOf(String draftId) {
+        return subscriptionsContextFacade.captureConfigurationDraftPayment(draftId);
+    }
 }

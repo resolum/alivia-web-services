@@ -66,7 +66,9 @@ class MaintenanceOrderTest {
         appointments = mock(AppointmentRepository.class);
         incidents = mock(IncidentPersistenceRepository.class);
         var hcm = mock(ExternalHcmService.class);
-        commands = new AppointmentCommandServiceImpl(appointments, mock(EvaluationSlotHoldRepository.class), incidents, hcm, mock(ExternalSubscriptionsService.class), CLOCK);
+        var subscriptions = mock(ExternalSubscriptionsService.class);
+        when(subscriptions.capturePaymentOf(anyString())).thenReturn(true);
+        commands = new AppointmentCommandServiceImpl(appointments, mock(EvaluationSlotHoldRepository.class), incidents, hcm, subscriptions, CLOCK);
         when(hcm.fetchTechniciansWorkingOn(any())).thenReturn(List.of(ANA));
         when(appointments.findByScheduledDateAndStatus(any(), eq(AppointmentStatus.SCHEDULED))).thenReturn(List.of());
         when(appointments.saveAndFlush(any(Appointment.class))).thenAnswer(invocation -> invocation.getArgument(0));

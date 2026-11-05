@@ -4,6 +4,8 @@ import com.resolum.alivia.subscriptions.application.internal.outboundservices.ac
 import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationDraftNotFound;
 import com.resolum.alivia.subscriptions.domain.model.entities.ConfigurationDraft;
 import com.resolum.alivia.subscriptions.domain.model.queries.GetContractingTrackingQuery;
+import com.resolum.alivia.subscriptions.domain.model.queries.GetMyContractingQuery;
+import com.resolum.alivia.subscriptions.domain.model.valueobjects.MyContracting;
 import com.resolum.alivia.subscriptions.domain.model.queries.GetPlanByCodeQuery;
 import com.resolum.alivia.subscriptions.domain.model.queries.QuotePlanQuery;
 import com.resolum.alivia.subscriptions.domain.model.valueobjects.ContractingStage;
@@ -53,6 +55,32 @@ public class ContractingTrackingQueryServiceImpl implements ContractingTrackingQ
         return new ContractingTracking(draft.getId(), stageOf(draft, evaluation, installation), draft.getPlanCode(),
                 plan.getName(), draft.getRooms().size(), devices, quote.map(PlanQuote::totalMonthlyAmount).orElse(null),
                 quote.map(PlanQuote::currency).orElse("PEN"), evaluation, installation, draft.getConfirmedAt());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<MyContracting> handle(GetMyContractingQuery query) {
+        if (query.userId() == null) return Optional.empty();
+        // A family may have started another request after paying (choosing a plan again before signing in):
+        // the most advanced one decides, so an active service is never hidden behind a newer, unpaid draft.
+        var requests = drafts.findByOwnerUserIdOrderByUpdatedAtDesc(query.userId());
+        var paid = requests.stream().filter(ConfigurationDraft::isPaid).map(this::myContractingOf).toList();
+        return paid.stream().filter(MyContracting::isActive).findFirst()
+                .or(() -> paid.stream().filter(mine -> !ContractingStage.NOT_VIABLE.name().equals(mine.stage())).findFirst())
+                .or(() -> requests.stream().filter(draft -> !draft.isPaid()).findFirst().map(this::myContractingOf))
+                .or(() -> paid.stream().findFirst());
+    }
+
+    /** A request still in configuration until its payment is held; afterwards, the stage of its tracking. */
+    MyContracting myContractingOf(ConfigurationDraft draft) {
+        var planCode = draft.getPlanCode().name();
+        if (!draft.isPaid()) {
+            return new MyContracting(draft.getId(), MyContracting.CONFIGURATION, planCode, draft.getBillingCycle(), false);
+        }
+        var visits = operations.fetchContractingVisits(draft.getId());
+        var stage = stageOf(draft, visitOf(visits, TechnicalVisit.EVALUATION), visitOf(visits, TechnicalVisit.INSTALLATION));
+        return new MyContracting(draft.getId(), stage.name(), planCode, draft.getBillingCycle(),
+                draft.getPaymentStatus() == com.resolum.alivia.subscriptions.domain.model.valueobjects.PaymentStatus.SUCCEEDED);
     }
 
     /**

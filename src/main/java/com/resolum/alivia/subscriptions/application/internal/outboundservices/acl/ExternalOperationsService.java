@@ -1,5 +1,6 @@
 package com.resolum.alivia.subscriptions.application.internal.outboundservices.acl;
 
+import com.resolum.alivia.subscriptions.domain.model.valueobjects.ServicedHome;
 import com.resolum.alivia.operations.interfaces.acl.OperationsContextFacade;
 import com.resolum.alivia.subscriptions.domain.model.valueobjects.HiringStage;
 import com.resolum.alivia.subscriptions.domain.model.valueobjects.TechnicalVisit;
@@ -37,8 +38,25 @@ public class ExternalOperationsService {
                 .toList();
     }
 
+    /** The family confirmed: the technician who evaluated the home gets the installation order. */
+    public void openInstallation(String draftId) {
+        operationsContextFacade.openInstallationOfConfirmedRequest(draftId);
+    }
+
     private static HiringStage toStage(OperationsContextFacade.ScheduledVisit visit) {
         if (visit.installationApproved()) return HiringStage.COMPLETED;
         return "INSTALLATION".equals(visit.serviceType()) ? HiringStage.INSTALLATION : HiringStage.TECHNICAL_EVALUATION;
+    }
+
+    /** Homes whose installation closed approved, only those the technician served when {@code technicianUserId} is given. */
+    public List<ServicedHome> fetchInstalledHomes(Long technicianUserId) {
+        return operationsContextFacade.fetchInstalledHomes(technicianUserId).stream()
+                .map(home -> new ServicedHome(home.draftId(), null, home.contactName(), home.contactPhone(), home.directions(),
+                        home.installedAt(), home.installedBy(),
+                        home.devices().stream().map(device -> new ServicedHome.Device(device.alias(), device.macAddress(), device.type())).toList(),
+                        home.orders().stream().map(order -> new ServicedHome.Order(order.id(), order.code(), order.serviceType(),
+                                order.status(), order.date(), order.startTime(), order.endTime(), order.technicianName(),
+                                order.startedAt(), order.completedAt(), order.incidentCode(), order.incidentStatus())).toList()))
+                .toList();
     }
 }

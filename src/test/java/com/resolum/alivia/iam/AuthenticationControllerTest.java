@@ -188,14 +188,20 @@ class AuthenticationControllerTest {
         @Test
         void verifyEmailReturnsActiveAccount() throws Exception {
                 var user = user(7L, "maria.lopez@example.com", UserStatus.ACTIVE);
-                when(commandService.handle(any(VerifyEmailCommand.class))).thenReturn(user);
+                // Verifying opens the family's session, which carries its role.
+                when(user.getAccessRole()).thenReturn(AccessRole.CAREGIVER);
+                when(commandService.handle(any(VerifyEmailCommand.class)))
+                                .thenReturn(new AuthSession(user, "access-token", "refresh-token", 900L));
 
                 mvc.perform(post(VERIFY_EMAIL_PATH)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"token\":\"raw-token\"}"))
                                 .andExpect(status().isOk())
-                                .andExpect(jsonPath("$.accountId").value("acc-7"))
-                                .andExpect(jsonPath("$.status").value("ACTIVE"));
+                                .andExpect(jsonPath("$.accessToken").value("access-token"))
+                                .andExpect(jsonPath("$.refreshToken").value("refresh-token"))
+                                .andExpect(jsonPath("$.user.id").value("acc-7"))
+                                .andExpect(jsonPath("$.user.status").value("ACTIVE"))
+                                .andExpect(jsonPath("$.user.role").value("CAREGIVER"));
         }
 
         @Test

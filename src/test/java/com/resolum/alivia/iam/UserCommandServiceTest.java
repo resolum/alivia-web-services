@@ -292,13 +292,16 @@ class UserCommandServiceTest {
                         assignId(invocation.getArgument(0), 42L);
                         return invocation.getArgument(0);
                 });
+                stubSessionTokens();
 
                 var result = service.handle(new VerifyEmailCommand(RAW_TOKEN));
 
-                assertEquals(UserStatus.ACTIVE, result.getStatus());
-                assertTrue(result.getEmailVerified());
-                assertNull(result.getPendingEmailVerificationToken());
-                verify(userRepository).save(user);
+                assertEquals(UserStatus.ACTIVE, result.user().getStatus());
+                assertTrue(result.user().getEmailVerified());
+                assertNull(result.user().getPendingEmailVerificationToken());
+                assertEquals("access-token", result.accessToken());
+                assertEquals("refresh-raw", result.refreshToken());
+                verify(userRepository, times(2)).save(user);
         }
 
         @Test
@@ -345,13 +348,14 @@ class UserCommandServiceTest {
                                 .thenReturn(Optional.of(user), Optional.empty());
                 when(tokenService.matches(RAW_TOKEN, TOKEN_HASH)).thenReturn(true);
                 when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+                stubSessionTokens();
 
                 service.handle(new VerifyEmailCommand(RAW_TOKEN));
 
                 assertThrows(InvalidVerificationTokenException.class,
                                 () -> service.handle(new VerifyEmailCommand(RAW_TOKEN)));
                 assertEquals(UserStatus.ACTIVE, user.getStatus());
-                verify(userRepository, times(1)).save(any(User.class));
+                verify(userRepository, times(2)).save(any(User.class));
         }
 
         @Test

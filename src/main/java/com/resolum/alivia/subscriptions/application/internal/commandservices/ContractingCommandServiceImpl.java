@@ -1,6 +1,11 @@
 package com.resolum.alivia.subscriptions.application.internal.commandservices;
 
+import com.resolum.alivia.subscriptions.application.internal.outboundservices.acl.ExternalOperationsService;
 import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationDraftNotFound;
+import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationDraftOwnedByAnotherAccount;
+import com.resolum.alivia.subscriptions.domain.model.commands.ClaimConfigurationDraftCommand;
+import com.resolum.alivia.subscriptions.domain.model.queries.GetMyContractingQuery;
+import com.resolum.alivia.subscriptions.domain.model.valueobjects.MyContracting;
 import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationNotReadyToConfirm;
 import com.resolum.alivia.subscriptions.domain.model.commands.ConfirmConfigurationCommand;
 import com.resolum.alivia.subscriptions.domain.model.queries.GetContractingTrackingQuery;
@@ -19,28 +24,45 @@ import java.time.Instant;
 public class ContractingCommandServiceImpl implements ContractingCommandService {
     private final ConfigurationDraftRepository drafts;
     private final ContractingTrackingQueryService tracking;
+    private final ExternalOperationsService operations;
     private final Clock clock;
 
     public ContractingCommandServiceImpl(ConfigurationDraftRepository drafts, ContractingTrackingQueryService tracking,
-                                         Clock clock) {
+                                         ExternalOperationsService operations, Clock clock) {
         this.drafts = drafts;
         this.tracking = tracking;
+        this.operations = operations;
         this.clock = clock;
     }
 
     /**
      * Records that the family reviewed and confirmed the configuration the technician validated, which moves
-     * the request to the installation. Confirming an already confirmed request answers its current tracking.
+     * the request to the installation: the technician who evaluated the home gets the installation order.
+     * Confirming an already confirmed request opens that order if it is missing and answers its tracking.
      */
     @Override
     @Transactional
     public ContractingTracking handle(ConfirmConfigurationCommand command) {
         var draft = drafts.findById(command.draftId()).orElseThrow(() -> new ConfigurationDraftNotFound(command.draftId()));
-        var current = tracking.handle(new GetContractingTrackingQuery(draft.getId()));
-        if (draft.isConfirmed()) return current;
-        if (current.stage() != ContractingStage.CONFIRMATION) throw new ConfigurationNotReadyToConfirm();
-        draft.confirm(Instant.now(clock));
-        drafts.save(draft);
+        if (!draft.isConfirmed()) {
+            var current = tracking.handle(new GetContractingTrackingQuery(draft.getId()));
+            if (current.stage() != ContractingStage.CONFIRMATION) throw new ConfigurationNotReadyToConfirm();
+            draft.confirm(Instant.now(clock));
+            drafts.save(draft);
+        }
+        operations.openInstallation(draft.getId());
         return tracking.handle(new GetContractingTrackingQuery(draft.getId()));
+    }
+
+    @Override
+    @Transactional
+    public MyContracting handle(ClaimConfigurationDraftCommand command) {
+        var draft = drafts.findById(command.draftId()).orElseThrow(() -> new ConfigurationDraftNotFound(command.draftId()));
+        if (!draft.claimBy(command.userId())) throw new ConfigurationDraftOwnedByAnotherAccount();
+        drafts.save(draft);
+        return tracking.handle(new GetMyContractingQuery(command.userId()))
+                .filter(mine -> mine.draftId().equals(draft.getId()))
+                .orElseGet(() -> new MyContracting(draft.getId(), MyContracting.CONFIGURATION, draft.getPlanCode().name(),
+                        draft.getBillingCycle(), false));
     }
 }

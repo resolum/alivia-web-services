@@ -19,15 +19,24 @@ import com.resolum.alivia.operations.domain.exceptions.TechnicianNotEligible;
 import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
 import com.resolum.alivia.operations.domain.model.commands.AssignTechnicianCommand;
 import com.resolum.alivia.operations.domain.model.commands.CompleteMaintenanceOrderCommand;
+import com.resolum.alivia.operations.domain.model.commands.BookIncidentVisitCommand;
+import com.resolum.alivia.operations.domain.model.commands.ConfirmIncidentVisitCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateMaintenanceOrderCommand;
+import com.resolum.alivia.operations.domain.model.commands.EvaluateIncidentCommand;
 import com.resolum.alivia.operations.domain.model.commands.StartMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateTechnicalOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.ReassignTechnicianCommand;
+import com.resolum.alivia.operations.domain.model.commands.OpenInstallationCommand;
 import com.resolum.alivia.operations.domain.model.commands.RecordEvaluationResultCommand;
 import com.resolum.alivia.operations.domain.model.commands.RecordInstallationResultCommand;
 import com.resolum.alivia.operations.domain.model.commands.ScheduleAppointmentCommand;
+import com.resolum.alivia.operations.domain.model.commands.RegisterInstalledDeviceCommand;
+import com.resolum.alivia.operations.domain.model.commands.RemoveInstalledDeviceCommand;
+import com.resolum.alivia.operations.domain.model.commands.StartTechnicalOrderCommand;
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
 import com.resolum.alivia.operations.domain.model.valueobjects.AvailableBlock;
+import com.resolum.alivia.operations.domain.model.valueobjects.InstalledDevice;
+import com.resolum.alivia.operations.domain.model.valueobjects.InstallationResult;
 import com.resolum.alivia.operations.domain.model.valueobjects.MaintenanceReport;
 import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
 import com.resolum.alivia.operations.domain.model.valueobjects.SlotId;
@@ -45,14 +54,22 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class AppointmentCommandServiceImpl implements AppointmentCommandService {
     /** How many blocks a conflict suggests instead of the one that ran out. */
     static final int ALTERNATIVES = 3;
+    /** Homes are in Lima, so an installation opened at the home takes the local time. */
+    static final ZoneId HOME_ZONE = ZoneId.of("America/Lima");
+    /** Latest start of an installation opened at the home, so its window stays within the day. */
+    static final LocalTime LAST_INSTALLATION_START = LocalTime.of(23, 58);
 
     private final AppointmentRepository appointments;
     private final EvaluationSlotHoldRepository holds;
@@ -76,8 +93,11 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
     @Transactional
     public Appointment handle(ScheduleAppointmentCommand command) {
         if (!subscriptions.isReadyForEvaluation(command.draftId())) throw new DraftNotReadyForAppointment();
-        if (appointments.existsByDraftIdAndServiceTypeAndStatus(command.draftId(), ServiceType.EVALUATION,
-                AppointmentStatus.SCHEDULED)) {
+        var booked = appointments.findFirstByDraftIdAndServiceTypeAndStatus(command.draftId(), ServiceType.EVALUATION,
+                AppointmentStatus.SCHEDULED);
+        if (booked.isPresent()) {
+            // A repeated request for the same visit (a retry or a double submit) gets the booking it already made.
+            if (isSameVisit(booked.get(), command)) return booked.get();
             throw new AppointmentAlreadyExists();
         }
         var first = AppointmentQueryServiceImpl.firstBookableDate(clock);
@@ -197,16 +217,60 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
     @Transactional
     public Appointment handle(RecordEvaluationResultCommand command) {
         var order = appointments.findById(command.orderId()).orElseThrow(() -> new TechnicalOrderNotFound(command.orderId()));
-        order.recordEvaluationResult(command.result(), command.notes());
+        var now = Instant.now(clock);
+        order.recordEvaluationResult(command.result(), command.notes(), now);
+        // A home that is not viable closes the request: the payment the family authorized is released, so the
+        // held amount returns to the card. If Stripe cannot release it, the result is not recorded and the
+        // technician retries.
+        if (!command.result().isViable()) subscriptions.releasePaymentOf(order.getDraftId());
         return appointments.saveAndFlush(order);
+    }
+
+    /**
+     * The family confirmed the configuration after a viable evaluation: the installation order opens for the
+     * technician who evaluated the home, from the current minute, so it appears in their orders. Confirming
+     * again returns the installation already open.
+     */
+    @Override
+    @Transactional
+    public Optional<Appointment> handle(OpenInstallationCommand command) {
+        if (command.draftId() == null || command.draftId().isBlank()) return Optional.empty();
+        var open = appointments.findFirstByDraftIdAndServiceTypeAndStatus(command.draftId(), ServiceType.INSTALLATION,
+                AppointmentStatus.SCHEDULED);
+        if (open.isPresent()) return open;
+        return appointments.findFirstByDraftIdAndServiceTypeAndStatus(command.draftId(), ServiceType.EVALUATION,
+                        AppointmentStatus.COMPLETED)
+                .filter(evaluation -> evaluation.getEvaluationResult() != null && evaluation.getEvaluationResult().isViable())
+                .map(evaluation -> openInstallation(evaluation, Instant.now(clock)));
+    }
+
+    private Appointment openInstallation(Appointment evaluation, Instant now) {
+        var local = now.atZone(HOME_ZONE);
+        var today = local.toLocalDate();
+        var taken = appointments.findByTechnicianIdOrderByScheduledDateAscStartTimeAsc(evaluation.getTechnicianId())
+                .stream().filter(order -> order.getScheduledDate().equals(today)).map(Appointment::getStartTime)
+                .collect(Collectors.toSet());
+        var start = local.toLocalTime().truncatedTo(ChronoUnit.MINUTES);
+        if (start.isAfter(LAST_INSTALLATION_START)) start = LAST_INSTALLATION_START;
+        while (taken.contains(start)) start = start.plusMinutes(1);
+        var end = start.plus(ServiceType.INSTALLATION.window());
+        if (end.isBefore(start)) end = LocalTime.of(23, 59);
+        var installation = new Appointment(evaluation.getDraftId(), ServiceType.INSTALLATION, today,
+                new TimeRange(start, end), evaluation.getTechnicianId(), evaluation.getTechnicianName(),
+                evaluation.getContactName(), evaluation.getContactPhone(), evaluation.getDirections(), now);
+        return appointments.saveAndFlush(installation);
     }
 
     @Override
     @Transactional
     public Appointment handle(RecordInstallationResultCommand command) {
         var order = appointments.findById(command.orderId()).orElseThrow(() -> new TechnicalOrderNotFound(command.orderId()));
-        order.recordInstallationResult(command.result(), command.notes());
-        return appointments.saveAndFlush(order);
+        order.recordInstallationResult(command.result(), command.notes(), Instant.now(clock));
+        var completed = appointments.saveAndFlush(order);
+        if (command.result() == InstallationResult.APPROVED && !subscriptions.capturePaymentOf(order.getDraftId())) {
+            throw new IllegalStateException("La preautorización de la contratación no está disponible para captura.");
+        }
+        return completed;
     }
 
     /**
@@ -249,6 +313,80 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
     }
 
     /**
+     * Reserves the block and technician the family chose when reporting: the order occupies the technician's
+     * time, and the incident stays registered until the technician evaluates it.
+     */
+    @Override
+    @Transactional
+    public Appointment handle(BookIncidentVisitCommand command) {
+        var slot = command.slotId();
+        if (slot == null || command.technicianId() == null) {
+            throw new IllegalArgumentException("Choose the day, the window and the technician of the visit.");
+        }
+        var incident = incidents.findById(command.incidentId())
+                .orElseThrow(() -> new IncidentNotFound(command.incidentId()));
+        requireMaintenanceBlock(slot);
+        var installation = appointments.findFirstByDraftIdAndServiceTypeAndStatus(incident.getDraftId(),
+                ServiceType.INSTALLATION, AppointmentStatus.COMPLETED).orElseThrow(IncidentNotAllowed::new);
+        var earliest = AppointmentQueryServiceImpl.firstBookableDate(clock);
+        var technician = candidates(slot.date(), slot.window(), null).stream()
+                .filter(candidate -> candidate.technicianId().equals(command.technicianId()))
+                .findFirst()
+                .orElseThrow(() -> new SlotUnavailable(alternatives(ServiceType.MAINTENANCE, earliest, slot)));
+        try {
+            return appointments.saveAndFlush(new Appointment(incident.getDraftId(), ServiceType.MAINTENANCE,
+                    incident.getId(), slot.date(), slot.window(), technician.technicianId(), technician.fullName(),
+                    installation.getContactName(), installation.getContactPhone(), installation.getDirections(),
+                    Instant.now(clock)));
+        } catch (DataIntegrityViolationException exception) {
+            throw new SlotUnavailable(alternatives(ServiceType.MAINTENANCE, earliest, slot));
+        }
+    }
+
+    @Override
+    @Transactional
+    public Appointment handle(EvaluateIncidentCommand command) {
+        var order = scheduledMaintenance(command.orderId());
+        var incident = incidents.findById(order.getIncidentId())
+                .orElseThrow(() -> new IncidentNotFound(order.getIncidentId()));
+        incident.startEvaluation(Instant.now(clock));
+        incidents.save(incident);
+        return order;
+    }
+
+    @Override
+    @Transactional
+    public Appointment handle(ConfirmIncidentVisitCommand command) {
+        var order = scheduledMaintenance(command.orderId());
+        var incident = incidents.findById(order.getIncidentId())
+                .orElseThrow(() -> new IncidentNotFound(order.getIncidentId()));
+        incident.confirmVisit(Instant.now(clock));
+        incidents.save(incident);
+        return order;
+    }
+
+    private Appointment scheduledMaintenance(Long orderId) {
+        var order = appointments.findById(orderId).orElseThrow(() -> new TechnicalOrderNotFound(orderId));
+        if (order.getServiceType() != ServiceType.MAINTENANCE || order.getIncidentId() == null) {
+            throw new IllegalArgumentException("Only maintenance orders attend an incident.");
+        }
+        if (order.getStatus() != AppointmentStatus.SCHEDULED) throw new TechnicalOrderNotScheduled();
+        return order;
+    }
+
+    private void requireMaintenanceBlock(SlotId slot) {
+        if (slot.window().duration().compareTo(ServiceType.MAINTENANCE.window()) != 0) {
+            throw new IllegalArgumentException("A maintenance block lasts %d hours."
+                    .formatted(ServiceType.MAINTENANCE.window().toHours()));
+        }
+        if (slot.date().isBefore(AppointmentQueryServiceImpl.firstBookableDate(clock))
+                || slot.date().isAfter(AppointmentQueryServiceImpl.lastBookableDate(ServiceType.MAINTENANCE, clock))) {
+            throw new IllegalArgumentException("A maintenance visit must be booked between tomorrow and the next %d days."
+                    .formatted(ServiceType.MAINTENANCE.daysAhead()));
+        }
+    }
+
+    /**
      * The technician arrived for a scheduled maintenance visit: its incident moves to IN_PROGRESS. The order
      * stays scheduled until its report is recorded.
      */
@@ -264,7 +402,39 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
                 .orElseThrow(() -> new IncidentNotFound(order.getIncidentId()));
         incident.startAttention(Instant.now(clock));
         incidents.save(incident);
-        return order;
+        order.start(Instant.now(clock));
+        return appointments.saveAndFlush(order);
+    }
+
+    /**
+     * The technician arrived at the home: the order is in progress from now. A maintenance order also puts
+     * its incident in attention.
+     */
+    @Override
+    @Transactional
+    public Appointment handle(StartTechnicalOrderCommand command) {
+        var order = appointments.findById(command.orderId()).orElseThrow(() -> new TechnicalOrderNotFound(command.orderId()));
+        if (order.getServiceType() == ServiceType.MAINTENANCE) {
+            return handle(new StartMaintenanceOrderCommand(command.orderId()));
+        }
+        order.start(Instant.now(clock));
+        return appointments.saveAndFlush(order);
+    }
+
+    @Override
+    @Transactional
+    public Appointment handle(RegisterInstalledDeviceCommand command) {
+        var order = appointments.findById(command.orderId()).orElseThrow(() -> new TechnicalOrderNotFound(command.orderId()));
+        order.registerDevice(new InstalledDevice(command.alias(), command.macAddress(), command.type()));
+        return appointments.saveAndFlush(order);
+    }
+
+    @Override
+    @Transactional
+    public Appointment handle(RemoveInstalledDeviceCommand command) {
+        var order = appointments.findById(command.orderId()).orElseThrow(() -> new TechnicalOrderNotFound(command.orderId()));
+        order.removeDevice(command.macAddress());
+        return appointments.saveAndFlush(order);
     }
 
     /**
@@ -340,6 +510,13 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
 
     private List<TechnicianOccupancy> visitsOf(LocalDate date, Appointment ignored) {
         return occupancyOf(date, ignored, null);
+    }
+
+    /** Whether {@code appointment} is the visit {@code command} asks for: same day, window and technician. */
+    private static boolean isSameVisit(Appointment appointment, ScheduleAppointmentCommand command) {
+        return appointment.getScheduledDate().equals(command.date())
+                && appointment.window().equals(new TimeRange(command.startTime(), command.endTime()))
+                && java.util.Objects.equals(appointment.getTechnicianId(), command.technicianId());
     }
 
     /** Scheduled orders and windows held by families, without {@code ignored} and the hold of {@code ownDraftId}. */

@@ -1,0 +1,173 @@
+-- V9: tables and columns that arrived with the technical-order flow (AP-76) and were never migrated.
+--
+-- V1 to V8 build a database that Hibernate's ddl-auto=validate (the production setting) rejects:
+-- "missing table [appointment_assignments]". This file adds, for Operations and Subscriptions, exactly what
+-- Hibernate generates from their entities today. It changes no code; it was captured by running the
+-- application with ddl-auto=update on a database built only by V1 to V8.
+--
+-- Everything is IF NOT EXISTS, so databases where ddl-auto=update already created these objects are
+-- not affected.
+--
+-- appointments.service_type is mandatory. The appointments that exist before this migration were
+-- booked as technical evaluations, so they take EVALUATION; the default is then dropped so new rows
+-- must state their type, as the entity requires.
+
+-- =============================================================================
+-- Subscriptions
+-- =============================================================================
+
+ALTER TABLE configuration_drafts
+    ADD COLUMN IF NOT EXISTS confirmed_at timestamp(6) with time zone;
+
+ALTER TABLE configuration_drafts
+    ADD COLUMN IF NOT EXISTS owner_user_id bigint;
+
+ALTER TABLE subscriptions
+    ADD COLUMN IF NOT EXISTS draft_id character varying(36);
+
+-- =============================================================================
+-- Operations: appointments
+-- =============================================================================
+
+ALTER TABLE appointments
+    ADD COLUMN IF NOT EXISTS service_type character varying(16) NOT NULL DEFAULT 'EVALUATION'
+        CONSTRAINT appointments_service_type_check CHECK (service_type IN ('EVALUATION', 'INSTALLATION', 'MAINTENANCE'));
+
+ALTER TABLE appointments
+    ALTER COLUMN service_type DROP DEFAULT;
+
+ALTER TABLE appointments
+    ADD COLUMN IF NOT EXISTS started_at timestamp(6) with time zone;
+
+ALTER TABLE appointments
+    ADD COLUMN IF NOT EXISTS completed_at timestamp(6) with time zone;
+
+ALTER TABLE appointments
+    ADD COLUMN IF NOT EXISTS completion_notes character varying(300);
+
+ALTER TABLE appointments
+    ADD COLUMN IF NOT EXISTS evaluation_result character varying(24)
+        CONSTRAINT appointments_evaluation_result_check
+            CHECK (evaluation_result IN ('VIABLE', 'VIABLE_WITH_ADAPTATION', 'NOT_VIABLE'));
+
+ALTER TABLE appointments
+    ADD COLUMN IF NOT EXISTS installation_result character varying(16)
+        CONSTRAINT appointments_installation_result_check CHECK (installation_result IN ('APPROVED', 'REJECTED'));
+
+ALTER TABLE appointments
+    ADD COLUMN IF NOT EXISTS test_result character varying(16)
+        CONSTRAINT appointments_test_result_check CHECK (test_result IN ('PASSED', 'FAILED'));
+
+ALTER TABLE appointments
+    ADD COLUMN IF NOT EXISTS incident_id bigint;
+
+ALTER TABLE appointments
+    ADD COLUMN IF NOT EXISTS diagnosis character varying(500);
+
+ALTER TABLE appointments
+    ADD COLUMN IF NOT EXISTS maintenance_performed character varying(500);
+
+ALTER TABLE appointments
+    ADD COLUMN IF NOT EXISTS resolution character varying(500);
+
+CREATE TABLE IF NOT EXISTS appointment_assignments (
+    appointment_id bigint NOT NULL,
+    assignment_order integer NOT NULL,
+    technician_id bigint NOT NULL,
+    technician_name character varying(120) NOT NULL,
+    scheduled_date date NOT NULL,
+    start_time time(0) without time zone NOT NULL,
+    end_time time(0) without time zone NOT NULL,
+    reason character varying(16) NOT NULL,
+    note character varying(300),
+    assigned_at timestamp(6) with time zone NOT NULL,
+    PRIMARY KEY (appointment_id, assignment_order),
+    CONSTRAINT appointment_assignments_assignment_order_check CHECK (assignment_order >= 0),
+    CONSTRAINT appointment_assignments_reason_check CHECK (reason IN ('BOOKED', 'ASSIGNED', 'REASSIGNED')),
+    CONSTRAINT fk_appointment_assignments_appointment
+        FOREIGN KEY (appointment_id) REFERENCES appointments (id)
+);
+
+CREATE TABLE IF NOT EXISTS appointment_installed_devices (
+    appointment_id bigint NOT NULL,
+    device_order integer NOT NULL,
+    alias character varying(60) NOT NULL,
+    mac_address character varying(17) NOT NULL,
+    device_type character varying(16) NOT NULL,
+    PRIMARY KEY (appointment_id, device_order),
+    CONSTRAINT appointment_installed_devices_device_order_check CHECK (device_order >= 0),
+    CONSTRAINT appointment_installed_devices_device_type_check
+        CHECK (device_type IN ('MICROPHONE', 'ACTUATOR', 'SENSOR', 'HUB')),
+    CONSTRAINT fk_appointment_installed_devices_appointment
+        FOREIGN KEY (appointment_id) REFERENCES appointments (id)
+);
+
+-- =============================================================================
+-- Operations: evaluation slot holds
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS evaluation_slot_holds (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    draft_id character varying(36) NOT NULL,
+    technician_id bigint NOT NULL,
+    technician_name character varying(120) NOT NULL,
+    scheduled_date date NOT NULL,
+    start_time time(0) without time zone NOT NULL,
+    end_time time(0) without time zone NOT NULL,
+    expires_at timestamp(6) with time zone NOT NULL,
+    CONSTRAINT uk_evaluation_slot_holds_draft UNIQUE (draft_id),
+    CONSTRAINT uk_evaluation_slot_holds_technician_window UNIQUE (technician_id, scheduled_date, start_time)
+);
+
+CREATE INDEX IF NOT EXISTS idx_evaluation_slot_holds_date
+    ON evaluation_slot_holds (scheduled_date);
+
+-- =============================================================================
+-- Operations: support incidents
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS support_incidents (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    household_id character varying(36) NOT NULL,
+    draft_id character varying(36) NOT NULL,
+    device_id bigint NOT NULL,
+    reported_by bigint NOT NULL,
+    description character varying(500) NOT NULL,
+    severity character varying(16) NOT NULL,
+    status character varying(16) NOT NULL,
+    resolution character varying(500),
+    CONSTRAINT support_incidents_severity_check CHECK (severity IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
+    CONSTRAINT support_incidents_status_check CHECK (status IN ('OPEN', 'SCHEDULED', 'IN_PROGRESS', 'RESOLVED'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_support_incidents_household_device_status
+    ON support_incidents (household_id, device_id, status);
+
+CREATE TABLE IF NOT EXISTS support_incident_evidences (
+    incident_id bigint NOT NULL,
+    evidence_order integer NOT NULL,
+    url character varying(500) NOT NULL,
+    public_id character varying(200) NOT NULL,
+    attached_at timestamp(6) with time zone NOT NULL,
+    PRIMARY KEY (incident_id, evidence_order),
+    CONSTRAINT support_incident_evidences_evidence_order_check CHECK (evidence_order >= 0),
+    CONSTRAINT fk_support_incident_evidences_incident
+        FOREIGN KEY (incident_id) REFERENCES support_incidents (id)
+);
+
+CREATE TABLE IF NOT EXISTS support_incident_status_histories (
+    incident_id bigint NOT NULL,
+    change_order integer NOT NULL,
+    status character varying(16) NOT NULL,
+    changed_at timestamp(6) with time zone NOT NULL,
+    PRIMARY KEY (incident_id, change_order),
+    CONSTRAINT support_incident_status_histories_change_order_check CHECK (change_order >= 0),
+    CONSTRAINT support_incident_status_histories_status_check
+        CHECK (status IN ('OPEN', 'SCHEDULED', 'IN_PROGRESS', 'RESOLVED')),
+    CONSTRAINT fk_support_incident_status_histories_incident
+        FOREIGN KEY (incident_id) REFERENCES support_incidents (id)
+);

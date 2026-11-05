@@ -57,6 +57,19 @@ public class HcmContextFacadeImpl implements HcmContextFacade {
                 .toList();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Long> fetchTechnicianIdOfUser(Long userId) {
+        if (userId == null) return Optional.empty();
+        return employees.findAll().stream()
+                .filter(employee -> userId.equals(employee.getUserId())
+                        && employee.belongsTo(businessId)
+                        && employee.getRole() == EmployeeRole.TECH
+                        && employee.getStatus() == EmployeeStatus.ACTIVE)
+                .map(Employee::getId)
+                .findFirst();
+    }
+
     private static Optional<WorkSchedule> scheduleOf(Employee employee, List<WorkSchedule> activeSchedules) {
         return activeSchedules.stream().filter(schedule -> schedule.getEmployeeId().equals(employee.getId())).findFirst();
     }

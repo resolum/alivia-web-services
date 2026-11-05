@@ -1,5 +1,18 @@
 package com.resolum.alivia.shared.interfaces.rest;
 
+import com.resolum.alivia.assets.domain.exceptions.DeviceIncompatibleWithPlan;
+import com.resolum.alivia.assets.domain.exceptions.DeviceNotAssigned;
+import com.resolum.alivia.assets.domain.exceptions.DeviceNotAvailable;
+import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
+import com.resolum.alivia.assets.domain.exceptions.DeviceStillAssigned;
+import com.resolum.alivia.assets.domain.exceptions.EdgeNotFound;
+import com.resolum.alivia.assets.domain.exceptions.InstallationAccessDenied;
+import com.resolum.alivia.assets.domain.exceptions.InstallationAlreadyRegistered;
+import com.resolum.alivia.assets.domain.exceptions.InstallationNotActive;
+import com.resolum.alivia.assets.domain.exceptions.InstallationNotFound;
+import com.resolum.alivia.assets.domain.exceptions.InvalidAssetStatusTransition;
+import com.resolum.alivia.assets.domain.exceptions.InvalidMacAddress;
+import com.resolum.alivia.assets.domain.exceptions.MacAddressAlreadyExists;
 import com.resolum.alivia.hcm.domain.exceptions.EmployeeNotFound;
 import com.resolum.alivia.hcm.domain.exceptions.EmployeeNotInBusiness;
 import com.resolum.alivia.hcm.domain.exceptions.ContractNotActive;
@@ -33,6 +46,7 @@ import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationResendTooSoonException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationTokenExpiredException;
 import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationDraftNotFound;
+import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationDraftOwnedByAnotherAccount;
 import com.resolum.alivia.subscriptions.domain.exceptions.ConfigurationNotReadyToConfirm;
 import com.resolum.alivia.subscriptions.domain.exceptions.InvalidStripeWebhookSignature;
 import com.resolum.alivia.subscriptions.domain.exceptions.PaymentRejected;
@@ -48,10 +62,14 @@ import com.resolum.alivia.operations.domain.exceptions.IncidentNotOpen;
 import com.resolum.alivia.operations.domain.exceptions.IncidentNotScheduled;
 import com.resolum.alivia.operations.domain.exceptions.IncidentNotAllowed;
 import com.resolum.alivia.operations.domain.exceptions.IncidentNotFound;
+import com.resolum.alivia.operations.domain.exceptions.PhotoUploadUnavailable;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotInEvaluation;
 import com.resolum.alivia.operations.domain.exceptions.SlotUnavailable;
 import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderAlreadyExists;
 import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotFound;
 import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotScheduled;
+import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderAccessDenied;
+import com.resolum.alivia.operations.domain.exceptions.InstalledDeviceAlreadyRegistered;
 import com.resolum.alivia.operations.domain.exceptions.TechnicianNotEligible;
 import com.resolum.alivia.operations.interfaces.rest.transform.TechnicalOrderResourceFromEntityAssembler;
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
@@ -79,6 +97,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.ErrorResponse;
@@ -165,6 +184,16 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.CONFLICT, "incident_not_scheduled", exception.getMessage(), List.of());
     }
 
+    @ExceptionHandler(IncidentNotInEvaluation.class)
+    public ProblemDetail handleIncidentNotInEvaluation(IncidentNotInEvaluation exception) {
+        return problem(HttpStatus.CONFLICT, "incident_not_in_evaluation", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(PhotoUploadUnavailable.class)
+    public ProblemDetail handlePhotoUploadUnavailable(PhotoUploadUnavailable exception) {
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, "photo_upload_unavailable", exception.getMessage(), List.of());
+    }
+
     @ExceptionHandler(IncidentNotFound.class)
     public ProblemDetail handleIncidentNotFound(IncidentNotFound exception) {
         return problem(HttpStatus.NOT_FOUND, "incident_not_found", exception.getMessage(), List.of());
@@ -190,6 +219,16 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.CONFLICT, "evaluation_required", exception.getMessage(), List.of());
     }
 
+    @ExceptionHandler(TechnicalOrderAccessDenied.class)
+    public ProblemDetail handleTechnicalOrderAccessDenied(TechnicalOrderAccessDenied exception) {
+        return problem(HttpStatus.FORBIDDEN, "technical_order_access_denied", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InstalledDeviceAlreadyRegistered.class)
+    public ProblemDetail handleInstalledDeviceAlreadyRegistered(InstalledDeviceAlreadyRegistered exception) {
+        return problem(HttpStatus.CONFLICT, "installed_device_already_registered", exception.getMessage(), List.of());
+    }
+
     @ExceptionHandler(TechnicalOrderNotScheduled.class)
     public ProblemDetail handleTechnicalOrderNotScheduled(TechnicalOrderNotScheduled exception) {
         return problem(HttpStatus.CONFLICT, "technical_order_not_scheduled", exception.getMessage(), List.of());
@@ -198,6 +237,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ConfigurationNotReadyToConfirm.class)
     public ProblemDetail handleConfigurationNotReadyToConfirm(ConfigurationNotReadyToConfirm exception) {
         return problem(HttpStatus.CONFLICT, "configuration_not_ready_to_confirm", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(ConfigurationDraftOwnedByAnotherAccount.class)
+    public ProblemDetail handleConfigurationDraftOwnedByAnotherAccount(ConfigurationDraftOwnedByAnotherAccount exception) {
+        return problem(HttpStatus.CONFLICT, "configuration_draft_owned_by_another_account", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(ConfigurationDraftNotFound.class)
@@ -357,6 +401,84 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleLegalNameAlreadyExists(LegalNameAlreadyExistsException exception) {
         return problem(HttpStatus.CONFLICT, "legal_name_already_exists",
                 "The legal name is already registered.", List.of());
+    }
+
+    @ExceptionHandler(DeviceNotFound.class)
+    public ProblemDetail handleDeviceNotFound(DeviceNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "device_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(DeviceNotAvailable.class)
+    public ProblemDetail handleDeviceNotAvailable(DeviceNotAvailable exception) {
+        var code = exception.isAlreadyAssigned() ? "device_already_assigned" : "device_not_available";
+        return problem(HttpStatus.CONFLICT, code, exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(DeviceNotAssigned.class)
+    public ProblemDetail handleDeviceNotAssigned(DeviceNotAssigned exception) {
+        return problem(HttpStatus.CONFLICT, "device_not_assigned", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(DeviceStillAssigned.class)
+    public ProblemDetail handleDeviceStillAssigned(DeviceStillAssigned exception) {
+        return problem(HttpStatus.CONFLICT, "device_still_assigned", exception.getMessage(), List.of());
+    }
+
+    /** Another request changed the same asset first; the caller can read it again and retry. */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ProblemDetail handleConcurrentModification(ObjectOptimisticLockingFailureException exception) {
+        return problem(HttpStatus.CONFLICT, "resource_modified_concurrently",
+                "The resource was changed by another request. Read it again and retry.", List.of());
+    }
+
+    @ExceptionHandler(DeviceIncompatibleWithPlan.class)
+    public ProblemDetail handleDeviceIncompatibleWithPlan(DeviceIncompatibleWithPlan exception) {
+        return problem(HttpStatus.UNPROCESSABLE_ENTITY, "device_incompatible_with_plan", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InstallationNotFound.class)
+    public ProblemDetail handleInstallationNotFound(InstallationNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "installation_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InstallationAccessDenied.class)
+    public ProblemDetail handleInstallationAccessDenied(InstallationAccessDenied exception) {
+        return problem(HttpStatus.FORBIDDEN, "installation_access_denied", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InstallationNotActive.class)
+    public ProblemDetail handleInstallationNotActive(InstallationNotActive exception) {
+        return problem(HttpStatus.CONFLICT, "installation_not_active", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InstallationAlreadyRegistered.class)
+    public ProblemDetail handleInstallationAlreadyRegistered(InstallationAlreadyRegistered exception) {
+        return problem(HttpStatus.CONFLICT, "installation_already_registered", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(EdgeNotFound.class)
+    public ProblemDetail handleEdgeNotFound(EdgeNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "edge_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(MacAddressAlreadyExists.class)
+    public ProblemDetail handleMacAddressAlreadyExists(MacAddressAlreadyExists exception) {
+        return problem(HttpStatus.CONFLICT, "device_already_registered", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InvalidMacAddress.class)
+    public ProblemDetail handleInvalidMacAddress(InvalidMacAddress exception) {
+        return problem(HttpStatus.BAD_REQUEST, "invalid_mac_address", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InvalidAssetStatusTransition.class)
+    public ProblemDetail handleInvalidAssetStatusTransition(InvalidAssetStatusTransition exception) {
+        return problem(HttpStatus.CONFLICT, "invalid_asset_status_transition", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(com.resolum.alivia.assets.domain.exceptions.BusinessNotFound.class)
+    public ProblemDetail handleAssetsBusinessNotFound(com.resolum.alivia.assets.domain.exceptions.BusinessNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "business_not_found", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(BusinessNotFound.class)

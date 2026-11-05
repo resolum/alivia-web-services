@@ -52,7 +52,7 @@ class StripePaymentAuthorizationGatewayTest {
                 argThat(options -> ("preauthorization-" + key).equals(options.getIdempotencyKey())));
     }
 
-    @Test void retrievesProviderStatusAndCancelsAuthorization() throws Exception {
+    @Test void retrievesProviderStatusCapturesAndCancelsAuthorization() throws Exception {
         var service = mock(PaymentIntentService.class);
         var intent = mock(PaymentIntent.class);
         when(intent.getId()).thenReturn("pi_test");
@@ -61,8 +61,12 @@ class StripePaymentAuthorizationGatewayTest {
         try (MockedConstruction<StripeClient> ignored = mockConstruction(StripeClient.class,
                 (client, context) -> when(client.paymentIntents()).thenReturn(service))) {
             assertEquals(PaymentStatus.CANCELED, gateway.retrieve(new StripePaymentIntentId("pi_test")).state());
+            when(service.capture(eq("pi_test"), any(RequestOptions.class))).thenReturn(intent);
+            assertEquals(PaymentStatus.CANCELED, gateway.capture(new StripePaymentIntentId("pi_test")));
             gateway.cancel(new StripePaymentIntentId("pi_test"));
         }
+        verify(service).capture(eq("pi_test"), argThat((RequestOptions options) ->
+                "capture-pi_test".equals(options.getIdempotencyKey())));
         verify(service).cancel("pi_test");
     }
 
@@ -100,6 +104,7 @@ class StripePaymentAuthorizationGatewayTest {
         var id = new StripePaymentIntentId("pi_test");
         assertThrows(PreauthorizationUnavailable.class, () -> unconfigured.create("cus", "pm", 100L, "PEN", UUID.randomUUID()));
         assertThrows(PreauthorizationUnavailable.class, () -> unconfigured.retrieve(id));
+        assertThrows(PreauthorizationUnavailable.class, () -> unconfigured.capture(id));
         assertThrows(PreauthorizationUnavailable.class, () -> unconfigured.cancel(id));
 
         var service = mock(PaymentIntentService.class);

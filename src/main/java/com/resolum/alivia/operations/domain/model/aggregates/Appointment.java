@@ -2,12 +2,14 @@ package com.resolum.alivia.operations.domain.model.aggregates;
 
 import com.resolum.alivia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
 import com.resolum.alivia.shared.domain.model.valueobjects.TimeRange;
+import com.resolum.alivia.operations.domain.exceptions.InstalledDeviceAlreadyRegistered;
 import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotScheduled;
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
 import com.resolum.alivia.operations.domain.model.valueobjects.AssignmentReason;
 import com.resolum.alivia.operations.domain.model.valueobjects.AssignmentRecord;
 import com.resolum.alivia.operations.domain.model.valueobjects.EvaluationResult;
 import com.resolum.alivia.operations.domain.model.valueobjects.InstallationResult;
+import com.resolum.alivia.operations.domain.model.valueobjects.InstalledDevice;
 import com.resolum.alivia.operations.domain.model.valueobjects.MaintenanceReport;
 import com.resolum.alivia.operations.domain.model.valueobjects.ServiceType;
 import com.resolum.alivia.operations.domain.model.valueobjects.SlotId;
@@ -104,6 +106,16 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> imp
     @CollectionTable(name = "appointment_assignments", joinColumns = @JoinColumn(name = "appointment_id"))
     @OrderColumn(name = "assignment_order")
     private List<AssignmentRecord> assignments = new ArrayList<>();
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "appointment_installed_devices", joinColumns = @JoinColumn(name = "appointment_id"))
+    @OrderColumn(name = "device_order")
+    private List<InstalledDevice> installedDevices = new ArrayList<>();
+    /** When the technician started attending the order at the home; null until then. */
+    @Column(name = "started_at")
+    private Instant startedAt;
+    /** When the order was closed with its result. */
+    @Column(name = "completed_at")
+    private Instant completedAt;
 
     protected Appointment() {
     }
@@ -198,6 +210,10 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> imp
      * request to the confirmation of its configuration; an adaptation needs the notes that describe it.
      */
     public void recordEvaluationResult(EvaluationResult result, String notes) {
+        recordEvaluationResult(result, notes, Instant.now());
+    }
+
+    public void recordEvaluationResult(EvaluationResult result, String notes, Instant at) {
         requireScheduled();
         if (serviceType != ServiceType.EVALUATION) {
             throw new IllegalArgumentException("Only evaluation orders record an evaluation result.");
@@ -210,7 +226,7 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> imp
         }
         this.evaluationResult = result;
         this.completionNotes = trimmed;
-        this.status = AppointmentStatus.COMPLETED;
+        complete(at);
     }
 
     /**
@@ -218,6 +234,10 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> imp
      * is the condition for the family to report incidents.
      */
     public void recordInstallationResult(InstallationResult result, String notes) {
+        recordInstallationResult(result, notes, Instant.now());
+    }
+
+    public void recordInstallationResult(InstallationResult result, String notes, Instant at) {
         requireScheduled();
         if (serviceType != ServiceType.INSTALLATION) {
             throw new IllegalArgumentException("Only installation orders record an installation result.");
@@ -226,7 +246,49 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> imp
         if (notes != null && notes.length() > 300) throw new IllegalArgumentException("Notes cannot exceed 300 characters.");
         this.installationResult = result;
         this.completionNotes = notes == null || notes.isBlank() ? null : notes.trim();
-        this.status = AppointmentStatus.COMPLETED;
+        complete(at);
+    }
+
+    /**
+     * The technician arrived and starts attending the order. Starting again keeps the first time, so a
+     * retried request does not move it.
+     */
+    public void start(Instant at) {
+        requireScheduled();
+        if (at == null) throw new IllegalArgumentException("The start time is required.");
+        if (startedAt == null) startedAt = at;
+    }
+
+    public boolean isStarted() {
+        return startedAt != null;
+    }
+
+    /** Adds a device installed during this visit; its MAC address cannot repeat within the order. */
+    public void registerDevice(InstalledDevice device) {
+        requireScheduled();
+        if (serviceType != ServiceType.INSTALLATION) {
+            throw new IllegalArgumentException("Only installation orders register devices.");
+        }
+        if (device == null) throw new IllegalArgumentException("The device is required.");
+        if (installedDevices.stream().anyMatch(existing -> existing.macAddress().equals(device.macAddress()))) {
+            throw new InstalledDeviceAlreadyRegistered(device.macAddress());
+        }
+        installedDevices.add(device);
+    }
+
+    /** Removes a device registered by mistake; an unknown address changes nothing. */
+    public void removeDevice(String macAddress) {
+        requireScheduled();
+        var normalized = InstalledDevice.normalizeMac(macAddress);
+        installedDevices.removeIf(device -> device.macAddress().equals(normalized));
+    }
+
+    public List<InstalledDevice> getInstalledDevices() {
+        return List.copyOf(installedDevices);
+    }
+
+    public boolean isAssignedTo(Long candidateTechnicianId) {
+        return technicianId.equals(candidateTechnicianId);
     }
 
     /**
@@ -240,7 +302,7 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> imp
         }
         if (report == null) throw new IllegalArgumentException("The maintenance report is required.");
         this.maintenanceReport = report;
-        this.status = AppointmentStatus.COMPLETED;
+        complete(Instant.now());
     }
 
     @Override
@@ -269,6 +331,11 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> imp
                 cleanNote, at));
         this.technicianId = newTechnicianId;
         this.technicianName = name;
+    }
+
+    private void complete(Instant at) {
+        this.status = AppointmentStatus.COMPLETED;
+        this.completedAt = at == null ? Instant.now() : at;
     }
 
     private void requireScheduled() {

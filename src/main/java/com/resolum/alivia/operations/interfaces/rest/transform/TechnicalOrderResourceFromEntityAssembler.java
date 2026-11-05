@@ -1,12 +1,14 @@
 package com.resolum.alivia.operations.interfaces.rest.transform;
 
 import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
+import com.resolum.alivia.operations.domain.model.aggregates.Incident;
 import com.resolum.alivia.operations.domain.model.valueobjects.AssignmentRecord;
 import com.resolum.alivia.operations.domain.model.valueobjects.AvailableBlock;
 import com.resolum.alivia.operations.domain.model.valueobjects.MaintenanceReport;
 import com.resolum.alivia.operations.domain.model.valueobjects.SlotId;
 import com.resolum.alivia.shared.domain.model.valueobjects.TimeRange;
 import com.resolum.alivia.operations.interfaces.rest.resources.AssignmentRecordResource;
+import com.resolum.alivia.operations.interfaces.rest.resources.InstalledDeviceResource;
 import com.resolum.alivia.operations.interfaces.rest.resources.MaintenanceReportResource;
 import com.resolum.alivia.operations.interfaces.rest.resources.TechnicalAvailabilityResource;
 import com.resolum.alivia.operations.interfaces.rest.resources.TechnicalOrderResource;
@@ -20,6 +22,11 @@ public final class TechnicalOrderResourceFromEntityAssembler {
     }
 
     public static TechnicalOrderResource toResourceFromEntity(Appointment order) {
+        return toResourceFromEntity(order, null);
+    }
+
+    /** @param incident the incident behind a maintenance order, or null for the other orders */
+    public static TechnicalOrderResource toResourceFromEntity(Appointment order, Incident incident) {
         return new TechnicalOrderResource(order.getId(), order.getDraftId(), order.getServiceType().name(),
                 order.getIncidentId(), order.getStatus().name(), order.slotId().value(), order.getScheduledDate(),
                 order.getStartTime().format(TIME), order.getEndTime().format(TIME), order.getTechnicianId(),
@@ -28,7 +35,18 @@ public final class TechnicalOrderResourceFromEntityAssembler {
                 order.getInstallationResult() == null ? null : order.getInstallationResult().name(),
                 order.getCompletionNotes(),
                 toResource(order.getMaintenanceReport()),
-                order.getAssignments().stream().map(TechnicalOrderResourceFromEntityAssembler::toResource).toList());
+                order.getAssignments().stream().map(TechnicalOrderResourceFromEntityAssembler::toResource).toList(),
+                codeOf(order), order.getStartedAt(), order.getCompletedAt(),
+                order.getInstalledDevices().stream()
+                        .map(device -> new InstalledDeviceResource(device.alias(), device.macAddress(), device.type().name()))
+                        .toList(),
+                incident == null ? null : IncidentResourceFromEntityAssembler.toSummary(incident));
+    }
+
+    /** Readable code of the order, such as {@code ORD-2026-0042}, from the year of its visit and its identifier. */
+    static String codeOf(Appointment order) {
+        if (order.getId() == null) return null;
+        return "ORD-%d-%04d".formatted(order.getScheduledDate().getYear(), order.getId());
     }
 
     public static TechnicalAvailabilityResource toResourceFromBlock(AvailableBlock block) {
