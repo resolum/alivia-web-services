@@ -1,6 +1,7 @@
 package com.resolum.alivia.subscriptions.application.acl;
 
 import com.resolum.alivia.subscriptions.domain.model.aggregates.Subscription;
+import com.resolum.alivia.subscriptions.domain.model.entities.ConfigurationDraft;
 import com.resolum.alivia.subscriptions.domain.model.valueobjects.PaymentStatus;
 import com.resolum.alivia.subscriptions.infrastructure.persistence.jpa.repositories.ConfigurationDraftRepository;
 import com.resolum.alivia.subscriptions.infrastructure.persistence.jpa.repositories.SubscriptionRepository;
@@ -11,8 +12,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
-import java.time.Instant;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.Map;
 
 @Service
 public class SubscriptionsContextFacadeImpl implements SubscriptionsContextFacade {
@@ -91,7 +93,17 @@ public class SubscriptionsContextFacadeImpl implements SubscriptionsContextFacad
         if (userId == null) return Optional.empty();
         return drafts.findByOwnerUserIdOrderByUpdatedAtDesc(userId).stream()
                 .filter(draft -> draft.getPaymentStatus() == PaymentStatus.SUCCEEDED)
-                .map(draft -> draft.getId())
+                .map(ConfigurationDraft::getId)
                 .findFirst();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<ContractedActuators> fetchContractedActuatorsOfHousehold(String householdId) {
+        if (householdId == null || householdId.isBlank()) return Optional.empty();
+        return subscriptions.findByActiveHouseholdId(householdId.trim())
+                .filter(Subscription::isActive)
+                .map(subscription -> new ContractedActuators(subscription.getActuators().entrySet().stream()
+                        .collect(Collectors.toMap(entry -> entry.getKey().name(), Map.Entry::getValue))));
     }
 }
