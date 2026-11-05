@@ -129,4 +129,22 @@ public interface IamContextFacade {
     Long registerAssistedPerson(String email, String password, String firstName, String lastName, String phoneNumber,
                                Long familiarId,
                                String dni, LocalDate birthDate);
+
+    /**
+     * Issues the credential with which an edge service identifies itself to the API, or replaces its secret when it
+     * already has one (the previous secret stops working at once).
+     *
+     * @param edgeId   inventory id of the edge
+     * @param edgeKind {@code MICROPHONE} or {@code ACTUATOR}
+     * @return what the edge sends as bearer token; this is the only time it can be read
+     * @throws IllegalArgumentException when the id is not positive or the kind is unknown
+     */
+    String issueEdgeCredential(Long edgeId, String edgeKind);
+
+    /**
+     * Revokes the credential of an edge service. Nothing happens when the edge has none or it is already revoked.
+     *
+     * @param edgeId inventory id of the edge
+     */
+    void revokeEdgeCredential(Long edgeId);
 }

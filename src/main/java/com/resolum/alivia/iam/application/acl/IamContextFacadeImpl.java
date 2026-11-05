@@ -3,10 +3,14 @@ package com.resolum.alivia.iam.application.acl;
 import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
 import com.resolum.alivia.iam.domain.model.aggregates.User;
 import com.resolum.alivia.iam.domain.model.commands.InviteCompanyUserCommand;
+import com.resolum.alivia.iam.domain.model.commands.IssueEdgeCredentialCommand;
+import com.resolum.alivia.iam.domain.model.commands.RevokeEdgeCredentialCommand;
 import com.resolum.alivia.iam.domain.model.commands.SignUpCommand;
 import com.resolum.alivia.iam.domain.model.valueobjects.AccessRole;
+import com.resolum.alivia.iam.domain.model.valueobjects.EdgeKind;
 import com.resolum.alivia.iam.domain.repositories.UserRepository;
 import com.resolum.alivia.iam.domain.services.AccountActivationService;
+import com.resolum.alivia.iam.domain.services.EdgeCredentialCommandService;
 import com.resolum.alivia.iam.domain.services.UserCommandService;
 import com.resolum.alivia.iam.interfaces.acl.IamContextFacade;
 import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
@@ -32,15 +36,20 @@ public class IamContextFacadeImpl implements IamContextFacade {
     private final UserRepository userRepository;
     private final UserCommandService userCommandService;
     private final AccountActivationService accountActivationService;
+    private final EdgeCredentialCommandService edgeCredentialCommandService;
 
     /**
      * Creates the facade.
      *
-     * @param userRepository     the user persistence port
-     * @param userCommandService the user command service
+     * @param userRepository               the user persistence port
+     * @param userCommandService           the user command service
+     * @param accountActivationService     the staff invitation service
+     * @param edgeCredentialCommandService the credentials of the edge services
      */
     public IamContextFacadeImpl(UserRepository userRepository, UserCommandService userCommandService,
-                                AccountActivationService accountActivationService) {
+                                AccountActivationService accountActivationService,
+                                EdgeCredentialCommandService edgeCredentialCommandService) {
+        this.edgeCredentialCommandService = edgeCredentialCommandService;
         this.accountActivationService = accountActivationService;
         this.userRepository = userRepository;
         this.userCommandService = userCommandService;
@@ -182,6 +191,25 @@ public class IamContextFacadeImpl implements IamContextFacade {
                                       String dni, LocalDate birthDate) {
         return signUpUser(email, password, firstName, lastName, phoneNumber, "ASSISTED_PERSON", null, familiarId,
                 dni, birthDate);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Transactional
+    public String issueEdgeCredential(Long edgeId, String edgeKind) {
+        return edgeCredentialCommandService
+                .handle(new IssueEdgeCredentialCommand(edgeId, EdgeKind.parse(edgeKind))).credential();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Transactional
+    public void revokeEdgeCredential(Long edgeId) {
+        edgeCredentialCommandService.handle(new RevokeEdgeCredentialCommand(edgeId));
     }
 
     private static AccessRole parseRole(String roleStr) {
