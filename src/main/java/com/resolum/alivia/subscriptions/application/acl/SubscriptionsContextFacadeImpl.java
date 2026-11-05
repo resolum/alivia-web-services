@@ -84,4 +84,14 @@ public class SubscriptionsContextFacadeImpl implements SubscriptionsContextFacad
                 .map(subscription -> new ActiveSubscription(subscription.getId(), subscription.getUserId(),
                         subscription.getDraftId()));
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<String> fetchActiveDraftOfAccount(Long userId) {
+        if (userId == null) return Optional.empty();
+        return drafts.findByOwnerUserIdOrderByUpdatedAtDesc(userId).stream()
+                .filter(draft -> draft.getPaymentStatus() == PaymentStatus.SUCCEEDED)
+                .map(draft -> draft.getId())
+                .findFirst();
+    }
 }

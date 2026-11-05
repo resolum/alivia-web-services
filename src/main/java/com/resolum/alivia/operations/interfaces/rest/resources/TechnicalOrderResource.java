@@ -13,5 +13,6 @@ public record TechnicalOrderResource(Long id, String draftId, String serviceType
                                      MaintenanceReportResource maintenanceReport,
                                      List<AssignmentRecordResource> assignments,
                                      String code, Instant startedAt, Instant completedAt,
-                                     List<InstalledDeviceResource> installedDevices) {
+                                     List<InstalledDeviceResource> installedDevices,
+                                     IncidentSummaryResource incident) {
 }

@@ -19,7 +19,10 @@ import com.resolum.alivia.operations.domain.exceptions.TechnicianNotEligible;
 import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
 import com.resolum.alivia.operations.domain.model.commands.AssignTechnicianCommand;
 import com.resolum.alivia.operations.domain.model.commands.CompleteMaintenanceOrderCommand;
+import com.resolum.alivia.operations.domain.model.commands.BookIncidentVisitCommand;
+import com.resolum.alivia.operations.domain.model.commands.ConfirmIncidentVisitCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateMaintenanceOrderCommand;
+import com.resolum.alivia.operations.domain.model.commands.EvaluateIncidentCommand;
 import com.resolum.alivia.operations.domain.model.commands.StartMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateTechnicalOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.ReassignTechnicianCommand;
@@ -306,6 +309,80 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
             return order;
         } catch (DataIntegrityViolationException exception) {
             throw new SlotUnavailable(alternatives(ServiceType.MAINTENANCE, earliest, slot));
+        }
+    }
+
+    /**
+     * Reserves the block and technician the family chose when reporting: the order occupies the technician's
+     * time, and the incident stays registered until the technician evaluates it.
+     */
+    @Override
+    @Transactional
+    public Appointment handle(BookIncidentVisitCommand command) {
+        var slot = command.slotId();
+        if (slot == null || command.technicianId() == null) {
+            throw new IllegalArgumentException("Choose the day, the window and the technician of the visit.");
+        }
+        var incident = incidents.findById(command.incidentId())
+                .orElseThrow(() -> new IncidentNotFound(command.incidentId()));
+        requireMaintenanceBlock(slot);
+        var installation = appointments.findFirstByDraftIdAndServiceTypeAndStatus(incident.getDraftId(),
+                ServiceType.INSTALLATION, AppointmentStatus.COMPLETED).orElseThrow(IncidentNotAllowed::new);
+        var earliest = AppointmentQueryServiceImpl.firstBookableDate(clock);
+        var technician = candidates(slot.date(), slot.window(), null).stream()
+                .filter(candidate -> candidate.technicianId().equals(command.technicianId()))
+                .findFirst()
+                .orElseThrow(() -> new SlotUnavailable(alternatives(ServiceType.MAINTENANCE, earliest, slot)));
+        try {
+            return appointments.saveAndFlush(new Appointment(incident.getDraftId(), ServiceType.MAINTENANCE,
+                    incident.getId(), slot.date(), slot.window(), technician.technicianId(), technician.fullName(),
+                    installation.getContactName(), installation.getContactPhone(), installation.getDirections(),
+                    Instant.now(clock)));
+        } catch (DataIntegrityViolationException exception) {
+            throw new SlotUnavailable(alternatives(ServiceType.MAINTENANCE, earliest, slot));
+        }
+    }
+
+    @Override
+    @Transactional
+    public Appointment handle(EvaluateIncidentCommand command) {
+        var order = scheduledMaintenance(command.orderId());
+        var incident = incidents.findById(order.getIncidentId())
+                .orElseThrow(() -> new IncidentNotFound(order.getIncidentId()));
+        incident.startEvaluation(Instant.now(clock));
+        incidents.save(incident);
+        return order;
+    }
+
+    @Override
+    @Transactional
+    public Appointment handle(ConfirmIncidentVisitCommand command) {
+        var order = scheduledMaintenance(command.orderId());
+        var incident = incidents.findById(order.getIncidentId())
+                .orElseThrow(() -> new IncidentNotFound(order.getIncidentId()));
+        incident.confirmVisit(Instant.now(clock));
+        incidents.save(incident);
+        return order;
+    }
+
+    private Appointment scheduledMaintenance(Long orderId) {
+        var order = appointments.findById(orderId).orElseThrow(() -> new TechnicalOrderNotFound(orderId));
+        if (order.getServiceType() != ServiceType.MAINTENANCE || order.getIncidentId() == null) {
+            throw new IllegalArgumentException("Only maintenance orders attend an incident.");
+        }
+        if (order.getStatus() != AppointmentStatus.SCHEDULED) throw new TechnicalOrderNotScheduled();
+        return order;
+    }
+
+    private void requireMaintenanceBlock(SlotId slot) {
+        if (slot.window().duration().compareTo(ServiceType.MAINTENANCE.window()) != 0) {
+            throw new IllegalArgumentException("A maintenance block lasts %d hours."
+                    .formatted(ServiceType.MAINTENANCE.window().toHours()));
+        }
+        if (slot.date().isBefore(AppointmentQueryServiceImpl.firstBookableDate(clock))
+                || slot.date().isAfter(AppointmentQueryServiceImpl.lastBookableDate(ServiceType.MAINTENANCE, clock))) {
+            throw new IllegalArgumentException("A maintenance visit must be booked between tomorrow and the next %d days."
+                    .formatted(ServiceType.MAINTENANCE.daysAhead()));
         }
     }
 

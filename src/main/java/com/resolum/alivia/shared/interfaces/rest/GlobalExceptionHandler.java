@@ -49,6 +49,8 @@ import com.resolum.alivia.operations.domain.exceptions.IncidentNotOpen;
 import com.resolum.alivia.operations.domain.exceptions.IncidentNotScheduled;
 import com.resolum.alivia.operations.domain.exceptions.IncidentNotAllowed;
 import com.resolum.alivia.operations.domain.exceptions.IncidentNotFound;
+import com.resolum.alivia.operations.domain.exceptions.PhotoUploadUnavailable;
+import com.resolum.alivia.operations.domain.exceptions.IncidentNotInEvaluation;
 import com.resolum.alivia.operations.domain.exceptions.SlotUnavailable;
 import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderAlreadyExists;
 import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotFound;
@@ -166,6 +168,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IncidentNotScheduled.class)
     public ProblemDetail handleIncidentNotScheduled(IncidentNotScheduled exception) {
         return problem(HttpStatus.CONFLICT, "incident_not_scheduled", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(IncidentNotInEvaluation.class)
+    public ProblemDetail handleIncidentNotInEvaluation(IncidentNotInEvaluation exception) {
+        return problem(HttpStatus.CONFLICT, "incident_not_in_evaluation", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(PhotoUploadUnavailable.class)
+    public ProblemDetail handlePhotoUploadUnavailable(PhotoUploadUnavailable exception) {
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, "photo_upload_unavailable", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(IncidentNotFound.class)
