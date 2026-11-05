@@ -4,7 +4,10 @@ import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
 import com.resolum.alivia.operations.domain.model.commands.AssignTechnicianCommand;
 import com.resolum.alivia.operations.domain.model.commands.CompleteMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.StartMaintenanceOrderCommand;
+import com.resolum.alivia.operations.domain.model.commands.BookIncidentVisitCommand;
+import com.resolum.alivia.operations.domain.model.commands.ConfirmIncidentVisitCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateMaintenanceOrderCommand;
+import com.resolum.alivia.operations.domain.model.commands.EvaluateIncidentCommand;
 import com.resolum.alivia.operations.domain.model.commands.CreateTechnicalOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.ReassignTechnicianCommand;
 import com.resolum.alivia.operations.domain.model.commands.OpenInstallationCommand;
@@ -34,6 +37,15 @@ public interface AppointmentCommandService {
     Appointment handle(RecordInstallationResultCommand command);
 
     Appointment handle(CreateMaintenanceOrderCommand command);
+
+    /** Reserves the visit chosen in the report; the incident stays registered until the technician evaluates it. */
+    Appointment handle(BookIncidentVisitCommand command);
+
+    /** Registrada → En evaluación, by the technician of the order. */
+    Appointment handle(EvaluateIncidentCommand command);
+
+    /** En evaluación → Visita programada, by the technician of the order. */
+    Appointment handle(ConfirmIncidentVisitCommand command);
 
     Appointment handle(StartMaintenanceOrderCommand command);
 

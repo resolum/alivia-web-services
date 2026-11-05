@@ -24,6 +24,12 @@ public interface SubscriptionsContextFacade {
     Optional<ActiveSubscription> fetchActiveSubscriptionOfHousehold(String householdId);
 
     /**
+     * The contracting request of the account whose service is active (its installation approved and its payment
+     * captured), latest first; empty while the account has none.
+     */
+    Optional<String> fetchActiveDraftOfAccount(Long userId);
+
+    /**
      * Releases the payment the family authorized for a request the technician found not viable, so the held
      * amount returns to the card. A request without an active hold changes nothing.
      *
