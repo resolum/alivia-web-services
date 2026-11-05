@@ -6,7 +6,7 @@ import com.resolum.alivia.assets.domain.exceptions.DeviceStillAssigned;
 import com.resolum.alivia.assets.domain.exceptions.InstallationAccessDenied;
 import com.resolum.alivia.assets.domain.model.commands.UnassignDeviceCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
-import com.resolum.alivia.assets.domain.model.valueobjects.BusinessRole;
+import com.resolum.alivia.assets.domain.model.valueobjects.CallerAuthority;
 import com.resolum.alivia.assets.domain.services.DeviceAssignmentCommandService;
 import com.resolum.alivia.assets.interfaces.rest.controllers.DeviceAssignmentController;
 import com.resolum.alivia.shared.interfaces.rest.GlobalExceptionHandler;
@@ -56,7 +56,7 @@ class DeviceAssignmentControllerTest {
         assertEquals(7L, captor.getValue().deviceId());
         assertEquals("Reemplazo por falla del equipo", captor.getValue().reason());
         assertEquals(9L, captor.getValue().unassignedBy());
-        assertEquals(BusinessRole.NONE, captor.getValue().businessRole());
+        assertEquals(CallerAuthority.HOUSEHOLD_MEMBER, captor.getValue().authority());
     }
 
     @Test
@@ -67,17 +67,17 @@ class DeviceAssignmentControllerTest {
         var captor = ArgumentCaptor.forClass(UnassignDeviceCommand.class);
         verify(service).handle(captor.capture());
         assertEquals(8L, captor.getValue().unassignedBy());
-        assertEquals(BusinessRole.ADMINISTRATOR, captor.getValue().businessRole());
+        assertEquals(CallerAuthority.BUSINESS_ADMINISTRATOR, captor.getValue().authority());
     }
 
     @Test
-    void tellsTheServiceWhenTheCallerIsATechnicianOfTheBusiness() throws Exception {
+    void aTechnicianIsNotASpecialCaseForAssetsItIsTreatedAsAnyAccountThatMustManageTheHousehold() throws Exception {
         mvc.perform(delete(PATH).principal(TECHNICIAN).contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isNoContent());
 
         var captor = ArgumentCaptor.forClass(UnassignDeviceCommand.class);
         verify(service).handle(captor.capture());
-        assertEquals(BusinessRole.TECHNICIAN, captor.getValue().businessRole());
+        assertEquals(CallerAuthority.HOUSEHOLD_MEMBER, captor.getValue().authority());
     }
 
     @Test

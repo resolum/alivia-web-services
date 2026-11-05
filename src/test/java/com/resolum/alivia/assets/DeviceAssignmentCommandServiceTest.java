@@ -14,7 +14,7 @@ import com.resolum.alivia.assets.domain.model.aggregates.DeviceAssignment;
 import com.resolum.alivia.assets.domain.model.aggregates.DeviceNetwork;
 import com.resolum.alivia.assets.domain.model.commands.AssignDeviceToInstallationCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
-import com.resolum.alivia.assets.domain.model.valueobjects.BusinessRole;
+import com.resolum.alivia.assets.domain.model.valueobjects.CallerAuthority;
 import com.resolum.alivia.assets.domain.model.valueobjects.ContractedActuators;
 import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
 import com.resolum.alivia.assets.domain.model.valueobjects.NetworkStatus;
@@ -45,7 +45,7 @@ class DeviceAssignmentCommandServiceTest {
     private static final InstallationId INSTALLATION = new InstallationId(3L);
     /** A caregiver who manages household 5. */
     private static final AssignDeviceToInstallationCommand COMMAND =
-            new AssignDeviceToInstallationCommand(3L, 7L, " sala ", "Luz principal", 9L, BusinessRole.NONE);
+            new AssignDeviceToInstallationCommand(3L, 7L, " sala ", "Luz principal", 9L, CallerAuthority.HOUSEHOLD_MEMBER);
 
     private DeviceRepository devices;
     private DeviceNetworkRepository networks;
@@ -64,7 +64,6 @@ class DeviceAssignmentCommandServiceTest {
         households = mock(ExternalHouseholdsService.class);
         service = new DeviceAssignmentCommandServiceImpl(devices, networks, assignments, subscriptions, households, CLOCK);
         network = new DeviceNetwork(3L, 5L, 1L);
-        network.confirm();
         when(networks.findByInstallationIdForUpdate(INSTALLATION)).thenReturn(Optional.of(network));
         when(households.canManageHousehold(5L, 9L)).thenReturn(true);
         when(assignments.saveAndFlush(any(DeviceAssignment.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -154,64 +153,33 @@ class DeviceAssignmentCommandServiceTest {
         storedDevice("LIGHT", AssetStatus.AVAILABLE);
         contracted(Map.of(DeviceType.LIGHT, 1));
 
-        var assignment = service.handle(new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", 8L, BusinessRole.ADMINISTRATOR));
+        var assignment = service.handle(new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", 8L, CallerAuthority.BUSINESS_ADMINISTRATOR));
 
         assertEquals(8L, assignment.getAssignedBy());
         verifyNoInteractions(households);
     }
 
     @Test
-    void aTechnicianOfTheBusinessMayPlaceDevicesWhileTheInstallationIsPendingConfirmation() {
-        ReflectionTestUtils.setField(network, "networkStatus", NetworkStatus.PENDING_CONFIRMATION);
-        var device = storedDevice("LIGHT", AssetStatus.AVAILABLE);
+    void anotherContextThatAlreadyAuthorizedTheCallerCanPlaceDevicesWithoutAssetsAskingAgain() {
+        storedDevice("LIGHT", AssetStatus.AVAILABLE);
         contracted(Map.of(DeviceType.LIGHT, 2));
 
-        var assignment = service.handle(new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", 6L, BusinessRole.TECHNICIAN));
+        var assignment = service.handle(new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", 6L,
+                CallerAuthority.AUTHORIZED_BY_CONTEXT));
 
         assertEquals(6L, assignment.getAssignedBy());
-        assertEquals(AssetStatus.IN_USE, device.getAssetStatus());
         verifyNoInteractions(households);
     }
 
     @Test
-    void onceTheInstallationIsConfirmedATechnicianCannotPlaceDevicesAnymore() {
-        storedDevice("LIGHT", AssetStatus.AVAILABLE);
-        contracted(Map.of(DeviceType.LIGHT, 2));
-
-        assertThrows(InstallationAccessDenied.class,
-                () -> service.handle(new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", 6L, BusinessRole.TECHNICIAN)));
-
-        verifyNoInteractions(households, subscriptions, devices);
-        assertNothingWasStored();
-    }
-
-    @Test
-    void aHouseholdMemberWaitsForTheConfirmationOfThePendingInstallation() {
-        ReflectionTestUtils.setField(network, "networkStatus", NetworkStatus.PENDING_CONFIRMATION);
-
-        assertThrows(InstallationNotActive.class, () -> service.handle(COMMAND));
-
-        verifyNoInteractions(devices, subscriptions);
-        assertNothingWasStored();
-    }
-
-    @Test
-    void theAdministratorMayPlaceDevicesInAPendingInstallationToo() {
-        ReflectionTestUtils.setField(network, "networkStatus", NetworkStatus.PENDING_CONFIRMATION);
-        storedDevice("LIGHT", AssetStatus.AVAILABLE);
-        contracted(Map.of(DeviceType.LIGHT, 2));
-
-        assertDoesNotThrow(() -> service.handle(new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", 8L, BusinessRole.ADMINISTRATOR)));
-    }
-
-    @Test
-    void nobodyPlacesDevicesInAClosedInstallationNotEvenTheAdministrator() {
+    void nobodyPlacesDevicesInAClosedInstallationNotEvenTheAdministratorOrAnAuthorizedContext() {
         ReflectionTestUtils.setField(network, "networkStatus", NetworkStatus.DISMANTLED);
 
-        assertThrows(InstallationNotActive.class,
-                () -> service.handle(new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", 8L, BusinessRole.ADMINISTRATOR)));
-        assertThrows(InstallationAccessDenied.class,
-                () -> service.handle(new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", 6L, BusinessRole.TECHNICIAN)));
+        for (var authority : new CallerAuthority[]{CallerAuthority.BUSINESS_ADMINISTRATOR, CallerAuthority.AUTHORIZED_BY_CONTEXT,
+                CallerAuthority.HOUSEHOLD_MEMBER}) {
+            assertThrows(InstallationNotActive.class,
+                    () -> service.handle(new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", 9L, authority)), authority.name());
+        }
         assertNothingWasStored();
     }
 
@@ -320,7 +288,7 @@ class DeviceAssignmentCommandServiceTest {
         contracted(Map.of(DeviceType.LIGHT, 2));
 
         assertThrows(IllegalArgumentException.class, () -> service.handle(
-                new AssignDeviceToInstallationCommand(3L, 7L, "a".repeat(61), "Luz", 9L, BusinessRole.NONE)));
+                new AssignDeviceToInstallationCommand(3L, 7L, "a".repeat(61), "Luz", 9L, CallerAuthority.HOUSEHOLD_MEMBER)));
 
         assertEquals(AssetStatus.AVAILABLE, device.getAssetStatus());
         assertNothingWasStored();

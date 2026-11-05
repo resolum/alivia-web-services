@@ -4,7 +4,7 @@ import com.resolum.alivia.assets.domain.services.DeviceAssignmentCommandService;
 import com.resolum.alivia.assets.interfaces.rest.resources.AssignDeviceResource;
 import com.resolum.alivia.assets.interfaces.rest.resources.DeviceAssignmentResource;
 import com.resolum.alivia.assets.interfaces.rest.transform.AssignDeviceCommandFromResourceAssembler;
-import com.resolum.alivia.assets.interfaces.rest.transform.BusinessRoleFromAuthenticationAssembler;
+import com.resolum.alivia.assets.interfaces.rest.transform.CallerAuthorityFromAuthenticationAssembler;
 import com.resolum.alivia.assets.interfaces.rest.transform.DeviceAssignmentResourceFromEntityAssembler;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -32,15 +32,14 @@ public class InstallationDevicesController {
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Asignar un dispositivo a una instalación",
             description = "Coloca un dispositivo disponible en una habitación del hogar de la instalación, con su función. "
-                    + "Pueden hacerlo el administrador del negocio, los técnicos del negocio mientras la instalación está "
-                    + "pendiente de confirmación, y quien administra el hogar cuando la instalación ya está activa. "
-                    + "El dispositivo queda IN_USE.")
+                    + "Pueden hacerlo quien administra el hogar y el administrador del negocio. El trabajo de los técnicos "
+                    + "lo coordina el contexto de operaciones. El dispositivo queda IN_USE.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Dispositivo asignado"),
             @ApiResponse(responseCode = "400", description = "Habitación, función o dispositivo inválidos"),
             @ApiResponse(responseCode = "403", description = "El usuario no administra el hogar de la instalación"),
             @ApiResponse(responseCode = "404", description = "La instalación o el dispositivo no existen"),
-            @ApiResponse(responseCode = "409", description = "El dispositivo ya está asignado o no está disponible, o la instalación está cerrada o aún no activa para quien la pide"),
+            @ApiResponse(responseCode = "409", description = "El dispositivo ya está asignado o no está disponible, o la instalación no está activa"),
             @ApiResponse(responseCode = "422", description = "El dispositivo no es compatible con el plan del hogar")
     })
     public DeviceAssignmentResource assignDevice(@PathVariable Long installationId,
@@ -48,7 +47,7 @@ public class InstallationDevicesController {
                                                  @Parameter(hidden = true) Authentication authentication) {
         var command = AssignDeviceCommandFromResourceAssembler.toCommandFromResource(
                 installationId, Long.valueOf(authentication.getName()),
-                BusinessRoleFromAuthenticationAssembler.toBusinessRole(authentication), resource);
+                CallerAuthorityFromAuthenticationAssembler.toCallerAuthority(authentication), resource);
         return DeviceAssignmentResourceFromEntityAssembler.toResourceFromEntity(assignmentCommandService.handle(command));
     }
 }

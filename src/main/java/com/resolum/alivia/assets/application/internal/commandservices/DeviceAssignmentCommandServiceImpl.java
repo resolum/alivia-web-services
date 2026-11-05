@@ -15,7 +15,7 @@ import com.resolum.alivia.assets.domain.model.aggregates.DeviceNetwork;
 import com.resolum.alivia.assets.domain.model.commands.AssignDeviceToInstallationCommand;
 import com.resolum.alivia.assets.domain.model.commands.UnassignDeviceCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
-import com.resolum.alivia.assets.domain.model.valueobjects.BusinessRole;
+import com.resolum.alivia.assets.domain.model.valueobjects.CallerAuthority;
 import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
 import com.resolum.alivia.assets.domain.services.DeviceAssignmentCommandService;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceAssignmentRepository;
@@ -55,10 +55,10 @@ public class DeviceAssignmentCommandServiceImpl implements DeviceAssignmentComma
      * Order of the checks: installation (404), access (403), installation state (409), device (404), device
      * state (409) and plan (422). Nothing is stored before every rule passed.
      *
-     * <p>Who may place devices depends on the installation: the administrator of the business always; a technician
-     * of the business only while the installation is pending confirmation; a household member only once it is
-     * active. After the confirmation the technicians may return only for a request or a maintenance, which
-     * Operations does not report yet, so for now they cannot.</p>
+     * <p>Assets applies the inventory rules. Who may act is decided by the caller's {@link CallerAuthority}: the
+     * administrator of the business and another context that already authorized its caller (Operations, for the work
+     * of its technicians) are not asked again; a household member must manage the household. Who a worker is and
+     * when the installation work allows them to place devices belong to HCM and Operations.</p>
      */
     @Override
     @Transactional
@@ -69,11 +69,10 @@ public class DeviceAssignmentCommandServiceImpl implements DeviceAssignmentComma
                 .filter(found -> found.getHouseholdId() != null)
                 .orElseThrow(() -> new InstallationNotFound(command.installationId()));
         var householdId = network.getHouseholdId();
-        if (!mayChangeDevicesOf(network, command.businessRole(), command.assignedBy())) {
+        if (!mayChangeDevicesOf(householdId, command.authority(), command.assignedBy())) {
             throw new InstallationAccessDenied();
         }
-        // A household member waits for the confirmation; the business can work while it is pending.
-        if (!network.isOpen() || (command.businessRole() == BusinessRole.NONE && !network.isActive())) {
+        if (!network.isActive()) {
             throw new InstallationNotActive(command.installationId());
         }
 
@@ -102,15 +101,14 @@ public class DeviceAssignmentCommandServiceImpl implements DeviceAssignmentComma
                 .orElseThrow(() -> new DeviceNotFound(command.deviceId()));
         var active = assignmentRepository.findActiveByDeviceIdForUpdate(command.deviceId());
         if (active.isEmpty()) {
-            if (command.businessRole() != BusinessRole.ADMINISTRATOR) {
+            // Whoever cannot act on any household is not told whether the device is assigned.
+            if (command.authority() == CallerAuthority.HOUSEHOLD_MEMBER) {
                 throw new InstallationAccessDenied();
             }
             throw new DeviceNotAssigned(command.deviceId());
         }
         var assignment = active.get();
-        var network = assignment.getInstallationId() == null ? null
-                : networkRepository.findByInstallationId(new InstallationId(assignment.getInstallationId())).orElse(null);
-        if (!mayChangeDevicesOf(network, assignment.getHouseholdId(), command.businessRole(), command.unassignedBy())) {
+        if (!mayChangeDevicesOf(assignment.getHouseholdId(), command.authority(), command.unassignedBy())) {
             throw new InstallationAccessDenied();
         }
 
@@ -120,16 +118,10 @@ public class DeviceAssignmentCommandServiceImpl implements DeviceAssignmentComma
         return assignmentRepository.saveAndFlush(assignment);
     }
 
-    private boolean mayChangeDevicesOf(DeviceNetwork network, BusinessRole role, Long userId) {
-        return mayChangeDevicesOf(network, network.getHouseholdId(), role, userId);
-    }
-
-    /** The network may be null for an assignment made before assignments recorded their installation. */
-    private boolean mayChangeDevicesOf(DeviceNetwork network, Long householdId, BusinessRole role, Long userId) {
-        return switch (role) {
-            case ADMINISTRATOR -> true;
-            case TECHNICIAN -> network != null && network.isPendingConfirmation();
-            case NONE -> externalHouseholdsService.canManageHousehold(householdId, userId);
+    private boolean mayChangeDevicesOf(Long householdId, CallerAuthority authority, Long userId) {
+        return switch (authority) {
+            case BUSINESS_ADMINISTRATOR, AUTHORIZED_BY_CONTEXT -> true;
+            case HOUSEHOLD_MEMBER -> externalHouseholdsService.canManageHousehold(householdId, userId);
         };
     }
 

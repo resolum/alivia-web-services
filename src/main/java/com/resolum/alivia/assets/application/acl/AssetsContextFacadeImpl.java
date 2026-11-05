@@ -2,13 +2,16 @@ package com.resolum.alivia.assets.application.acl;
 
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
 import com.resolum.alivia.assets.domain.model.aggregates.Edge;
-import com.resolum.alivia.assets.domain.model.commands.ConfirmInstallationCommand;
+import com.resolum.alivia.assets.domain.model.commands.AssignDeviceToInstallationCommand;
 import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceNetworkCommand;
+import com.resolum.alivia.assets.domain.model.commands.UnassignDeviceCommand;
+import com.resolum.alivia.assets.domain.model.valueobjects.CallerAuthority;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceByMacAddressQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceCountByBusinessIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeByMacAddressQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeCountByBusinessIdQuery;
 import com.resolum.alivia.assets.domain.services.DeviceCommandService;
+import com.resolum.alivia.assets.domain.services.DeviceAssignmentCommandService;
 import com.resolum.alivia.assets.domain.services.DeviceNetworkCommandService;
 import com.resolum.alivia.assets.domain.services.DeviceQueryService;
 import com.resolum.alivia.assets.domain.services.EdgeCommandService;
@@ -25,10 +28,13 @@ public class AssetsContextFacadeImpl implements AssetsContextFacade {
     private final EdgeCommandService edgeCommandService;
     private final EdgeQueryService edgeQueryService;
     private final DeviceNetworkCommandService deviceNetworkCommandService;
+    private final DeviceAssignmentCommandService deviceAssignmentCommandService;
 
     public AssetsContextFacadeImpl(DeviceQueryService deviceQueryService, DeviceCommandService deviceCommandService, EdgeCommandService edgeCommandService, EdgeQueryService edgeQueryService,
-                                   DeviceNetworkCommandService deviceNetworkCommandService) {
+                                   DeviceNetworkCommandService deviceNetworkCommandService,
+                                   DeviceAssignmentCommandService deviceAssignmentCommandService) {
         this.deviceNetworkCommandService = deviceNetworkCommandService;
+        this.deviceAssignmentCommandService = deviceAssignmentCommandService;
         this.deviceQueryService = deviceQueryService;
         this.deviceCommandService = deviceCommandService;
         this.edgeCommandService = edgeCommandService;
@@ -53,8 +59,15 @@ public class AssetsContextFacadeImpl implements AssetsContextFacade {
     }
 
     @Override
-    public void confirmInstallation(Long installationId) {
-        deviceNetworkCommandService.handle(new ConfirmInstallationCommand(installationId));
+    public Long assignDevice(Long installationId, Long deviceId, String roomKey, String function, Long actingUserId) {
+        return deviceAssignmentCommandService.handle(new AssignDeviceToInstallationCommand(installationId, deviceId, roomKey,
+                function, actingUserId, CallerAuthority.AUTHORIZED_BY_CONTEXT)).getId();
+    }
+
+    @Override
+    public void unassignDevice(Long deviceId, String reason, Long actingUserId) {
+        deviceAssignmentCommandService.handle(new UnassignDeviceCommand(deviceId, reason, actingUserId,
+                CallerAuthority.AUTHORIZED_BY_CONTEXT));
     }
 
     @Override

@@ -13,8 +13,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.TestPropertySource;
 
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.*;
 
 /** The network of an installation, stored with its household and found by installation. */
@@ -43,7 +41,7 @@ class DeviceNetworkPersistenceTest {
 
         assertEquals(5L, found.getHouseholdId());
         assertEquals(1L, found.getBusinessId().businessId());
-        assertEquals(NetworkStatus.PENDING_CONFIRMATION, found.getNetworkStatus());
+        assertEquals(NetworkStatus.ACTIVE, found.getNetworkStatus());
         assertTrue(networks.existsByInstallationId(new InstallationId(3L)));
         assertFalse(networks.existsByInstallationId(new InstallationId(4L)));
         assertTrue(networks.findByInstallationId(new InstallationId(4L)).isEmpty());
@@ -58,20 +56,12 @@ class DeviceNetworkPersistenceTest {
     }
 
     @Test
-    void knowsWhetherAHouseholdHasAnOpenNetwork() {
-        var open = List.of(NetworkStatus.PENDING_CONFIRMATION, NetworkStatus.ACTIVE);
+    void knowsWhetherAHouseholdHasAnActiveNetwork() {
         networks.saveAndFlush(new DeviceNetwork(3L, 5L, 1L));
 
-        assertTrue(networks.existsByHouseholdIdAndNetworkStatusIn(5L, open), "pending counts as open");
-        assertFalse(networks.existsByHouseholdIdAndNetworkStatusIn(5L, List.of(NetworkStatus.DEACTIVATED)));
-        assertFalse(networks.existsByHouseholdIdAndNetworkStatusIn(6L, open));
-
-        var network = networks.findByInstallationId(new InstallationId(3L)).orElseThrow();
-        network.confirm();
-        networks.saveAndFlush(network);
-
-        assertTrue(networks.existsByHouseholdIdAndNetworkStatusIn(5L, open), "active counts as open");
-        assertEquals(NetworkStatus.ACTIVE, networks.findByInstallationId(new InstallationId(3L)).orElseThrow().getNetworkStatus());
+        assertTrue(networks.existsByHouseholdIdAndNetworkStatus(5L, NetworkStatus.ACTIVE));
+        assertFalse(networks.existsByHouseholdIdAndNetworkStatus(5L, NetworkStatus.DEACTIVATED));
+        assertFalse(networks.existsByHouseholdIdAndNetworkStatus(6L, NetworkStatus.ACTIVE));
     }
 
     @Test

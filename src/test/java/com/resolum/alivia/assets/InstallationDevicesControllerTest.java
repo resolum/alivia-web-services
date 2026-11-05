@@ -9,7 +9,7 @@ import com.resolum.alivia.assets.domain.exceptions.InstallationNotFound;
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
 import com.resolum.alivia.assets.domain.model.commands.AssignDeviceToInstallationCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
-import com.resolum.alivia.assets.domain.model.valueobjects.BusinessRole;
+import com.resolum.alivia.assets.domain.model.valueobjects.CallerAuthority;
 import com.resolum.alivia.assets.domain.services.DeviceAssignmentCommandService;
 import com.resolum.alivia.assets.interfaces.rest.controllers.InstallationDevicesController;
 import com.resolum.alivia.shared.interfaces.rest.GlobalExceptionHandler;
@@ -80,7 +80,7 @@ class InstallationDevicesControllerTest {
         assertEquals(7L, captor.getValue().deviceId());
         assertEquals("sala", captor.getValue().roomKey());
         assertEquals(9L, captor.getValue().assignedBy());
-        assertEquals(BusinessRole.NONE, captor.getValue().businessRole());
+        assertEquals(CallerAuthority.HOUSEHOLD_MEMBER, captor.getValue().authority());
     }
 
     @Test
@@ -93,11 +93,11 @@ class InstallationDevicesControllerTest {
         var captor = ArgumentCaptor.forClass(AssignDeviceToInstallationCommand.class);
         verify(service).handle(captor.capture());
         assertEquals(8L, captor.getValue().assignedBy());
-        assertEquals(BusinessRole.ADMINISTRATOR, captor.getValue().businessRole());
+        assertEquals(CallerAuthority.BUSINESS_ADMINISTRATOR, captor.getValue().authority());
     }
 
     @Test
-    void tellsTheServiceWhenTheCallerIsATechnicianOfTheBusiness() throws Exception {
+    void aTechnicianIsNotASpecialCaseForAssetsItIsTreatedAsAnyAccountThatMustManageTheHousehold() throws Exception {
         when(service.handle(any(AssignDeviceToInstallationCommand.class))).thenReturn(assignment());
 
         mvc.perform(post(PATH).principal(TECHNICIAN).contentType(MediaType.APPLICATION_JSON).content(BODY))
@@ -106,7 +106,7 @@ class InstallationDevicesControllerTest {
         var captor = ArgumentCaptor.forClass(AssignDeviceToInstallationCommand.class);
         verify(service).handle(captor.capture());
         assertEquals(6L, captor.getValue().assignedBy());
-        assertEquals(BusinessRole.TECHNICIAN, captor.getValue().businessRole());
+        assertEquals(CallerAuthority.HOUSEHOLD_MEMBER, captor.getValue().authority());
     }
 
     @Test

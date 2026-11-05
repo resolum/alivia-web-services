@@ -4,8 +4,11 @@ import com.resolum.alivia.assets.application.acl.AssetsContextFacadeImpl;
 import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalBusinessService;
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
 import com.resolum.alivia.assets.domain.model.aggregates.Edge;
-import com.resolum.alivia.assets.domain.model.commands.ConfirmInstallationCommand;
+import com.resolum.alivia.assets.domain.model.commands.AssignDeviceToInstallationCommand;
 import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceNetworkCommand;
+import com.resolum.alivia.assets.domain.model.commands.UnassignDeviceCommand;
+import com.resolum.alivia.assets.domain.model.valueobjects.CallerAuthority;
+import com.resolum.alivia.assets.domain.services.DeviceAssignmentCommandService;
 import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceCommand;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceByMacAddressQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeByMacAddressQuery;
@@ -112,7 +115,7 @@ class AssetsAccessAndFacadeTest {
         var devices = mock(DeviceQueryService.class);
         var edges = mock(EdgeQueryService.class);
         var facade = new AssetsContextFacadeImpl(devices, mock(DeviceCommandService.class),
-                mock(EdgeCommandService.class), edges, mock(DeviceNetworkCommandService.class));
+                mock(EdgeCommandService.class), edges, mock(DeviceNetworkCommandService.class), mock(DeviceAssignmentCommandService.class));
         var device = new Device("AA:BB:CC:DD:EE:FF", "Luz", "LIGHT", 1L);
         ReflectionTestUtils.setField(device, "id", 7L);
         var edge = new Edge(1L, "AA:BB:CC:DD:EE:00", "ACTUATOR_EDGE");
@@ -141,16 +144,31 @@ class AssetsAccessAndFacadeTest {
     }
 
     @Test
-    void theFacadeRegistersAndConfirmsInstallationsThroughTheNetworkService() {
+    void theFacadeRegistersInstallationsThroughTheNetworkService() {
         var networks = mock(DeviceNetworkCommandService.class);
         when(networks.handle(any(RegisterDeviceNetworkCommand.class))).thenReturn(11L);
         var facade = new AssetsContextFacadeImpl(mock(DeviceQueryService.class), mock(DeviceCommandService.class),
-                mock(EdgeCommandService.class), mock(EdgeQueryService.class), networks);
+                mock(EdgeCommandService.class), mock(EdgeQueryService.class), networks, mock(DeviceAssignmentCommandService.class));
 
         assertEquals(11L, facade.registerInstallation(3L, 5L, 1L));
-        facade.confirmInstallation(3L);
 
         verify(networks).handle(new RegisterDeviceNetworkCommand(3L, 5L, 1L));
-        verify(networks).handle(new ConfirmInstallationCommand(3L));
+    }
+
+    @Test
+    void theFacadePlacesAndRemovesDevicesOnBehalfOfAContextThatAlreadyAuthorizedTheCaller() {
+        var assignments = mock(DeviceAssignmentCommandService.class);
+        var device = new Device("AA:BB:CC:DD:EE:FF", "Luz", "LIGHT", 1L);
+        var assignment = device.assignTo(3L, 5L, "sala", "Luz", 6L, java.time.LocalDateTime.of(2026, 11, 5, 10, 0));
+        ReflectionTestUtils.setField(assignment, "id", 21L);
+        when(assignments.handle(any(AssignDeviceToInstallationCommand.class))).thenReturn(assignment);
+        var facade = new AssetsContextFacadeImpl(mock(DeviceQueryService.class), mock(DeviceCommandService.class),
+                mock(EdgeCommandService.class), mock(EdgeQueryService.class), mock(DeviceNetworkCommandService.class), assignments);
+
+        assertEquals(21L, facade.assignDevice(3L, 7L, "sala", "Luz", 6L));
+        facade.unassignDevice(7L, "Fin de la visita", 6L);
+
+        verify(assignments).handle(new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", 6L, CallerAuthority.AUTHORIZED_BY_CONTEXT));
+        verify(assignments).handle(new UnassignDeviceCommand(7L, "Fin de la visita", 6L, CallerAuthority.AUTHORIZED_BY_CONTEXT));
     }
 }

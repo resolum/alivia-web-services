@@ -5,10 +5,7 @@ import com.resolum.alivia.assets.application.internal.outboundservices.acl.Exter
 import com.resolum.alivia.assets.application.internal.queryservices.DeviceNetworkQueryServiceImpl;
 import com.resolum.alivia.assets.domain.exceptions.BusinessNotFound;
 import com.resolum.alivia.assets.domain.exceptions.InstallationAlreadyRegistered;
-import com.resolum.alivia.assets.domain.exceptions.InstallationNotActive;
-import com.resolum.alivia.assets.domain.exceptions.InstallationNotFound;
 import com.resolum.alivia.assets.domain.model.aggregates.DeviceNetwork;
-import com.resolum.alivia.assets.domain.model.commands.ConfirmInstallationCommand;
 import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceNetworkCommand;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceNetworkByInstallationIdQuery;
 import com.resolum.alivia.assets.domain.model.valueobjects.NetworkStatus;
@@ -20,7 +17,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -49,13 +45,11 @@ class DeviceNetworkTest {
     }
 
     @Test
-    void startsPendingConfirmationWithTheHouseholdAndTheBusiness() {
+    void startsActiveWithTheHouseholdAndTheBusiness() {
         var network = new DeviceNetwork(3L, 5L, 1L);
 
-        assertTrue(network.isPendingConfirmation());
-        assertFalse(network.isActive());
-        assertTrue(network.isOpen());
-        assertEquals(NetworkStatus.PENDING_CONFIRMATION, network.getNetworkStatus());
+        assertTrue(network.isActive());
+        assertEquals(NetworkStatus.ACTIVE, network.getNetworkStatus());
         assertEquals(3L, network.getInstallationId().installationId());
         assertEquals(5L, network.getHouseholdId());
         assertEquals(1L, network.getBusinessId().businessId());
@@ -97,8 +91,7 @@ class DeviceNetworkTest {
 
     @Test
     void rejectsASecondActiveInstallationForTheSameHousehold() {
-        when(networks.existsByHouseholdIdAndNetworkStatusIn(5L, List.of(NetworkStatus.PENDING_CONFIRMATION, NetworkStatus.ACTIVE)))
-                .thenReturn(true);
+        when(networks.existsByHouseholdIdAndNetworkStatus(5L, NetworkStatus.ACTIVE)).thenReturn(true);
 
         var exception = assertThrows(InstallationAlreadyRegistered.class, () -> service.handle(COMMAND));
 
@@ -111,48 +104,6 @@ class DeviceNetworkTest {
         when(networks.saveAndFlush(any(DeviceNetwork.class))).thenThrow(new DataIntegrityViolationException("uk_device_networks_installation"));
 
         assertThrows(InstallationAlreadyRegistered.class, () -> service.handle(COMMAND));
-    }
-
-    @Test
-    void confirmingTheInstallationMakesTheNetworkActiveAndConfirmingAgainChangesNothing() {
-        var network = new DeviceNetwork(3L, 5L, 1L);
-
-        network.confirm();
-        network.confirm();
-
-        assertTrue(network.isActive());
-        assertFalse(network.isPendingConfirmation());
-        assertEquals(NetworkStatus.ACTIVE, network.getNetworkStatus());
-    }
-
-    @Test
-    void aClosedNetworkCannotBeConfirmed() {
-        var network = new DeviceNetwork(3L, 5L, 1L);
-        ReflectionTestUtils.setField(network, "networkStatus", NetworkStatus.DEACTIVATED);
-
-        assertThrows(InstallationNotActive.class, network::confirm);
-        assertFalse(network.isOpen());
-        assertEquals(NetworkStatus.DEACTIVATED, network.getNetworkStatus());
-    }
-
-    @Test
-    void theServiceConfirmsTheInstallationUnderLock() {
-        var network = new DeviceNetwork(3L, 5L, 1L);
-        when(networks.findByInstallationIdForUpdate(new InstallationId(3L))).thenReturn(Optional.of(network));
-
-        service.handle(new ConfirmInstallationCommand(3L));
-
-        assertTrue(network.isActive());
-        verify(networks).save(network);
-    }
-
-    @Test
-    void confirmingAnUnknownInstallationFails() {
-        when(networks.findByInstallationIdForUpdate(new InstallationId(9L))).thenReturn(Optional.empty());
-
-        assertThrows(InstallationNotFound.class, () -> service.handle(new ConfirmInstallationCommand(9L)));
-        assertThrows(IllegalArgumentException.class, () -> new ConfirmInstallationCommand(0L));
-        verify(networks, never()).save(any());
     }
 
     @Test

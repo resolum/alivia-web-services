@@ -11,19 +11,28 @@ public interface AssetsContextFacade {
     Optional<Long> fetchEdgeByMacAddress(String macAddress);
 
     /**
-     * Registers the network of an installation that the technicians of the business start in a household, so they
-     * can place devices in it. It stays pending until {@link #confirmInstallation}. Fails when the business does not
-     * exist or the installation, or an open network of the household, is already registered.
+     * Registers the network of an installation done for a household, so devices can be placed in it. Fails when
+     * the business does not exist or the installation, or an active network of the household, is already registered.
      *
      * @return the id of the network
      */
     Long registerInstallation(Long installationId, Long householdId, Long businessId);
 
     /**
-     * The technicians confirmed the installation: its network becomes active and the household takes over.
-     * Confirming twice changes nothing; an unknown installation is an error.
+     * Places an available device in a room of the household of an installation, on behalf of another context that
+     * already decided that the acting account may do it (Operations, for the work of its technicians). Assets does
+     * not ask who the account is: it applies the inventory rules (device available, compatible with the plan, one
+     * active assignment per device).
+     *
+     * @return the id of the assignment
      */
-    void confirmInstallation(Long installationId);
+    Long assignDevice(Long installationId, Long deviceId, String roomKey, String function, Long actingUserId);
+
+    /**
+     * Takes a device out of its household on behalf of another context that already authorized the acting
+     * account. The assignment is closed with the reason, never deleted.
+     */
+    void unassignDevice(Long deviceId, String reason, Long actingUserId);
 
     Long fetchEdgeCountByBusinessId(Long businessId);
     Long fetchDeviceCountByBusinessId(Long businessId);

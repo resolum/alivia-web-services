@@ -1,6 +1,5 @@
 package com.resolum.alivia.assets.domain.model.aggregates;
 
-import com.resolum.alivia.assets.domain.exceptions.InstallationNotActive;
 import com.resolum.alivia.assets.domain.model.valueobjects.NetworkStatus;
 import com.resolum.alivia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
 import com.resolum.alivia.shared.domain.model.valueobjects.BusinessId;
@@ -13,8 +12,8 @@ import lombok.Getter;
  * the installation was done for. The devices of the network are the ones with an active assignment to its
  * installation (every {@code DeviceType}), and the edge services that run them are the two edges below.
  *
- * <p>It starts {@code PENDING_CONFIRMATION}, while the technicians of the business place the devices, and becomes
- * {@code ACTIVE} when they confirm the installation. A household has at most one network that is pending or active.</p>
+ * <p>The work of installing and maintaining (who does it, when it is confirmed) belongs to Operations; Assets only
+ * keeps which devices are in the household. A household has at most one active network.</p>
  */
 @Getter
 @Entity
@@ -40,7 +39,7 @@ public class DeviceNetwork extends AuditableAbstractAggregateRoot<DeviceNetwork>
 
     public DeviceNetwork(){}
 
-    /** Registers the network of an installation; it starts {@code PENDING_CONFIRMATION} without edges. */
+    /** Registers the network of an installation; it starts {@code ACTIVE} without edges. */
     public DeviceNetwork(Long installationId, Long householdId, Long businessId) {
         if (householdId == null || householdId <= 0) {
             throw new IllegalArgumentException("Household ID must be a positive number.");
@@ -48,30 +47,10 @@ public class DeviceNetwork extends AuditableAbstractAggregateRoot<DeviceNetwork>
         this.businessId = new BusinessId(businessId);
         this.installationId = new InstallationId(installationId);
         this.householdId = householdId;
-        this.networkStatus = NetworkStatus.PENDING_CONFIRMATION;
-    }
-
-    public boolean isPendingConfirmation() {
-        return networkStatus == NetworkStatus.PENDING_CONFIRMATION;
+        this.networkStatus = NetworkStatus.ACTIVE;
     }
 
     public boolean isActive() {
         return networkStatus == NetworkStatus.ACTIVE;
-    }
-
-    /** Devices can be placed in the network while it is pending confirmation or active. */
-    public boolean isOpen() {
-        return isPendingConfirmation() || isActive();
-    }
-
-    /** The technicians confirmed the installation. Confirming it again changes nothing. */
-    public void confirm() {
-        if (isActive()) {
-            return;
-        }
-        if (!isPendingConfirmation()) {
-            throw new InstallationNotActive(installationId.installationId());
-        }
-        this.networkStatus = NetworkStatus.ACTIVE;
     }
 }

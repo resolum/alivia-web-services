@@ -2,7 +2,7 @@ package com.resolum.alivia.assets.interfaces.rest.controllers;
 
 import com.resolum.alivia.assets.domain.model.commands.UnassignDeviceCommand;
 import com.resolum.alivia.assets.domain.services.DeviceAssignmentCommandService;
-import com.resolum.alivia.assets.interfaces.rest.transform.BusinessRoleFromAuthenticationAssembler;
+import com.resolum.alivia.assets.interfaces.rest.transform.CallerAuthorityFromAuthenticationAssembler;
 import com.resolum.alivia.assets.interfaces.rest.resources.UnassignDeviceResource;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -33,8 +33,7 @@ public class DeviceAssignmentController {
                     + "El motivo va en el cuerpo JSON {\"reason\": \"...\"} o, para los clientes que descartan el cuerpo "
                     + "de un DELETE, en el parámetro de consulta `reason`; si llegan ambos, vale el del cuerpo. "
                     + "La asignación se conserva como historial; no se borra ninguna fila. "
-                    + "Pueden hacerlo el administrador del negocio, los técnicos del negocio mientras la instalación está "
-                    + "pendiente de confirmación, y quien administra el hogar.")
+                    + "Pueden hacerlo quien administra el hogar y el administrador del negocio.")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Dispositivo desasignado"),
             @ApiResponse(responseCode = "400", description = "Motivo ausente o demasiado largo"),
@@ -49,6 +48,6 @@ public class DeviceAssignmentController {
         var reason = body != null ? body.reason() : reasonParameter;
         assignmentCommandService.handle(new UnassignDeviceCommand(
                 deviceId, reason, Long.valueOf(authentication.getName()),
-                BusinessRoleFromAuthenticationAssembler.toBusinessRole(authentication)));
+                CallerAuthorityFromAuthenticationAssembler.toCallerAuthority(authentication)));
     }
 }
