@@ -2,10 +2,13 @@ package com.resolum.alivia.assets;
 
 import com.resolum.alivia.assets.domain.exceptions.BusinessNotFound;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
+import com.resolum.alivia.assets.domain.exceptions.InvalidAssetStatusTransition;
+import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.exceptions.DeviceStillAssigned;
 import com.resolum.alivia.assets.domain.exceptions.InvalidMacAddress;
 import com.resolum.alivia.assets.domain.exceptions.MacAddressAlreadyExists;
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
+import com.resolum.alivia.assets.domain.model.commands.ChangeDeviceStatusCommand;
 import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceCommand;
 import com.resolum.alivia.assets.domain.model.commands.UpdateDeviceCommand;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceByIdQuery;
@@ -208,6 +211,68 @@ class DevicesControllerTest {
     void rejectsAnUpdateThatLacksTheDeviceType() throws Exception {
         mvc.perform(put("/api/v1/devices/7").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"macAddress\":\"AA:BB:CC:DD:EE:FF\",\"edgeType\":\"ACTUATOR_EDGE\"}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(commands);
+    }
+
+    // --- changing the status of a device ---
+
+    @Test
+    void changesTheStatusAndReturnsTheDevice() throws Exception {
+        var device = device();
+        device.changeStatusTo(AssetStatus.MAINTENANCE);
+        when(commands.handle(new ChangeDeviceStatusCommand(7L, "MAINTENANCE"))).thenReturn(7L);
+        when(queries.handle(new GetDeviceByIdQuery(7L))).thenReturn(Optional.of(device));
+
+        mvc.perform(put("/api/v1/devices/7/status").contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"MAINTENANCE\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(7))
+                .andExpect(jsonPath("$.status").value("MAINTENANCE"));
+    }
+
+    @Test
+    void theStatusChangeAnswers400404And409() throws Exception {
+        doThrow(new IllegalArgumentException("A device becomes IN_USE only by being assigned to an installation."))
+                .when(commands).handle(new ChangeDeviceStatusCommand(7L, "IN_USE"));
+        mvc.perform(put("/api/v1/devices/7/status").contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"IN_USE\"}"))
+                .andExpect(status().isBadRequest());
+
+        doThrow(new DeviceNotFound(9L)).when(commands).handle(new ChangeDeviceStatusCommand(9L, "BROKEN"));
+        mvc.perform(put("/api/v1/devices/9/status").contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"BROKEN\"}"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("device_not_found"));
+
+        doThrow(new DeviceStillAssigned(7L, AssetStatus.RETIRED)).when(commands).handle(new ChangeDeviceStatusCommand(7L, "RETIRED"));
+        mvc.perform(put("/api/v1/devices/7/status").contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"RETIRED\"}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("device_still_assigned"));
+
+        doThrow(new InvalidAssetStatusTransition(AssetStatus.RETIRED, AssetStatus.AVAILABLE))
+                .when(commands).handle(new ChangeDeviceStatusCommand(7L, "AVAILABLE"));
+        mvc.perform(put("/api/v1/devices/7/status").contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"AVAILABLE\"}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("invalid_asset_status_transition"));
+
+        doThrow(new org.springframework.orm.ObjectOptimisticLockingFailureException(Device.class, 7L))
+                .when(commands).handle(new ChangeDeviceStatusCommand(7L, "BROKEN"));
+        mvc.perform(put("/api/v1/devices/7/status").contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"BROKEN\"}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("resource_modified_concurrently"));
+    }
+
+    @Test
+    void anUnknownStatusIsRejectedWithTheMessageOfTheDomain() throws Exception {
+        doThrow(new IllegalArgumentException("Unknown asset status: SLEEPING."))
+                .when(commands).handle(new ChangeDeviceStatusCommand(7L, "SLEEPING"));
+
+        mvc.perform(put("/api/v1/devices/7/status").contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"SLEEPING\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Unknown asset status: SLEEPING."));
+    }
+
+    @Test
+    void theStatusChangeRejectsAMissingStatusWithoutCallingTheService() throws Exception {
+        mvc.perform(put("/api/v1/devices/7/status").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("validation_failed"));
+        mvc.perform(put("/api/v1/devices/7/status").contentType(MediaType.APPLICATION_JSON).content("{\"status\":\" \"}"))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(commands);

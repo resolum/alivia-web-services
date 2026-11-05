@@ -49,7 +49,14 @@ public abstract class Asset extends AuditableAbstractAggregateRoot<Asset> {
         if (assetStatus == null || assetStatus.isBlank()) {
             throw new IllegalArgumentException("Asset status cannot be null or blank.");
         }
-        changeStatusTo(AssetStatus.valueOf(assetStatus.strip().toUpperCase(java.util.Locale.ROOT)));
+        AssetStatus target;
+        try {
+            target = AssetStatus.valueOf(assetStatus.strip().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException unknown) {
+            // Not the message of valueOf: it would show the name of an internal class to the caller.
+            throw new IllegalArgumentException("Unknown asset status: " + assetStatus.strip() + ".");
+        }
+        changeStatusTo(target);
     }
 
     /** Moves the asset to {@code target} or fails without mutating it when the transition is not allowed. */

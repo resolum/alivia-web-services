@@ -71,7 +71,7 @@ class EdgeTransportOnPostgresTest extends PostgresIntegrationTest {
         return new Edges(installation, mic, act, micCred, actCred);
     }
 
-    private void registerLight(long installation) {
+    private long registerLight(long installation) {
         var light = devices.saveAndFlush(new Device(mac("DD:EE:01"), "Luz", "LIGHT", 1L));
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
             var registry = registries.findByInstallationIdForUpdate(new InstallationId(installation)).orElseThrow();
@@ -79,6 +79,7 @@ class EdgeTransportOnPostgresTest extends PostgresIntegrationTest {
                     LocalDateTime.now(), PLAN);
             registries.saveAndFlush(registry);
         });
+        return light.getId();
     }
 
     @Test
@@ -232,5 +233,40 @@ class EdgeTransportOnPostgresTest extends PostgresIntegrationTest {
             }
         }
         assertEquals(waits.size(), woken);
+    }
+
+    @Test
+    void aDeviceStatusChangedThroughTheApiReachesTheWaitingEdge() throws Exception {
+        var e = installationWithEdges();
+        long deviceId = registerLight(e.installation());      // version 1: the device is assigned and IN_USE
+        assertEquals(400, call("PUT", "/api/v1/devices/" + deviceId + "/status", admin, "{\"status\":\"IN_USE\"}", null).status());
+        assertEquals(400, call("PUT", "/api/v1/devices/" + deviceId + "/status", admin, "{\"status\":\"SLEEPING\"}", null).status());
+        // An assigned device cannot be made available or retired, only taken to maintenance or broken.
+        assertEquals(409, call("PUT", "/api/v1/devices/" + deviceId + "/status", admin, "{\"status\":\"RETIRED\"}", null).status());
+        assertEquals(409, call("PUT", "/api/v1/devices/" + deviceId + "/status", admin, "{\"status\":\"AVAILABLE\"}", null).status());
+        assertEquals(404, call("PUT", "/api/v1/devices/999999/status", admin, "{\"status\":\"BROKEN\"}", null).status());
+        assertEquals(1, number(call("GET", TABLE, e.micCred()).body(), "version"), "nothing was stored by the refused changes");
+
+        var waiting = callAsync(TABLE + "?wait=20", e.actCred(), "\"1\"");
+        Thread.sleep(500);
+        assertFalse(waiting.isDone());
+        long start = System.nanoTime();
+        var changed = call("PUT", "/api/v1/devices/" + deviceId + "/status", admin, "{\"status\":\"maintenance\"}", null);
+        assertEquals(200, changed.status(), changed.body());
+        assertEquals("MAINTENANCE", text(changed.body(), "status"));
+
+        var woken = waiting.get(10, TimeUnit.SECONDS);
+        long millis = (System.nanoTime() - start) / 1_000_000;
+        assertEquals(200, woken.statusCode());
+        assertEquals("\"2\"", woken.headers().firstValue("ETag").orElseThrow());
+        assertTrue(woken.body().contains("\"status\":\"MAINTENANCE\""), woken.body());
+        assertTrue(millis < 2000, "the edge learned of the change at once: " + millis + " ms");
+
+        // A device that is not in any household changes status without touching any table.
+        var registered = call("POST", "/api/v1/devices", admin,
+                "{\"macAddress\":\"" + mac("DD:EE:02") + "\",\"alias\":\"Suelta\",\"deviceType\":\"LIGHT\"}", null);
+        long looseId = number(registered.body(), "id");
+        assertEquals("BROKEN", text(call("PUT", "/api/v1/devices/" + looseId + "/status", admin, "{\"status\":\"BROKEN\"}", null).body(), "status"));
+        assertEquals(2, number(call("GET", TABLE, e.micCred()).body(), "version"));
     }
 }

@@ -132,6 +132,8 @@ class AssetsAccessAndFacadeTest {
     }
 
     private static final RegisterDeviceResource REGISTER = new RegisterDeviceResource("AA:BB:CC:DD:EE:FF", "Luz", "LIGHT");
+    private static final com.resolum.alivia.assets.interfaces.rest.resources.ChangeDeviceStatusResource DEVICE_STATUS =
+            new com.resolum.alivia.assets.interfaces.rest.resources.ChangeDeviceStatusResource("MAINTENANCE");
     private static final UpdateDeviceResource UPDATE = new UpdateDeviceResource("AA:BB:CC:DD:EE:FF", "LIGHT");
     private static final com.resolum.alivia.assets.interfaces.rest.resources.RegisterEdgeResource REGISTER_EDGE =
             new com.resolum.alivia.assets.interfaces.rest.resources.RegisterEdgeResource("AA:BB:CC:DD:EE:FF", "ACTUATOR_EDGE");
@@ -159,6 +161,7 @@ class AssetsAccessAndFacadeTest {
 
             assertEquals(7L, context.getBean(DevicesController.class).registerDevice(REGISTER).id());
             assertDoesNotThrow(() -> context.getBean(DevicesController.class).updateDevice(7L, UPDATE));
+            assertEquals(7L, context.getBean(DevicesController.class).changeDeviceStatus(7L, DEVICE_STATUS).id());
             assertDoesNotThrow(() -> context.getBean(EdgesController.class).updateEdge(3L, UPDATE_EDGE));
             assertEquals(3L, context.getBean(EdgesController.class).registerEdge(REGISTER_EDGE).id());
             assertEquals(3L, context.getBean(EdgesController.class).changeEdgeStatus(3L, EDGE_STATUS).id());
@@ -179,6 +182,8 @@ class AssetsAccessAndFacadeTest {
                         () -> context.getBean(DevicesController.class).registerDevice(REGISTER), role);
                 assertThrows(AccessDeniedException.class,
                         () -> context.getBean(DevicesController.class).updateDevice(7L, UPDATE), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(DevicesController.class).changeDeviceStatus(7L, DEVICE_STATUS), role);
                 assertThrows(AccessDeniedException.class,
                         () -> context.getBean(EdgesController.class).updateEdge(3L, UPDATE_EDGE), role);
                 assertThrows(AccessDeniedException.class,

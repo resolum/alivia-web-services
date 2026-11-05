@@ -4,9 +4,11 @@ import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceByIdQuery;
 import com.resolum.alivia.assets.domain.services.DeviceCommandService;
 import com.resolum.alivia.assets.domain.services.DeviceQueryService;
+import com.resolum.alivia.assets.interfaces.rest.resources.ChangeDeviceStatusResource;
 import com.resolum.alivia.assets.interfaces.rest.resources.DeviceResource;
 import com.resolum.alivia.assets.interfaces.rest.resources.RegisterDeviceResource;
 import com.resolum.alivia.assets.interfaces.rest.resources.UpdateDeviceResource;
+import com.resolum.alivia.assets.interfaces.rest.transform.ChangeDeviceStatusCommandFromResourceAssembler;
 import com.resolum.alivia.assets.interfaces.rest.transform.DeviceResourceFromEntityAssembler;
 import com.resolum.alivia.assets.interfaces.rest.transform.RegisterDeviceCommandFromResourceAssembler;
 import com.resolum.alivia.assets.interfaces.rest.transform.UpdateDeviceCommandFromResourceAssembler;
@@ -77,5 +79,24 @@ public class DevicesController {
         var device = deviceQueryService.handle(new GetDeviceByIdQuery(deviceId));
         return device.map(entity -> ResponseEntity.ok(DeviceResourceFromEntityAssembler.toResourceFromEntity(entity)))
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PutMapping(value = "/{deviceId}/status", consumes = APPLICATION_JSON_VALUE)
+    @Operation(summary = "Cambiar el estado de un dispositivo",
+            description = "Mueve el dispositivo a AVAILABLE, MAINTENANCE, BROKEN o RETIRED siguiendo las transiciones permitidas "
+                    + "(RETIRED es definitivo). IN_USE no se puede pedir: un dispositivo pasa a IN_USE solo al asignarlo a un hogar. "
+                    + "Un dispositivo asignado no puede pasar a AVAILABLE ni a RETIRED hasta que se desasigne; sí puede pasar a "
+                    + "MAINTENANCE o BROKEN, y entonces la tabla de dispositivos del hogar cambia de versión y los edge la reciben.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Estado cambiado"),
+            @ApiResponse(responseCode = "400", description = "Estado desconocido o IN_USE"),
+            @ApiResponse(responseCode = "404", description = "El dispositivo no existe"),
+            @ApiResponse(responseCode = "409", description = "Transición no permitida, el dispositivo sigue asignado a un hogar, o otra petición lo cambió al mismo tiempo")
+    })
+    public DeviceResource changeDeviceStatus(@PathVariable Long deviceId, @Valid @RequestBody ChangeDeviceStatusResource resource) {
+        deviceCommandService.handle(ChangeDeviceStatusCommandFromResourceAssembler.toCommandFromResource(deviceId, resource));
+        return deviceQueryService.handle(new GetDeviceByIdQuery(deviceId))
+                .map(DeviceResourceFromEntityAssembler::toResourceFromEntity)
+                .orElseThrow(() -> new DeviceNotFound(deviceId));
     }
 }
