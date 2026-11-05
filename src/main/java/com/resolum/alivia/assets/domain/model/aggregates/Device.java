@@ -1,8 +1,6 @@
 package com.resolum.alivia.assets.domain.model.aggregates;
 
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotAvailable;
-import com.resolum.alivia.assets.domain.model.events.DeviceAssignedEvent;
-import com.resolum.alivia.assets.domain.model.valueobjects.AssetKind;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
 import jakarta.persistence.Column;
@@ -45,24 +43,9 @@ public class Device extends Asset {
 
     public Device update(String macAddress, String deviceType) {
         var newType = parseType(deviceType);
-        var previousMacAddress = getMacAddress();
-        var previousType = this.deviceType;
         updateMacAddress(macAddress);
         this.deviceType = newType;
-        if (!getMacAddress().equals(previousMacAddress) || newType != previousType) {
-            announceUpdate();
-        }
         return this;
-    }
-
-    @Override
-    protected AssetKind assetKind() {
-        return AssetKind.DEVICE;
-    }
-
-    @Override
-    protected String assetTypeName() {
-        return deviceType.name();
     }
 
     /** Only an {@code AVAILABLE} device can be assigned; any other status is a conflict. */
@@ -74,16 +57,16 @@ public class Device extends Asset {
 
     /**
      * Places the device in a room of the household of an installation, with a function, and leaves it
-     * {@code IN_USE}. The assignment is
-     * built and validated before the status changes, so the device is untouched when anything is invalid.
+     * {@code IN_USE}. The assignment is built and validated before the status changes, so the device is untouched
+     * when anything is invalid. Whether the household's registry accepts it is decided by
+     * {@link HouseholdDeviceRegistry#register}.
      */
     public DeviceAssignment assignTo(Long installationId, Long householdId, String roomKey, String function,
                                      Long assignedBy, LocalDateTime assignedAt) {
         ensureAssignable();
         var assignment = new DeviceAssignment(this, installationId, householdId, roomKey, function, assignedBy,
                 assignedAt);
-        transitionTo(AssetStatus.IN_USE);
-        assignment.addDomainEvent(new DeviceAssignedEvent(assignment.placement()));
+        changeStatusTo(AssetStatus.IN_USE);
         return assignment;
     }
 

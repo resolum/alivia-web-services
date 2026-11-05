@@ -1,8 +1,6 @@
 package com.resolum.alivia.assets.domain.model.aggregates;
 
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotAssigned;
-import com.resolum.alivia.assets.domain.model.events.DeviceUnassignedEvent;
-import com.resolum.alivia.assets.domain.model.valueobjects.DevicePlacement;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
 import jakarta.persistence.Column;
@@ -21,7 +19,8 @@ import java.time.LocalDateTime;
  * while {@code unassignedAt} is empty, and a device has at most one active assignment.
  *
  * <p>It is also the history of the device: {@linkplain #unassign unassigning} closes the record with who
- * did it, when and why, and never deletes it. Placing the device again creates a new record.</p>
+ * did it, when and why, and never deletes it. Placing the device again creates a new record. The active ones are the
+ * entries of the household's {@link HouseholdDeviceRegistry}.</p>
  */
 @Entity
 @Getter
@@ -30,6 +29,11 @@ public class DeviceAssignment extends AuditableAbstractAggregateRoot<DeviceAssig
     public static final int ROOM_KEY_MAX_LENGTH = 60;
     public static final int FUNCTION_MAX_LENGTH = 80;
     public static final int UNASSIGN_REASON_MAX_LENGTH = 300;
+
+    /** Registry of the household this entry belongs to. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "registry_id", foreignKey = @ForeignKey(name = "fk_device_assignments_registry"))
+    private HouseholdDeviceRegistry registry;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "device_id", nullable = false, foreignKey = @ForeignKey(name = "fk_device_assignments_device"))
@@ -103,10 +107,9 @@ public class DeviceAssignment extends AuditableAbstractAggregateRoot<DeviceAssig
         return unassignedAt == null;
     }
 
-    /** A copy of where the device is placed, with the status it has right now. */
-    DevicePlacement placement() {
-        return new DevicePlacement(installationId, householdId, device.getId(), device.getMacAddress().macAddress(),
-                device.getDeviceType(), device.getAssetStatus(), roomKey, function);
+    /** Links the entry to the registry that holds it. */
+    void attachTo(HouseholdDeviceRegistry registry) {
+        this.registry = registry;
     }
 
     /**
@@ -134,12 +137,11 @@ public class DeviceAssignment extends AuditableAbstractAggregateRoot<DeviceAssig
             throw new IllegalArgumentException("The unassignment cannot be before the assignment.");
         }
         if (device.getAssetStatus() == AssetStatus.IN_USE) {
-            device.transitionTo(AssetStatus.AVAILABLE);
+            device.changeStatusTo(AssetStatus.AVAILABLE);
         }
         this.unassignedAt = at;
         this.unassignedBy = actor;
         this.unassignReason = cleanReason;
-        addDomainEvent(new DeviceUnassignedEvent(placement()));
     }
 
     private static String requireText(String value, String name, int maxLength) {

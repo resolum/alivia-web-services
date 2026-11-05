@@ -11,10 +11,11 @@ public interface AssetsContextFacade {
     Optional<Long> fetchEdgeByMacAddress(String macAddress);
 
     /**
-     * Registers the network of an installation done for a household, so devices can be placed in it. Fails when
-     * the business does not exist or the installation, or an active network of the household, is already registered.
+     * Registers the installation done for a household, which opens the registry of the household's devices so they can
+     * be placed in it. Fails when the business does not exist or the installation, or an installation of that household,
+     * is already registered.
      *
-     * @return the id of the network
+     * @return the id of the registry
      */
     Long registerInstallation(Long installationId, Long householdId, Long businessId);
 

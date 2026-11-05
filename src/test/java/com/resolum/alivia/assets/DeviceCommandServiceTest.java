@@ -18,6 +18,7 @@ import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
 import com.resolum.alivia.assets.domain.model.valueobjects.MacAddress;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceAssignmentRepository;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceRepository;
+import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.HouseholdDeviceRegistryRepository;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.EdgeRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,7 @@ class DeviceCommandServiceTest {
     private DeviceRepository devices;
     private EdgeRepository edges;
     private DeviceAssignmentRepository assignments;
+    private HouseholdDeviceRegistryRepository registries;
     private ExternalBusinessService companies;
     private DeviceCommandServiceImpl service;
 
@@ -46,10 +48,11 @@ class DeviceCommandServiceTest {
         devices = mock(DeviceRepository.class);
         edges = mock(EdgeRepository.class);
         assignments = mock(DeviceAssignmentRepository.class);
+        registries = mock(HouseholdDeviceRegistryRepository.class);
         companies = mock(ExternalBusinessService.class);
-        service = new DeviceCommandServiceImpl(devices, companies, edges, assignments);
+        service = new DeviceCommandServiceImpl(devices, companies, edges, assignments, registries);
         when(companies.existsBusiness(1L)).thenReturn(true);
-        when(devices.save(any(Device.class))).thenAnswer(invocation -> {
+        when(devices.saveAndFlush(any(Device.class))).thenAnswer(invocation -> {
             var device = invocation.<Device>getArgument(0);
             ReflectionTestUtils.setField(device, "id", 7L);
             return device;
@@ -68,7 +71,7 @@ class DeviceCommandServiceTest {
 
         assertEquals(7L, id);
         var captor = ArgumentCaptor.forClass(Device.class);
-        verify(devices).save(captor.capture());
+        verify(devices).saveAndFlush(captor.capture());
         var saved = captor.getValue();
         assertEquals(MAC, saved.getMacAddress().macAddress());
         assertEquals("Luz de la sala", saved.getAlias());
@@ -85,7 +88,7 @@ class DeviceCommandServiceTest {
                 () -> service.handle(new RegisterDeviceCommand(1L, "aa:bb:cc:dd:ee:ff", "Luz", "LIGHT")));
 
         assertTrue(exception.getMessage().contains(MAC));
-        verify(devices, never()).save(any());
+        verify(devices, never()).saveAndFlush(any());
     }
 
     @Test
@@ -95,12 +98,12 @@ class DeviceCommandServiceTest {
         assertThrows(MacAddressAlreadyExists.class,
                 () -> service.handle(new RegisterDeviceCommand(1L, MAC, "Luz", "LIGHT")));
 
-        verify(devices, never()).save(any());
+        verify(devices, never()).saveAndFlush(any());
     }
 
     @Test
     void translatesAConcurrentDuplicateDetectedByTheDatabase() {
-        when(devices.save(any(Device.class))).thenThrow(new DataIntegrityViolationException("uk_devices_mac_address"));
+        when(devices.saveAndFlush(any(Device.class))).thenThrow(new DataIntegrityViolationException("uk_devices_mac_address"));
 
         assertThrows(MacAddressAlreadyExists.class,
                 () -> service.handle(new RegisterDeviceCommand(1L, MAC, "Luz", "LIGHT")));
@@ -108,7 +111,7 @@ class DeviceCommandServiceTest {
 
     @Test
     void doesNotHideOtherPersistenceFailures() {
-        when(devices.save(any(Device.class))).thenThrow(new IllegalStateException("database down"));
+        when(devices.saveAndFlush(any(Device.class))).thenThrow(new IllegalStateException("database down"));
 
         assertThrows(IllegalStateException.class,
                 () -> service.handle(new RegisterDeviceCommand(1L, MAC, "Luz", "LIGHT")));
@@ -121,7 +124,7 @@ class DeviceCommandServiceTest {
         assertThrows(BusinessNotFound.class,
                 () -> service.handle(new RegisterDeviceCommand(99L, MAC, "Luz", "LIGHT")));
 
-        verify(devices, never()).save(any());
+        verify(devices, never()).saveAndFlush(any());
     }
 
     @Test
@@ -136,7 +139,7 @@ class DeviceCommandServiceTest {
         assertEquals("Unknown device type: TOASTER.", unknownType.getMessage());
         verifyNoInteractions(companies, edges);
         verify(devices, never()).existsDeviceByMacAddress(any());
-        verify(devices, never()).save(any());
+        verify(devices, never()).saveAndFlush(any());
     }
 
     @Test
@@ -146,7 +149,7 @@ class DeviceCommandServiceTest {
         assertEquals(7L, service.handle(new UpdateDeviceCommand(7L, "aa-bb-cc-dd-ee-ff", "door")));
 
         var captor = ArgumentCaptor.forClass(Device.class);
-        verify(devices).save(captor.capture());
+        verify(devices).saveAndFlush(captor.capture());
         assertEquals(DeviceType.DOOR, captor.getValue().getDeviceType());
         verify(devices, never()).existsDeviceByMacAddress(any());
     }
@@ -159,7 +162,7 @@ class DeviceCommandServiceTest {
         assertThrows(MacAddressAlreadyExists.class,
                 () -> service.handle(new UpdateDeviceCommand(7L, "aa:bb:cc:dd:ee:00", "LIGHT")));
 
-        verify(devices, never()).save(any());
+        verify(devices, never()).saveAndFlush(any());
     }
 
     @Test
@@ -180,7 +183,7 @@ class DeviceCommandServiceTest {
         assertThrows(InvalidAssetStatusTransition.class,
                 () -> service.handle(new ChangeDeviceStatusCommand(7L, "AVAILABLE")));
         assertEquals(AssetStatus.RETIRED, device.getAssetStatus());
-        verify(devices, times(1)).save(device);
+        verify(devices, times(1)).saveAndFlush(device);
     }
 
     @Test
@@ -195,7 +198,7 @@ class DeviceCommandServiceTest {
 
         assertTrue(exception.getMessage().contains("unassign it first"));
         assertEquals(DeviceType.LIGHT, device.getDeviceType());
-        verify(devices, never()).save(any());
+        verify(devices, never()).saveAndFlush(any());
     }
 
     @Test
@@ -209,7 +212,7 @@ class DeviceCommandServiceTest {
 
         assertEquals("AA:BB:CC:DD:EE:00", device.getMacAddress().macAddress());
         assertEquals(DeviceType.LIGHT, device.getDeviceType());
-        verify(devices).save(device);
+        verify(devices).saveAndFlush(device);
     }
 
     @Test
@@ -242,7 +245,7 @@ class DeviceCommandServiceTest {
 
         assertTrue(exception.getMessage().contains("assigned"));
         assertEquals(AssetStatus.AVAILABLE, device.getAssetStatus());
-        verify(devices, never()).save(any());
+        verify(devices, never()).saveAndFlush(any());
     }
 
     @Test
@@ -256,7 +259,7 @@ class DeviceCommandServiceTest {
         assertThrows(DeviceStillAssigned.class, () -> service.handle(new ChangeDeviceStatusCommand(7L, "retired")));
 
         assertEquals(AssetStatus.IN_USE, device.getAssetStatus());
-        verify(devices, never()).save(any());
+        verify(devices, never()).saveAndFlush(any());
     }
 
     @Test
@@ -280,5 +283,35 @@ class DeviceCommandServiceTest {
         service.handle(new ChangeDeviceStatusCommand(7L, "RETIRED"));
 
         assertEquals(AssetStatus.RETIRED, device.getAssetStatus());
+    }
+
+    @Test
+    void changingARegisteredDeviceGivesTheTableOfItsHouseholdANewVersion() {
+        var device = storedDevice();
+        var registry = com.resolum.alivia.assets.domain.model.aggregates.HouseholdDeviceRegistry.open(3L, 5L, 1L);
+        registry.register(device, "sala", "Luz", 9L, java.time.LocalDateTime.of(2026, 11, 5, 10, 0),
+                new com.resolum.alivia.assets.domain.model.valueobjects.ContractedActuators(java.util.Map.of(DeviceType.LIGHT, 1)));
+        when(devices.findById(7L)).thenReturn(Optional.of(device));
+        when(assignments.findActiveByDeviceId(7L)).thenReturn(Optional.of(mock(DeviceAssignment.class)));
+        when(registries.findByActiveDeviceIdForUpdate(7L)).thenReturn(Optional.of(registry));
+
+        service.handle(new UpdateDeviceCommand(7L, "aa:bb:cc:dd:ee:00", "light"));
+        service.handle(new ChangeDeviceStatusCommand(7L, "MAINTENANCE"));
+
+        assertEquals(3, registry.getTableVersion());
+        verify(registries, times(2)).saveAndFlush(registry);
+        assertEquals("AA:BB:CC:DD:EE:00", registry.table().nodes().get(0).macAddress());
+        assertEquals(AssetStatus.MAINTENANCE, registry.table().nodes().get(0).status());
+    }
+
+    @Test
+    void changingADeviceThatIsInNoHouseholdTouchesNoRegistry() {
+        var device = storedDevice();
+        when(devices.findById(7L)).thenReturn(Optional.of(device));
+        when(registries.findByActiveDeviceIdForUpdate(7L)).thenReturn(Optional.empty());
+
+        service.handle(new UpdateDeviceCommand(7L, "aa:bb:cc:dd:ee:00", "door"));
+
+        verify(registries, never()).saveAndFlush(any());
     }
 }

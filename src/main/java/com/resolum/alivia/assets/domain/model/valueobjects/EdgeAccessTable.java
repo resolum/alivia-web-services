@@ -10,23 +10,25 @@ import java.util.List;
  * which room and with which function, so the edge can validate and run them locally (it stores the table in its own
  * database).
  *
- * <p>It is always a complete snapshot of the active assignments of the installation. The edge replaces its copy with
- * it, so receiving the same table twice ends in the same state. Messages that arrive out of order are a different
- * matter: an old table arriving after a newer one would overwrite it. The transport has to number the tables per
- * installation so the edge ignores any older than the one it has.</p>
+ * <p>It is always a complete snapshot of the active devices of the household, and it carries the {@code version} of the
+ * registry that produced it. The version grows by one with every change of the table, so the edge keeps the table with
+ * the highest version it has seen and ignores any older one: receiving the same table twice, or an old table after a
+ * newer one, leaves the edge in the right state.</p>
  *
  * @param installationId installation the table belongs to
  * @param householdId    household of that installation
- * @param nodes          devices of the installation, ordered by device id
+ * @param version        version of the table; starts at 0 and grows with every change
+ * @param nodes          devices of the household, ordered by device id
  */
-public record EdgeAccessTable(Long installationId, Long householdId, List<NodeRef> nodes) {
+public record EdgeAccessTable(Long installationId, Long householdId, long version, List<NodeRef> nodes) {
 
     public EdgeAccessTable {
         nodes = List.copyOf(nodes);
     }
 
     /** Builds the table from the assignments that are still active; closed ones are ignored. */
-    public static EdgeAccessTable of(Long installationId, Long householdId, List<DeviceAssignment> assignments) {
+    public static EdgeAccessTable of(Long installationId, Long householdId, long version,
+                                     List<DeviceAssignment> assignments) {
         var nodes = assignments.stream()
                 .filter(DeviceAssignment::isActive)
                 .map(assignment -> new NodeRef(assignment.getDevice().getId(),
@@ -34,6 +36,6 @@ public record EdgeAccessTable(Long installationId, Long householdId, List<NodeRe
                         assignment.getDevice().getAssetStatus(), assignment.getRoomKey(), assignment.getFunction()))
                 .sorted(Comparator.comparing(NodeRef::deviceId))
                 .toList();
-        return new EdgeAccessTable(installationId, householdId, nodes);
+        return new EdgeAccessTable(installationId, householdId, version, nodes);
     }
 }

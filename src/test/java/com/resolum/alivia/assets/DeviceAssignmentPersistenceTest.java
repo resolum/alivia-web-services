@@ -2,13 +2,12 @@ package com.resolum.alivia.assets;
 
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
-import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceAssignmentRepository;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceRepository;
 import com.resolum.alivia.shared.infrastructure.configuration.ClockConfiguration;
 import com.resolum.alivia.shared.infrastructure.persistence.jpa.configuration.JpaAuditingConfiguration;
-import org.junit.jupiter.api.Test;
 import jakarta.persistence.EntityManager;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
@@ -16,11 +15,9 @@ import org.springframework.test.context.TestPropertySource;
 
 import java.time.LocalDateTime;
 
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.*;
 
-/** The counts that decide whether a device fits the plan only see active assignments. */
+/** The history of the placements of a device, as it is stored. The active ones are changed through the registry. */
 @DataJpaTest
 @Import({ClockConfiguration.class, JpaAuditingConfiguration.class})
 @TestPropertySource(properties = {
@@ -56,6 +53,7 @@ class DeviceAssignmentPersistenceTest {
 
         var found = assignments.findById(saved.getId()).orElseThrow();
         assertEquals(device.getId(), found.getDevice().getId());
+        assertEquals(3L, found.getInstallationId());
         assertEquals(5L, found.getHouseholdId());
         assertEquals("sala", found.getRoomKey());
         assertEquals("Luz principal", found.getFunction());
@@ -63,43 +61,6 @@ class DeviceAssignmentPersistenceTest {
         assertEquals(NOW, found.getAssignedAt());
         assertTrue(found.isActive());
         assertNotNull(found.getCreatedAt());
-    }
-
-    @Test
-    void countsActiveAssignmentsByHouseholdAndDeviceType() {
-        assignments.saveAndFlush(registered("LIGHT").assignTo(3L, 5L, "sala", "Luz", 9L, NOW));
-        assignments.saveAndFlush(registered("LIGHT").assignTo(3L, 5L, "cuarto", "Luz", 9L, NOW));
-        assignments.saveAndFlush(registered("DOOR").assignTo(3L, 5L, "sala", "Puerta", 9L, NOW));
-        assignments.saveAndFlush(registered("LIGHT").assignTo(3L, 6L, "sala", "Luz", 9L, NOW));
-
-        assertEquals(2, assignments.countActiveByHouseholdIdAndDeviceType(5L, DeviceType.LIGHT));
-        assertEquals(1, assignments.countActiveByHouseholdIdAndDeviceType(5L, DeviceType.DOOR));
-        assertEquals(0, assignments.countActiveByHouseholdIdAndDeviceType(5L, DeviceType.WINDOW));
-        assertEquals(1, assignments.countActiveByHouseholdIdAndDeviceType(6L, DeviceType.LIGHT));
-    }
-
-    @Test
-    void countsActiveAssignmentsByRoom() {
-        assignments.saveAndFlush(registered("MICROPHONE").assignTo(3L, 5L, "sala", "Escucha", 9L, NOW));
-        assignments.saveAndFlush(registered("LIGHT").assignTo(3L, 5L, "sala", "Luz", 9L, NOW));
-
-        assertEquals(1, assignments.countActiveByHouseholdIdAndRoomKeyAndDeviceType(5L, "sala", DeviceType.MICROPHONE));
-        assertEquals(0, assignments.countActiveByHouseholdIdAndRoomKeyAndDeviceType(5L, "cuarto", DeviceType.MICROPHONE));
-        assertEquals(0, assignments.countActiveByHouseholdIdAndRoomKeyAndDeviceType(6L, "sala", DeviceType.MICROPHONE));
-    }
-
-    @Test
-    void doesNotCountClosedAssignments() {
-        var closed = assignments.saveAndFlush(registered("LIGHT").assignTo(3L, 5L, "sala", "Luz", 9L, NOW));
-        closed.unassign("Reemplazo", 8L, NOW.plusDays(1));
-        assignments.saveAndFlush(closed);
-        var microphone = assignments.saveAndFlush(registered("MICROPHONE").assignTo(3L, 5L, "sala", "Escucha", 9L, NOW));
-        microphone.unassign("Reemplazo", 8L, NOW.plusDays(1));
-        assignments.saveAndFlush(microphone);
-
-        assertFalse(closed.isActive());
-        assertEquals(0, assignments.countActiveByHouseholdIdAndDeviceType(5L, DeviceType.LIGHT));
-        assertEquals(0, assignments.countActiveByHouseholdIdAndRoomKeyAndDeviceType(5L, "sala", DeviceType.MICROPHONE));
     }
 
     @Test
@@ -138,41 +99,6 @@ class DeviceAssignmentPersistenceTest {
 
         assertTrue(assignments.findActiveByDeviceId(device.getId()).isEmpty());
         assertTrue(assignments.findActiveByDeviceId(device.getId() + 100).isEmpty());
-    }
-
-    @Test
-    void locksTheActiveAssignmentOfADeviceForUpdateOnlyWhileItIsOpen() {
-        var device = registered("LIGHT");
-        var saved = assignments.saveAndFlush(device.assignTo(3L, 5L, "sala", "Luz", 9L, NOW));
-
-        assertEquals(saved.getId(), assignments.findActiveByDeviceIdForUpdate(device.getId()).orElseThrow().getId());
-
-        saved.unassign("Mudanza", 8L, NOW.plusDays(1));
-        assignments.saveAndFlush(saved);
-
-        assertTrue(assignments.findActiveByDeviceIdForUpdate(device.getId()).isEmpty());
-    }
-
-    @Test
-    void listsTheActiveDevicesOfAnInstallationWithTheirDeviceLoadedAndOrderedById() {
-        var second = registered("DOOR");
-        var first = registered("LIGHT");
-        var closed = registered("LIGHT");
-        assignments.saveAndFlush(second.assignTo(3L, 5L, "cuarto", "Puerta", 9L, NOW));
-        assignments.saveAndFlush(first.assignTo(3L, 5L, "sala", "Luz", 9L, NOW));
-        var closedAssignment = assignments.saveAndFlush(closed.assignTo(3L, 5L, "sala", "Luz 2", 9L, NOW));
-        closedAssignment.unassign("Mudanza", 8L, NOW.plusDays(1));
-        assignments.saveAndFlush(closedAssignment);
-        assignments.saveAndFlush(registered("LIGHT").assignTo(4L, 6L, "sala", "Otra casa", 9L, NOW));
-        entityManager.clear();
-
-        var active = assignments.findAllActiveByInstallationId(3L);
-
-        assertEquals(List.of(second.getId(), first.getId()).stream().sorted().toList(),
-                active.stream().map(assignment -> assignment.getDevice().getId()).toList());
-        assertTrue(entityManager.getEntityManagerFactory().getPersistenceUnitUtil()
-                .isLoaded(active.get(0).getDevice()), "the device comes with the assignment");
-        assertTrue(assignments.findAllActiveByInstallationId(99L).isEmpty());
     }
 
     @Test

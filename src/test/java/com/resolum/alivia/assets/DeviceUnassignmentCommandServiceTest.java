@@ -7,13 +7,14 @@ import com.resolum.alivia.assets.domain.exceptions.DeviceNotAssigned;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
 import com.resolum.alivia.assets.domain.exceptions.InstallationAccessDenied;
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
-import com.resolum.alivia.assets.domain.model.aggregates.DeviceAssignment;
+import com.resolum.alivia.assets.domain.model.aggregates.HouseholdDeviceRegistry;
 import com.resolum.alivia.assets.domain.model.commands.UnassignDeviceCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.model.valueobjects.CallerAuthority;
-import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceAssignmentRepository;
-import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceNetworkRepository;
+import com.resolum.alivia.assets.domain.model.valueobjects.ContractedActuators;
+import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceRepository;
+import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.HouseholdDeviceRegistryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -23,6 +24,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -33,36 +35,36 @@ class DeviceUnassignmentCommandServiceTest {
 
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-11-20T21:30:00Z"), ZoneOffset.UTC);
     /** A caregiver who manages household 5. */
-    private static final UnassignDeviceCommand BY_CAREGIVER = new UnassignDeviceCommand(7L, " Reemplazo por falla ", 9L, CallerAuthority.HOUSEHOLD_MEMBER);
+    private static final UnassignDeviceCommand BY_CAREGIVER =
+            new UnassignDeviceCommand(7L, " Reemplazo por falla ", 9L, CallerAuthority.HOUSEHOLD_MEMBER);
 
     private DeviceRepository devices;
-    private DeviceAssignmentRepository assignments;
+    private HouseholdDeviceRegistryRepository registries;
     private ExternalHouseholdsService households;
     private DeviceAssignmentCommandServiceImpl service;
+    private HouseholdDeviceRegistry registry;
     private Device device;
-    private DeviceAssignment assignment;
 
     @BeforeEach
     void setUp() {
         devices = mock(DeviceRepository.class);
-        assignments = mock(DeviceAssignmentRepository.class);
+        registries = mock(HouseholdDeviceRegistryRepository.class);
         households = mock(ExternalHouseholdsService.class);
-        service = new DeviceAssignmentCommandServiceImpl(devices, mock(DeviceNetworkRepository.class), assignments,
-                mock(ExternalSubscriptionsService.class), households, CLOCK);
+        service = new DeviceAssignmentCommandServiceImpl(devices, registries, mock(ExternalSubscriptionsService.class), households, CLOCK);
         device = new Device("AA:BB:CC:DD:EE:FF", "Luz de la sala", "LIGHT", 1L);
         ReflectionTestUtils.setField(device, "id", 7L);
-        assignment = device.assignTo(3L, 5L, "sala", "Luz principal", 4L, LocalDateTime.of(2026, 11, 4, 10, 0));
+        registry = HouseholdDeviceRegistry.open(3L, 5L, 1L);
+        registry.register(device, "sala", "Luz principal", 4L, LocalDateTime.of(2026, 11, 4, 10, 0),
+                new ContractedActuators(Map.of(DeviceType.LIGHT, 2)));
         when(devices.findById(7L)).thenReturn(Optional.of(device));
-        when(assignments.findActiveByDeviceIdForUpdate(7L)).thenReturn(Optional.of(assignment));
+        when(registries.findByActiveDeviceIdForUpdate(7L)).thenReturn(Optional.of(registry));
         when(households.canManageHousehold(5L, 9L)).thenReturn(true);
-        when(assignments.saveAndFlush(any(DeviceAssignment.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @Test
-    void closesTheAssignmentKeepsItAsHistoryAndLeavesTheDeviceAvailable() {
+    void closesTheEntryKeepsItAsHistoryAndLeavesTheDeviceAvailable() {
         var closed = service.handle(BY_CAREGIVER);
 
-        assertSame(assignment, closed);
         assertFalse(closed.isActive());
         assertEquals(LocalDateTime.of(2026, 11, 20, 21, 30), closed.getUnassignedAt());
         assertEquals(9L, closed.getUnassignedBy());
@@ -70,44 +72,29 @@ class DeviceUnassignmentCommandServiceTest {
         assertEquals(5L, closed.getHouseholdId());
         assertEquals("sala", closed.getRoomKey());
         assertEquals(AssetStatus.AVAILABLE, device.getAssetStatus());
+        assertFalse(registry.hasActiveDevice(7L));
+        assertEquals(2, registry.getTableVersion());
         verify(devices).save(device);
-        verify(assignments).saveAndFlush(assignment);
+        verify(registries).saveAndFlush(registry);
     }
 
     @Test
     void neverDeletesTheHistory() {
         service.handle(BY_CAREGIVER);
 
-        verify(assignments, never()).delete(any());
-        verify(assignments, never()).deleteById(any());
-        verify(assignments, never()).deleteAll();
-        verify(assignments, never()).deleteAllInBatch();
+        verify(registries, never()).delete(any());
+        verify(registries, never()).deleteById(any());
+        verify(registries, never()).deleteAll();
+        verify(registries, never()).deleteAllInBatch();
     }
 
     @Test
-    void locksTheAssignmentBeforeClosingIt() {
+    void locksTheRegistryThatHoldsTheDeviceBeforeClosingIt() {
         service.handle(BY_CAREGIVER);
 
-        InOrder order = inOrder(assignments);
-        order.verify(assignments).findActiveByDeviceIdForUpdate(7L);
-        order.verify(assignments).saveAndFlush(assignment);
-    }
-
-    @Test
-    void anotherContextThatAlreadyAuthorizedTheCallerCanUnassignWithoutAssetsAskingAgain() {
-        var closed = service.handle(new UnassignDeviceCommand(7L, "Fin de la visita", 6L, CallerAuthority.AUTHORIZED_BY_CONTEXT));
-
-        assertEquals(6L, closed.getUnassignedBy());
-        assertEquals(AssetStatus.AVAILABLE, device.getAssetStatus());
-        verifyNoInteractions(households);
-    }
-
-    @Test
-    void anAuthorizedContextIsToldWhenTheDeviceIsNotAssigned() {
-        when(assignments.findActiveByDeviceIdForUpdate(7L)).thenReturn(Optional.empty());
-
-        assertThrows(DeviceNotAssigned.class,
-                () -> service.handle(new UnassignDeviceCommand(7L, "Motivo", 6L, CallerAuthority.AUTHORIZED_BY_CONTEXT)));
+        InOrder order = inOrder(registries);
+        order.verify(registries).findByActiveDeviceIdForUpdate(7L);
+        order.verify(registries).saveAndFlush(registry);
     }
 
     @Test
@@ -116,7 +103,7 @@ class DeviceUnassignmentCommandServiceTest {
 
         assertThrows(DeviceNotFound.class, () -> service.handle(BY_CAREGIVER));
 
-        verifyNoInteractions(assignments, households);
+        verifyNoInteractions(registries, households);
     }
 
     @Test
@@ -125,34 +112,40 @@ class DeviceUnassignmentCommandServiceTest {
 
         assertThrows(InstallationAccessDenied.class, () -> service.handle(BY_CAREGIVER));
 
-        assertTrue(assignment.isActive());
+        assertTrue(registry.hasActiveDevice(7L));
         assertEquals(AssetStatus.IN_USE, device.getAssetStatus());
+        assertEquals(1, registry.getTableVersion());
         verify(devices, never()).save(any());
-        verify(assignments, never()).saveAndFlush(any());
+        verify(registries, never()).saveAndFlush(any());
     }
 
     @Test
-    void theBusinessAdministratorMayUnassignWithoutBelongingToTheHousehold() {
-        when(households.canManageHousehold(5L, 8L)).thenReturn(false);
-
+    void theAdministratorAndAnAuthorizedContextAreNotAskedWhetherTheyManageTheHousehold() {
         var closed = service.handle(new UnassignDeviceCommand(7L, "Baja del servicio", 8L, CallerAuthority.BUSINESS_ADMINISTRATOR));
-
         assertEquals(8L, closed.getUnassignedBy());
+
+        registry.register(device, "cuarto", "Luz", 4L, LocalDateTime.of(2026, 11, 10, 10, 0),
+                new ContractedActuators(Map.of(DeviceType.LIGHT, 2)));
+        var byContext = service.handle(new UnassignDeviceCommand(7L, "Fin de la visita", 6L, CallerAuthority.AUTHORIZED_BY_CONTEXT));
+        assertEquals(6L, byContext.getUnassignedBy());
+
         verifyNoInteractions(households);
     }
 
     @Test
-    void answersNotAssignedToTheBusinessAdministratorWhenThereIsNoActiveAssignment() {
-        when(assignments.findActiveByDeviceIdForUpdate(7L)).thenReturn(Optional.empty());
+    void anAdministratorOrAnAuthorizedContextIsToldWhenTheDeviceIsNotAssigned() {
+        when(registries.findByActiveDeviceIdForUpdate(7L)).thenReturn(Optional.empty());
 
-        assertThrows(DeviceNotAssigned.class, () -> service.handle(new UnassignDeviceCommand(7L, "Baja", 8L, CallerAuthority.BUSINESS_ADMINISTRATOR)));
-
-        verify(assignments, never()).saveAndFlush(any());
+        assertThrows(DeviceNotAssigned.class,
+                () -> service.handle(new UnassignDeviceCommand(7L, "Motivo", 8L, CallerAuthority.BUSINESS_ADMINISTRATOR)));
+        assertThrows(DeviceNotAssigned.class,
+                () -> service.handle(new UnassignDeviceCommand(7L, "Motivo", 6L, CallerAuthority.AUTHORIZED_BY_CONTEXT)));
+        verify(registries, never()).saveAndFlush(any());
     }
 
     @Test
     void doesNotRevealTheStateOfTheInventoryToAnAccountThatCannotManageAnything() {
-        when(assignments.findActiveByDeviceIdForUpdate(7L)).thenReturn(Optional.empty());
+        when(registries.findByActiveDeviceIdForUpdate(7L)).thenReturn(Optional.empty());
 
         assertThrows(InstallationAccessDenied.class, () -> service.handle(BY_CAREGIVER));
 
@@ -165,7 +158,7 @@ class DeviceUnassignmentCommandServiceTest {
 
         service.handle(BY_CAREGIVER);
 
-        assertFalse(assignment.isActive());
+        assertFalse(registry.hasActiveDevice(7L));
         assertEquals(AssetStatus.BROKEN, device.getAssetStatus());
     }
 
@@ -175,11 +168,13 @@ class DeviceUnassignmentCommandServiceTest {
         assertThrows(IllegalArgumentException.class, () -> new UnassignDeviceCommand(7L, null, 9L, CallerAuthority.HOUSEHOLD_MEMBER));
         assertThrows(IllegalArgumentException.class, () -> new UnassignDeviceCommand(null, "Motivo", 9L, CallerAuthority.HOUSEHOLD_MEMBER));
         assertThrows(IllegalArgumentException.class, () -> new UnassignDeviceCommand(7L, "Motivo", null, CallerAuthority.HOUSEHOLD_MEMBER));
-        assertThrows(IllegalArgumentException.class, () -> service.handle(
-                new UnassignDeviceCommand(7L, "a".repeat(DeviceAssignment.UNASSIGN_REASON_MAX_LENGTH + 1), 9L, CallerAuthority.HOUSEHOLD_MEMBER)));
+        assertThrows(IllegalArgumentException.class, () -> new UnassignDeviceCommand(7L, "Motivo", 9L, null));
+        assertThrows(IllegalArgumentException.class, () -> service.handle(new UnassignDeviceCommand(7L,
+                "a".repeat(300 + 1), 9L, CallerAuthority.HOUSEHOLD_MEMBER)));
 
-        assertTrue(assignment.isActive());
+        assertTrue(registry.hasActiveDevice(7L));
         assertEquals(AssetStatus.IN_USE, device.getAssetStatus());
+        assertEquals(1, registry.getTableVersion());
         verify(devices, never()).save(any());
     }
 }

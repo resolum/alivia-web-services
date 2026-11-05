@@ -3,7 +3,7 @@ package com.resolum.alivia.assets;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotAvailable;
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
 import com.resolum.alivia.assets.domain.model.commands.AssignDeviceToInstallationCommand;
-import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceNetworkCommand;
+import com.resolum.alivia.assets.domain.model.commands.RegisterInstallationCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.model.valueobjects.CallerAuthority;
 import com.resolum.alivia.assets.domain.model.valueobjects.ContractedActuators;
@@ -110,11 +110,11 @@ class DeviceAssignmentTest {
     }
 
     @Test
-    void validatesTheRegisterNetworkCommand() {
-        assertDoesNotThrow(() -> new RegisterDeviceNetworkCommand(3L, 5L, 1L));
-        assertThrows(IllegalArgumentException.class, () -> new RegisterDeviceNetworkCommand(null, 5L, 1L));
-        assertThrows(IllegalArgumentException.class, () -> new RegisterDeviceNetworkCommand(3L, 0L, 1L));
-        assertThrows(IllegalArgumentException.class, () -> new RegisterDeviceNetworkCommand(3L, 5L, null));
+    void validatesTheRegisterInstallationCommand() {
+        assertDoesNotThrow(() -> new RegisterInstallationCommand(3L, 5L, 1L));
+        assertThrows(IllegalArgumentException.class, () -> new RegisterInstallationCommand(null, 5L, 1L));
+        assertThrows(IllegalArgumentException.class, () -> new RegisterInstallationCommand(3L, 0L, 1L));
+        assertThrows(IllegalArgumentException.class, () -> new RegisterInstallationCommand(3L, 5L, null));
     }
 
     @ParameterizedTest

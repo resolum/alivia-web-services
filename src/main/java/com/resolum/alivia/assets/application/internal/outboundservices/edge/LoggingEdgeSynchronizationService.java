@@ -10,9 +10,8 @@ public class LoggingEdgeSynchronizationService implements EdgeSynchronizationSer
 
     @Override
     public void publish(EdgeSyncMessage message) {
-        log.info("Edge synchronization pending transport: {} installation={} household={} {} id={} mac={} status={} devices={}",
-                message.type(), message.installationId(), message.householdId(), message.assetKind(),
-                message.assetId(), message.macAddress(), message.status(),
-                message.table() == null ? "-" : message.table().nodes().size());
+        log.info("Edge synchronization pending transport: {} installation={} household={} device={} version={} devices={}",
+                message.cause(), message.installationId(), message.householdId(), message.deviceId(),
+                message.table().version(), message.table().nodes().size());
     }
 }

@@ -15,8 +15,10 @@ import com.resolum.alivia.assets.domain.services.DeviceCommandService;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceAssignmentRepository;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceRepository;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.EdgeRepository;
+import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.HouseholdDeviceRegistryRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class DeviceCommandServiceImpl implements DeviceCommandService {
@@ -24,9 +26,12 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     private final ExternalBusinessService externalBusinessService;
     private final EdgeRepository edgeRepository;
     private final DeviceAssignmentRepository assignmentRepository;
+    private final HouseholdDeviceRegistryRepository registryRepository;
     public DeviceCommandServiceImpl(DeviceRepository deviceRepository, ExternalBusinessService externalBusinessService, EdgeRepository edgeRepository,
-                                    DeviceAssignmentRepository assignmentRepository) {
+                                    DeviceAssignmentRepository assignmentRepository,
+                                    HouseholdDeviceRegistryRepository registryRepository) {
         this.assignmentRepository = assignmentRepository;
+        this.registryRepository = registryRepository;
         this.deviceRepository = deviceRepository;
         this.externalBusinessService = externalBusinessService;
         this.edgeRepository = edgeRepository;
@@ -46,15 +51,18 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     @Override
+    @Transactional
     public Long handle(ChangeDeviceStatusCommand command) {
         var device= deviceRepository.findById(command.deviceId()).orElseThrow(()->new DeviceNotFound(command.deviceId()));
         ensureStatusMatchesAssignment(device, command.status());
         device.updateAssetStatus(command.status());
-        deviceRepository.save(device);
+        saveDevice(device);
+        refreshRegistryOf(device);
         return device.getId();
     }
 
     @Override
+    @Transactional
     public Long handle(UpdateDeviceCommand command) {
         var device = deviceRepository.findById(command.deviceId()).orElseThrow(()->new DeviceNotFound(command.deviceId()));
         var newMacAddress = new MacAddress(command.macAddress());
@@ -67,7 +75,20 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         }
         device.update(command.macAddress(),command.deviceType());
         saveDevice(device);
+        refreshRegistryOf(device);
         return device.getId();
+    }
+
+    /**
+     * The table of devices that a household keeps for its edge services shows the status, the MAC address and the
+     * type of its devices: when one of them changes, the registry that holds it gives the table a new version and
+     * announces it. It is done in the same transaction as the change, with the registry locked.
+     */
+    private void refreshRegistryOf(Device device) {
+        registryRepository.findByActiveDeviceIdForUpdate(device.getId()).ifPresent(registry -> {
+            registry.deviceChanged(device.getId());
+            registryRepository.saveAndFlush(registry);
+        });
     }
 
     /**
@@ -103,7 +124,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
     private void saveDevice(Device device) {
         try {
-            deviceRepository.save(device);
+            deviceRepository.saveAndFlush(device);
         } catch (DataIntegrityViolationException exception) {
             // Another request registered the same MAC between the check and the insert (uk_devices_mac_address).
             throw new MacAddressAlreadyExists(device.getMacAddress().macAddress());

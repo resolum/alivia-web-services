@@ -5,7 +5,7 @@ import com.resolum.alivia.assets.application.internal.outboundservices.acl.Exter
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
 import com.resolum.alivia.assets.domain.model.aggregates.Edge;
 import com.resolum.alivia.assets.domain.model.commands.AssignDeviceToInstallationCommand;
-import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceNetworkCommand;
+import com.resolum.alivia.assets.domain.model.commands.RegisterInstallationCommand;
 import com.resolum.alivia.assets.domain.model.commands.UnassignDeviceCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.CallerAuthority;
 import com.resolum.alivia.assets.domain.services.DeviceAssignmentCommandService;
@@ -13,7 +13,7 @@ import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceCommand;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceByMacAddressQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeByMacAddressQuery;
 import com.resolum.alivia.assets.domain.services.DeviceCommandService;
-import com.resolum.alivia.assets.domain.services.DeviceNetworkCommandService;
+import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryCommandService;
 import com.resolum.alivia.assets.domain.services.DeviceQueryService;
 import com.resolum.alivia.assets.domain.services.EdgeCommandService;
 import com.resolum.alivia.assets.domain.services.EdgeQueryService;
@@ -115,7 +115,7 @@ class AssetsAccessAndFacadeTest {
         var devices = mock(DeviceQueryService.class);
         var edges = mock(EdgeQueryService.class);
         var facade = new AssetsContextFacadeImpl(devices, mock(DeviceCommandService.class),
-                mock(EdgeCommandService.class), edges, mock(DeviceNetworkCommandService.class), mock(DeviceAssignmentCommandService.class));
+                mock(EdgeCommandService.class), edges, mock(HouseholdDeviceRegistryCommandService.class), mock(DeviceAssignmentCommandService.class));
         var device = new Device("AA:BB:CC:DD:EE:FF", "Luz", "LIGHT", 1L);
         ReflectionTestUtils.setField(device, "id", 7L);
         var edge = new Edge(1L, "AA:BB:CC:DD:EE:00", "ACTUATOR_EDGE");
@@ -144,15 +144,15 @@ class AssetsAccessAndFacadeTest {
     }
 
     @Test
-    void theFacadeRegistersInstallationsThroughTheNetworkService() {
-        var networks = mock(DeviceNetworkCommandService.class);
-        when(networks.handle(any(RegisterDeviceNetworkCommand.class))).thenReturn(11L);
+    void theFacadeRegistersInstallationsThroughTheRegistryService() {
+        var registryService = mock(HouseholdDeviceRegistryCommandService.class);
+        when(registryService.handle(any(RegisterInstallationCommand.class))).thenReturn(11L);
         var facade = new AssetsContextFacadeImpl(mock(DeviceQueryService.class), mock(DeviceCommandService.class),
-                mock(EdgeCommandService.class), mock(EdgeQueryService.class), networks, mock(DeviceAssignmentCommandService.class));
+                mock(EdgeCommandService.class), mock(EdgeQueryService.class), registryService, mock(DeviceAssignmentCommandService.class));
 
         assertEquals(11L, facade.registerInstallation(3L, 5L, 1L));
 
-        verify(networks).handle(new RegisterDeviceNetworkCommand(3L, 5L, 1L));
+        verify(registryService).handle(new RegisterInstallationCommand(3L, 5L, 1L));
     }
 
     @Test
@@ -163,7 +163,7 @@ class AssetsAccessAndFacadeTest {
         ReflectionTestUtils.setField(assignment, "id", 21L);
         when(assignments.handle(any(AssignDeviceToInstallationCommand.class))).thenReturn(assignment);
         var facade = new AssetsContextFacadeImpl(mock(DeviceQueryService.class), mock(DeviceCommandService.class),
-                mock(EdgeCommandService.class), mock(EdgeQueryService.class), mock(DeviceNetworkCommandService.class), assignments);
+                mock(EdgeCommandService.class), mock(EdgeQueryService.class), mock(HouseholdDeviceRegistryCommandService.class), assignments);
 
         assertEquals(21L, facade.assignDevice(3L, 7L, "sala", "Luz", 6L));
         facade.unassignDevice(7L, "Fin de la visita", 6L);

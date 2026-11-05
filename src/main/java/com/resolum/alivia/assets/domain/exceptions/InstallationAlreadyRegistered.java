@@ -12,6 +12,6 @@ public class InstallationAlreadyRegistered extends RuntimeException {
 
     public static InstallationAlreadyRegistered activeInHousehold(Long householdId) {
         return new InstallationAlreadyRegistered(
-                String.format("household with id %d already has an active installation", householdId));
+                String.format("household with id %d already has an installation registered", householdId));
     }
 }
