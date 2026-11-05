@@ -31,14 +31,17 @@ import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** How the edge services authenticate against the real security chain. */
@@ -128,6 +131,28 @@ class EdgeSecurityTest {
         verifyNoInteractions(credentials);
     }
 
+    @Test
+    void anEdgeThatWaitedIsStillAuthenticatedWhenItsAnswerIsDispatched() throws Exception {
+        givenEdge("7.microphone-secret", new AuthenticatedEdge(7L, EdgeKind.MICROPHONE));
+        var pending = new CompletableFuture<String>();
+        TestEndpoints.pending = pending;
+
+        var started = mvc.perform(get("/api/v1/edge/wait").header(HttpHeaders.AUTHORIZATION, "Bearer 7.microphone-secret"))
+                .andExpect(request().asyncStarted()).andReturn();
+        pending.complete("woken");
+
+        // The answer goes through the security chain again, which loads the context from the request.
+        mvc.perform(asyncDispatch(started)).andExpect(status().isOk()).andExpect(content().string("woken"));
+    }
+
+    @Test
+    void anEdgeThatWaitedWithoutCredentialNeverGetsPast401() throws Exception {
+        TestEndpoints.pending = new CompletableFuture<>();
+
+        mvc.perform(get("/api/v1/edge/wait")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/edge/wait").header(HttpHeaders.AUTHORIZATION, "Bearer 7.wrong")).andExpect(status().isUnauthorized());
+    }
+
     private void givenEdge(String presented, AuthenticatedEdge edge) {
         when(credentials.handle(new AuthenticateEdgeCommand(presented))).thenReturn(Optional.of(edge));
     }
@@ -161,6 +186,13 @@ class EdgeSecurityTest {
         @GetMapping(EDGE_PATH)
         String whoAmI(Authentication authentication) {
             return authentication.getName() + " " + authentication.getAuthorities();
+        }
+
+        static volatile CompletableFuture<String> pending;
+
+        @GetMapping("/api/v1/edge/wait")
+        CompletableFuture<String> waitForIt() {
+            return pending;
         }
 
         @GetMapping(USER_PATH)

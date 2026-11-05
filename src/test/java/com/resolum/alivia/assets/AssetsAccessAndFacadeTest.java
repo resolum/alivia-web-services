@@ -102,7 +102,8 @@ class AssetsAccessAndFacadeTest {
                     .thenReturn(Optional.of(new com.resolum.alivia.assets.domain.model.valueobjects.EdgeTableVersion(3L, 1L)));
             when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByEdgeIdQuery.class)))
                     .thenReturn(Optional.of(new EdgeAccessTable(3L, 5L, 1L, java.util.List.of())));
-            return new EdgeDeviceTableController(queries, mock(com.resolum.alivia.assets.domain.services.EdgeSyncCommandService.class));
+            return new EdgeDeviceTableController(queries, mock(com.resolum.alivia.assets.domain.services.EdgeSyncCommandService.class),
+                    mock(com.resolum.alivia.assets.domain.services.EdgeTableWaitService.class));
         }
 
         @Bean
