@@ -10,6 +10,7 @@ import com.resolum.alivia.assets.domain.exceptions.EdgeNotAvailable;
 import com.resolum.alivia.assets.domain.exceptions.EdgeNotFound;
 import com.resolum.alivia.assets.domain.exceptions.EdgeRetired;
 import com.resolum.alivia.assets.domain.exceptions.EdgeStillAssigned;
+import com.resolum.alivia.assets.domain.exceptions.EdgeWithoutInstallation;
 import com.resolum.alivia.assets.domain.exceptions.InstallationAccessDenied;
 import com.resolum.alivia.assets.domain.exceptions.InstallationAlreadyRegistered;
 import com.resolum.alivia.assets.domain.exceptions.InstallationNotActive;
@@ -480,6 +481,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(EdgeStillAssigned.class)
     public ProblemDetail handleEdgeStillAssigned(EdgeStillAssigned exception) {
         return problem(HttpStatus.CONFLICT, "edge_still_assigned", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(EdgeWithoutInstallation.class)
+    public ProblemDetail handleEdgeWithoutInstallation(EdgeWithoutInstallation exception) {
+        return problem(HttpStatus.NOT_FOUND, "edge_without_installation", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(EdgeRetired.class)
