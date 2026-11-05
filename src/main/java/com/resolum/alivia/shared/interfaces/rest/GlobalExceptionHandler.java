@@ -1,5 +1,7 @@
 package com.resolum.alivia.shared.interfaces.rest;
 
+import com.resolum.alivia.assets.domain.exceptions.DeviceIncompatibleWithPlan;
+import com.resolum.alivia.assets.domain.exceptions.DeviceNotAvailable;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
 import com.resolum.alivia.assets.domain.exceptions.EdgeNotFound;
 import com.resolum.alivia.assets.domain.exceptions.InvalidAssetStatusTransition;
@@ -385,6 +387,17 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DeviceNotFound.class)
     public ProblemDetail handleDeviceNotFound(DeviceNotFound exception) {
         return problem(HttpStatus.NOT_FOUND, "device_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(DeviceNotAvailable.class)
+    public ProblemDetail handleDeviceNotAvailable(DeviceNotAvailable exception) {
+        var code = exception.isAlreadyAssigned() ? "device_already_assigned" : "device_not_available";
+        return problem(HttpStatus.CONFLICT, code, exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(DeviceIncompatibleWithPlan.class)
+    public ProblemDetail handleDeviceIncompatibleWithPlan(DeviceIncompatibleWithPlan exception) {
+        return problem(HttpStatus.UNPROCESSABLE_ENTITY, "device_incompatible_with_plan", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(EdgeNotFound.class)

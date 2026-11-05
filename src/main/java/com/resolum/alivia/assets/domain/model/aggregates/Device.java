@@ -1,5 +1,7 @@
 package com.resolum.alivia.assets.domain.model.aggregates;
 
+import com.resolum.alivia.assets.domain.exceptions.DeviceNotAvailable;
+import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -8,6 +10,8 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
+
+import java.time.LocalDateTime;
 
 /**
  * IoT device identified by its physical (MAC) address, which is unique among devices.
@@ -42,6 +46,25 @@ public class Device extends Asset {
         updateMacAddress(macAddress);
         this.deviceType = newType;
         return this;
+    }
+
+    /** Only an {@code AVAILABLE} device can be assigned; any other status is a conflict. */
+    public void ensureAssignable() {
+        if (!isAvailable()) {
+            throw new DeviceNotAvailable(getId(), getAssetStatus());
+        }
+    }
+
+    /**
+     * Places the device in a household room with a function and leaves it {@code IN_USE}. The assignment is
+     * built and validated before the status changes, so the device is untouched when anything is invalid.
+     */
+    public DeviceAssignment assignTo(Long householdId, String roomKey, String function, Long assignedBy,
+                                     LocalDateTime assignedAt) {
+        ensureAssignable();
+        var assignment = new DeviceAssignment(this, householdId, roomKey, function, assignedBy, assignedAt);
+        changeStatusTo(AssetStatus.IN_USE);
+        return assignment;
     }
 
     private static String requireAlias(String alias) {
