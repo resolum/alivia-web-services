@@ -103,6 +103,26 @@ class TokenServiceImplTest {
     }
 
     @Test
+    void generatesDifferentUrlSafeEdgeSecretsWithoutTheCredentialSeparator() {
+        var first = service.generateEdgeSecret();
+        var second = service.generateEdgeSecret();
+
+        assertEquals(43, first.length());
+        assertFalse(first.equals(second));
+        assertTrue(first.matches("[A-Za-z0-9_-]+"));
+    }
+
+    @Test
+    void hashesEdgeSecretsWithSha256() {
+        var secret = service.generateEdgeSecret();
+
+        assertEquals(64, service.hashEdgeSecret(secret).length());
+        assertEquals(service.hashEdgeSecret(secret), service.hashEdgeSecret(secret));
+        assertFalse(service.hashEdgeSecret(secret).equals(service.hashEdgeSecret(secret + "x")));
+        assertThrows(IllegalArgumentException.class, () -> service.hashEdgeSecret(" "));
+    }
+
+    @Test
     void hashesAndMatchesTokens() {
         String raw = "sample-token-123";
         String hash = service.hash(raw);

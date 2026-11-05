@@ -1,8 +1,10 @@
 package com.resolum.alivia.iam;
 
 import com.resolum.alivia.iam.application.internal.outboundservices.tokens.TokenService;
+import com.resolum.alivia.iam.domain.services.EdgeCredentialCommandService;
 import com.resolum.alivia.iam.infrastructure.authorization.sfs.configuration.WebSecurityConfiguration;
 import com.resolum.alivia.iam.infrastructure.authorization.sfs.pipeline.BearerAuthorizationRequestFilter;
+import com.resolum.alivia.iam.infrastructure.authorization.sfs.pipeline.EdgeAuthorizationRequestFilter;
 import com.resolum.alivia.iam.infrastructure.authorization.sfs.pipeline.UnauthorizedRequestHandlerEntryPoint;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -142,8 +144,13 @@ class WebSecurityConfigurationTest {
     @EnableWebMvc
     @EnableWebSecurity
     @Import({WebSecurityConfiguration.class, BearerAuthorizationRequestFilter.class,
-            UnauthorizedRequestHandlerEntryPoint.class, TestEndpoints.class})
+            EdgeAuthorizationRequestFilter.class, UnauthorizedRequestHandlerEntryPoint.class, TestEndpoints.class})
     static class TestConfig {
+
+        @Bean
+        EdgeCredentialCommandService edgeCredentialCommandService() {
+            return mock(EdgeCredentialCommandService.class);
+        }
 
         @Bean
         TokenService tokenService() {
