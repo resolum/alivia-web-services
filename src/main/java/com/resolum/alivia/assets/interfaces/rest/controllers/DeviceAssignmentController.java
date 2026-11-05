@@ -27,10 +27,12 @@ public class DeviceAssignmentController {
         this.assignmentCommandService = assignmentCommandService;
     }
 
-    @DeleteMapping(consumes = APPLICATION_JSON_VALUE)
+    @DeleteMapping
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Desasignar un dispositivo",
             description = "Cierra la asignación vigente del dispositivo con el motivo indicado y lo deja disponible. "
+                    + "El motivo va en el cuerpo JSON {\"reason\": \"...\"} o, para los clientes que descartan el cuerpo "
+                    + "de un DELETE, en el parámetro de consulta `reason`; si llegan ambos, vale el del cuerpo. "
                     + "La asignación se conserva como historial; no se borra ninguna fila. "
                     + "Puede hacerlo quien administra el hogar o el administrador del negocio.")
     @ApiResponses({
@@ -40,11 +42,14 @@ public class DeviceAssignmentController {
             @ApiResponse(responseCode = "404", description = "El dispositivo no existe"),
             @ApiResponse(responseCode = "409", description = "El dispositivo no está asignado")
     })
-    public void unassignDevice(@PathVariable Long deviceId, @Valid @RequestBody UnassignDeviceResource resource,
+    public void unassignDevice(@PathVariable Long deviceId,
+                               @Valid @RequestBody(required = false) UnassignDeviceResource body,
+                               @RequestParam(name = "reason", required = false) String reasonParameter,
                                @Parameter(hidden = true) Authentication authentication) {
         var administrator = authentication.getAuthorities().stream()
                 .anyMatch(authority -> ADMINISTRATOR_ROLE.equals(authority.getAuthority()));
+        var reason = body != null ? body.reason() : reasonParameter;
         assignmentCommandService.handle(new UnassignDeviceCommand(
-                deviceId, resource.reason(), Long.valueOf(authentication.getName()), administrator));
+                deviceId, reason, Long.valueOf(authentication.getName()), administrator));
     }
 }

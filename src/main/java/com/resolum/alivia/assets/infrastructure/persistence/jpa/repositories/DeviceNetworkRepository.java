@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -18,6 +19,10 @@ public interface DeviceNetworkRepository extends JpaRepository<DeviceNetwork, Lo
     Optional<DeviceNetwork> findByInstallationId(InstallationId installationId);
 
     boolean existsByInstallationId(InstallationId installationId);
+
+    /** Networks that use the edge as their microphone edge or their actuator edge. */
+    @Query("select n from DeviceNetwork n where n.microphoneEdge.id = :edgeId or n.actuatorEdge.id = :edgeId")
+    List<DeviceNetwork> findAllByEdgeId(@Param("edgeId") Long edgeId);
 
     boolean existsByHouseholdIdAndNetworkStatus(Long householdId, NetworkStatus networkStatus);
 

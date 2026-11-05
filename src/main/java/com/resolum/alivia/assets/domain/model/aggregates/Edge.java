@@ -1,5 +1,6 @@
 package com.resolum.alivia.assets.domain.model.aggregates;
 
+import com.resolum.alivia.assets.domain.model.events.AssetUpdatedEvent;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeType;
 
 import jakarta.persistence.Column;
@@ -39,8 +40,13 @@ boolean isActuatorEdge() {
 public Edge update(String macAddress,String edgeType){
 
    var newType = parseType(edgeType);
+   var previousMacAddress = getMacAddress();
+   var previousType = this.edgeType;
    this.updateMacAddress(macAddress);
    this.edgeType = newType;
+   if (!getMacAddress().equals(previousMacAddress) || newType != previousType) {
+       addDomainEvent(new AssetUpdatedEvent(this));
+   }
    return this;
 
 }

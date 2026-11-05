@@ -1,6 +1,7 @@
 package com.resolum.alivia.assets.domain.model.aggregates;
 
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotAssigned;
+import com.resolum.alivia.assets.domain.model.events.DeviceUnassignedEvent;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
 import jakarta.persistence.Column;
@@ -126,11 +127,12 @@ public class DeviceAssignment extends AuditableAbstractAggregateRoot<DeviceAssig
             throw new IllegalArgumentException("The unassignment cannot be before the assignment.");
         }
         if (device.getAssetStatus() == AssetStatus.IN_USE) {
-            device.changeStatusTo(AssetStatus.AVAILABLE);
+            device.transitionTo(AssetStatus.AVAILABLE);
         }
         this.unassignedAt = at;
         this.unassignedBy = actor;
         this.unassignReason = cleanReason;
+        addDomainEvent(new DeviceUnassignedEvent(this));
     }
 
     private static String requireText(String value, String name, int maxLength) {
