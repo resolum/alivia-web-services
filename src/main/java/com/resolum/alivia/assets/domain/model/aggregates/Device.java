@@ -1,34 +1,64 @@
 package com.resolum.alivia.assets.domain.model.aggregates;
 
 import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
-import com.resolum.alivia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 
+/**
+ * IoT device identified by its physical (MAC) address, which is unique among devices.
+ * A new device is registered as {@code AVAILABLE}.
+ */
 @Entity
+@Table(uniqueConstraints = @UniqueConstraint(name = "uk_devices_mac_address", columnNames = "mac_address"))
 @Getter
 public class Device extends Asset {
+
+    public static final int ALIAS_MAX_LENGTH = 80;
 
     protected Device() {
         super();
     }
 
-    @Enumerated(EnumType.ORDINAL)
-    @Column(name = "device_type" ,nullable = false)
+    @Column(name = "alias", nullable = false, length = ALIAS_MAX_LENGTH)
+    private String alias;
 
-private DeviceType deviceType;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "device_type", nullable = false, length = 16)
+    private DeviceType deviceType;
 
-public Device update(String macAddress ,String deviceType){
+    public Device(String macAddress, String alias, String deviceType, Long businessId) {
+        super(businessId, macAddress);
+        this.alias = requireAlias(alias);
+        this.deviceType = parseType(deviceType);
+    }
 
-    updateMacAddress(macAddress);
-    this.deviceType= DeviceType.valueOf(deviceType);
-    return this;
-}
-    public Device(String macAddress,String deviceType,Long businessId){
-    super(businessId,macAddress);
-    this.deviceType= DeviceType.valueOf(deviceType);
+    public Device update(String macAddress, String deviceType) {
+        var newType = parseType(deviceType);
+        updateMacAddress(macAddress);
+        this.deviceType = newType;
+        return this;
+    }
+
+    private static String requireAlias(String alias) {
+        if (alias == null || alias.isBlank()) {
+            throw new IllegalArgumentException("Device alias cannot be null or blank.");
+        }
+        var trimmed = alias.strip();
+        if (trimmed.length() > ALIAS_MAX_LENGTH) {
+            throw new IllegalArgumentException("Device alias cannot exceed " + ALIAS_MAX_LENGTH + " characters.");
+        }
+        return trimmed;
+    }
+
+    private static DeviceType parseType(String deviceType) {
+        if (deviceType == null || deviceType.isBlank()) {
+            throw new IllegalArgumentException("Device type cannot be null or blank.");
+        }
+        return DeviceType.valueOf(deviceType.strip().toUpperCase(java.util.Locale.ROOT));
     }
 }

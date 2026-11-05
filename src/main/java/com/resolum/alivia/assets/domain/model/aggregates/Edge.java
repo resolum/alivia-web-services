@@ -6,9 +6,12 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 
 @Entity
+@Table(uniqueConstraints = @UniqueConstraint(name = "uk_edges_mac_address", columnNames = "mac_address"))
 @Getter
 public class Edge extends Asset {
     protected Edge() {
