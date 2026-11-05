@@ -48,6 +48,8 @@ import com.resolum.alivia.operations.domain.model.aggregates.Appointment;
 import com.resolum.alivia.operations.domain.model.commands.CompleteMaintenanceOrderCommand;
 import com.resolum.alivia.operations.domain.model.commands.ConfirmIncidentVisitCommand;
 import com.resolum.alivia.operations.domain.model.commands.EvaluateIncidentCommand;
+import com.resolum.alivia.operations.domain.model.queries.GetTechnicianScheduleQuery;
+import com.resolum.alivia.operations.interfaces.rest.resources.WorkingDayResource;
 import com.resolum.alivia.operations.domain.model.queries.GetIncidentByIdQuery;
 import com.resolum.alivia.operations.domain.model.valueobjects.TestResult;
 import com.resolum.alivia.operations.domain.services.IncidentQueryService;
@@ -65,6 +67,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Tag(name = "Órdenes técnicas", description = "Disponibilidad, órdenes de evaluación e instalación y asignación de técnicos")
 @PreAuthorize("hasRole('ADMINISTRATOR')")
 public class TechnicalOrdersController {
+    private static final java.time.format.DateTimeFormatter SHIFT_TIME = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
     private final AppointmentCommandService commandService;
     private final AppointmentQueryService queryService;
     private final IncidentQueryService incidents;
@@ -111,6 +114,21 @@ public class TechnicalOrdersController {
     public List<TechnicalOrderResource> mine(Authentication authentication) {
         return queryService.handle(new GetTechnicianOrdersQuery(IncidentsController.userIdOf(authentication))).stream()
                 .map(this::toResource).toList();
+    }
+
+    @GetMapping("/mine/schedule")
+    @PreAuthorize("hasRole('TECHNICIAN')")
+    @Operation(summary = "Horario laboral del técnico que inició sesión",
+            description = "Los bloques de su horario asignado por día entre from y to (hasta 62 días); los días sin jornada no aparecen.")
+    public List<WorkingDayResource> mySchedule(
+            @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam("to") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            Authentication authentication) {
+        return queryService.handle(new GetTechnicianScheduleQuery(IncidentsController.userIdOf(authentication), from, to)).stream()
+                .map(day -> new WorkingDayResource(day.date(), day.shifts().stream()
+                        .map(shift -> new WorkingDayResource.Shift(shift.start().format(SHIFT_TIME), shift.end().format(SHIFT_TIME)))
+                        .toList()))
+                .toList();
     }
 
     @GetMapping("/{orderId}")

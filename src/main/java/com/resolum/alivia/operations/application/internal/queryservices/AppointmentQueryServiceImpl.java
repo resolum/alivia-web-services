@@ -9,6 +9,8 @@ import com.resolum.alivia.operations.domain.model.queries.GetTechnicalOrderByIdQ
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicalOrdersQuery;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicianIdByUserIdQuery;
 import com.resolum.alivia.operations.domain.model.queries.GetTechnicianOrdersQuery;
+import com.resolum.alivia.operations.domain.model.queries.GetTechnicianScheduleQuery;
+import com.resolum.alivia.operations.domain.model.valueobjects.WorkingDay;
 import com.resolum.alivia.operations.domain.model.valueobjects.AppointmentStatus;
 import com.resolum.alivia.operations.domain.model.valueobjects.AvailableBlock;
 import com.resolum.alivia.operations.domain.model.valueobjects.AvailableSlot;
@@ -97,6 +99,27 @@ public class AppointmentQueryServiceImpl implements AppointmentQueryService {
     @Override
     public Optional<Long> handle(GetTechnicianIdByUserIdQuery query) {
         return hcm.fetchTechnicianIdOfUser(query.userId());
+    }
+
+    /** The technician's shifts per day, read from their work schedule in HCM. */
+    @Override
+    public List<WorkingDay> handle(GetTechnicianScheduleQuery query) {
+        if (query.from() == null || query.to() == null || query.to().isBefore(query.from())) {
+            throw new IllegalArgumentException("Choose a valid range of dates.");
+        }
+        if (query.from().plusDays(62).isBefore(query.to())) throw new IllegalArgumentException("The range can span up to 62 days.");
+        var technician = hcm.fetchTechnicianIdOfUser(query.userId());
+        if (technician.isEmpty()) return List.of();
+        var days = new ArrayList<WorkingDay>();
+        for (var date = query.from(); !date.isAfter(query.to()); date = date.plusDays(1)) {
+            final var day = date;
+            hcm.fetchTechniciansWorkingOn(day).stream()
+                    .filter(availability -> availability.technicianId().equals(technician.get()))
+                    .findFirst()
+                    .filter(availability -> !availability.shifts().isEmpty())
+                    .ifPresent(availability -> days.add(new WorkingDay(day, availability.shifts())));
+        }
+        return days;
     }
 
     @Override
