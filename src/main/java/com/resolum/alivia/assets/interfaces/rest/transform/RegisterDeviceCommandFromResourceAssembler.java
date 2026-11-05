@@ -5,7 +5,7 @@ import com.resolum.alivia.assets.interfaces.rest.resources.RegisterDeviceResourc
 
 public class RegisterDeviceCommandFromResourceAssembler {
     public static RegisterDeviceCommand toCommandFromResource(RegisterDeviceResource resource, Long businessId){
-        return new RegisterDeviceCommand(businessId,resource.macAddress(),resource.deviceType());
+        return new RegisterDeviceCommand(businessId,resource.macAddress(),resource.alias(),resource.deviceType());
     }
 
 }

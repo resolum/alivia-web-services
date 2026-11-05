@@ -27,13 +27,13 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     @Override
     public Long handle(RegisterDeviceCommand command) {
         if (deviceRepository.existsDeviceByMacAddress(new MacAddress(command.macAddress()))){
-            throw new IllegalArgumentException(new MacAddressAlreadyExists(command.macAddress()));
+            throw new MacAddressAlreadyExists(command.macAddress());
         }
         if (edgeRepository.existsEdgeByMacAddress(new MacAddress(command.macAddress()))){
             throw   new MacAddressAlreadyExists(command.macAddress());
         }
         // falta una validación para saber si existe o no el business
-        var device = new Device(command.macAddress(),command.deviceType(),command.businessId());
+        var device = new Device(command.macAddress(),command.alias(),command.deviceType(),command.businessId());
         try {
             deviceRepository.save(device);
         }catch (Exception e){
