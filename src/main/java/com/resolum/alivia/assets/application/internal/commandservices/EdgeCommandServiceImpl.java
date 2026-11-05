@@ -2,6 +2,7 @@ package com.resolum.alivia.assets.application.internal.commandservices;
 
 import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalBusinessService;
 import com.resolum.alivia.assets.application.internal.outboundservices.acl.ExternalIamService;
+import com.resolum.alivia.assets.domain.exceptions.BusinessNotFound;
 import com.resolum.alivia.assets.domain.exceptions.EdgeNotFound;
 import com.resolum.alivia.assets.domain.exceptions.EdgeStillAssigned;
 import com.resolum.alivia.assets.domain.exceptions.MacAddressAlreadyExists;
@@ -38,8 +39,17 @@ public class EdgeCommandServiceImpl implements EdgeCommandService {
         this.externalIamService = externalIamService;
     }
 
+    /**
+     * Registering an edge only puts it in the inventory of the business: it starts {@code AVAILABLE} and belongs to no
+     * installation. It becomes {@code IN_USE} when an installation work places it in an installation.
+     */
     @Override
     public Long handle(RegisterEdgeCommand command) {
+        // Building the edge validates the MAC and the type before anything is looked up.
+        var edge = new Edge(command.businessId(), command.macAddress(), command.edgeType());
+        if (!externalBusinessService.existsBusiness(command.businessId())) {
+            throw new BusinessNotFound(String.format("business with id %d not found", command.businessId()));
+        }
         if (edgeRepository.existsEdgeByMacAddress(new MacAddress(command.macAddress()))){
          throw   new MacAddressAlreadyExists(command.macAddress());
         }
@@ -47,7 +57,6 @@ public class EdgeCommandServiceImpl implements EdgeCommandService {
             throw   new MacAddressAlreadyExists(command.macAddress());
 
         }
-        var edge = new Edge(command.businessId(),command.macAddress(),command.edgeType());
         saveEdge(edge);
         return edge.getId();
 
@@ -91,24 +100,40 @@ public class EdgeCommandServiceImpl implements EdgeCommandService {
     }
 
     /**
-     * An edge that is placed in an installation cannot become {@code AVAILABLE} or {@code RETIRED} (remove it from the
-     * installation first, as with devices). Retiring an edge revokes its credential. The refusal comes after the status
-     * was applied to the loaded edge, and the transaction rolls it back without storing anything.
+     * {@code IN_USE} means that the edge is placed in an installation, so it is only reached by placing it; and an edge
+     * that is placed cannot become {@code AVAILABLE} or {@code RETIRED} until it is removed from the installation, as
+     * with devices. Going to maintenance or broken while placed is allowed: the equipment can fail in the household.
+     * Retiring an edge revokes its credential.
      */
     @Override
     @Transactional
     public Long handle(ChangeEdgeStatusCommand command) {
         var placedIn = registryRepository.findByAssignedEdgeIdForUpdate(command.edgeId());
         var edge = edgeRepository.findById(command.edgeId()).orElseThrow(()->new EdgeNotFound(command.edgeId()));
+        ensureStatusMatchesPlacement(edge, placedIn.isPresent(), command.status());
         edge.updateAssetStatus(command.status());
-        var status = edge.getAssetStatus();
-        if (placedIn.isPresent() && (status == AssetStatus.AVAILABLE || status == AssetStatus.RETIRED)) {
-            throw new EdgeStillAssigned(edge.getId(), status);
-        }
         edgeRepository.saveAndFlush(edge);
-        if (status == AssetStatus.RETIRED) {
+        if (edge.getAssetStatus() == AssetStatus.RETIRED) {
             externalIamService.revokeEdgeCredential(edge.getId());
         }
         return edge.getId();
+    }
+
+    private void ensureStatusMatchesPlacement(Edge edge, boolean placed, String requestedStatus) {
+        if (requestedStatus == null || requestedStatus.isBlank()) {
+            return; // updateAssetStatus rejects it
+        }
+        AssetStatus target;
+        try {
+            target = AssetStatus.valueOf(requestedStatus.strip().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException unknownStatus) {
+            return; // updateAssetStatus rejects it
+        }
+        if (target == AssetStatus.IN_USE) {
+            throw new IllegalArgumentException("An edge becomes IN_USE only by being placed in an installation.");
+        }
+        if (placed && (target == AssetStatus.AVAILABLE || target == AssetStatus.RETIRED)) {
+            throw new EdgeStillAssigned(edge.getId(), target);
+        }
     }
 }
