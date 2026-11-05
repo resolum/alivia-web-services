@@ -92,8 +92,10 @@ class DeviceUnassignmentCommandServiceTest {
     void locksTheRegistryThatHoldsTheDeviceBeforeClosingIt() {
         service.handle(BY_CAREGIVER);
 
-        InOrder order = inOrder(registries);
+        InOrder order = inOrder(registries, devices);
         order.verify(registries).findByActiveDeviceIdForUpdate(7L);
+        order.verify(devices).findById(7L); // read after the lock, so a change that was waiting for it is visible
+        order.verify(devices).save(device);
         order.verify(registries).saveAndFlush(registry);
     }
 
@@ -103,7 +105,9 @@ class DeviceUnassignmentCommandServiceTest {
 
         assertThrows(DeviceNotFound.class, () -> service.handle(BY_CAREGIVER));
 
-        verifyNoInteractions(registries, households);
+        verifyNoInteractions(households);
+        verify(registries, never()).saveAndFlush(any());
+        verify(devices, never()).save(any());
     }
 
     @Test

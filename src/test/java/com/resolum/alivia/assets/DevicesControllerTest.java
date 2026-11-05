@@ -185,6 +185,17 @@ class DevicesControllerTest {
     }
 
     @Test
+    void answers409WhenAnotherRequestChangedTheSameDevice() throws Exception {
+        when(commands.handle(any(UpdateDeviceCommand.class))).thenThrow(
+                new org.springframework.orm.ObjectOptimisticLockingFailureException(Device.class, 7L));
+
+        mvc.perform(put("/api/v1/devices/7").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"macAddress\":\"AA:BB:CC:DD:EE:FF\",\"deviceType\":\"LIGHT\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("resource_modified_concurrently"));
+    }
+
+    @Test
     void answers409WhenUpdatingToAnExistingPhysicalId() throws Exception {
         when(commands.handle(any(UpdateDeviceCommand.class))).thenThrow(new MacAddressAlreadyExists("AA:BB:CC:DD:EE:00"));
 

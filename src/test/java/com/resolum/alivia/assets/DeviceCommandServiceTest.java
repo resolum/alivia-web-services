@@ -314,4 +314,49 @@ class DeviceCommandServiceTest {
 
         verify(registries, never()).saveAndFlush(any());
     }
+
+    @Test
+    void locksTheRegistryOfTheDeviceBeforeWritingTheDevice() {
+        var device = storedDevice();
+        var registry = com.resolum.alivia.assets.domain.model.aggregates.HouseholdDeviceRegistry.open(3L, 5L, 1L);
+        registry.register(device, "sala", "Luz", 9L, java.time.LocalDateTime.of(2026, 11, 5, 10, 0),
+                new com.resolum.alivia.assets.domain.model.valueobjects.ContractedActuators(java.util.Map.of(DeviceType.LIGHT, 1)));
+        when(devices.findById(7L)).thenReturn(Optional.of(device));
+        when(assignments.findActiveByDeviceId(7L)).thenReturn(Optional.of(mock(DeviceAssignment.class)));
+        when(registries.findByActiveDeviceIdForUpdate(7L)).thenReturn(Optional.of(registry));
+
+        // Unassigning takes the registry first and the device second; the same order here keeps two requests on
+        // one device from waiting for each other.
+        service.handle(new UpdateDeviceCommand(7L, "aa:bb:cc:dd:ee:00", "light"));
+
+        var update = inOrder(registries, devices);
+        update.verify(registries).findByActiveDeviceIdForUpdate(7L);
+        update.verify(devices).findById(7L); // read after the lock, so a change that was waiting for it is visible
+        update.verify(devices).saveAndFlush(device);
+        update.verify(registries).saveAndFlush(registry);
+
+        clearInvocations(registries, devices);
+        service.handle(new ChangeDeviceStatusCommand(7L, "MAINTENANCE"));
+
+        var status = inOrder(registries, devices);
+        status.verify(registries).findByActiveDeviceIdForUpdate(7L);
+        status.verify(devices).findById(7L);
+        status.verify(devices).saveAndFlush(device);
+        status.verify(registries).saveAndFlush(registry);
+    }
+
+    @Test
+    void doesNotWriteTheDeviceWhenTheRuleRejectsTheChangeButHasAlreadyLockedItsRegistry() {
+        var device = storedDevice();
+        when(devices.findById(7L)).thenReturn(Optional.of(device));
+        when(assignments.findActiveByDeviceId(7L)).thenReturn(Optional.of(mock(DeviceAssignment.class)));
+        when(registries.findByActiveDeviceIdForUpdate(7L)).thenReturn(Optional.of(
+                com.resolum.alivia.assets.domain.model.aggregates.HouseholdDeviceRegistry.open(3L, 5L, 1L)));
+
+        assertThrows(DeviceStillAssigned.class, () -> service.handle(new ChangeDeviceStatusCommand(7L, "RETIRED")));
+
+        verify(registries).findByActiveDeviceIdForUpdate(7L);
+        verify(devices, never()).saveAndFlush(any());
+        verify(registries, never()).saveAndFlush(any());
+    }
 }
