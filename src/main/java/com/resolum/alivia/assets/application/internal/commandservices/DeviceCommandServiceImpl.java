@@ -58,6 +58,10 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     public Long handle(UpdateDeviceCommand command) {
         var device = deviceRepository.findById(command.deviceId()).orElseThrow(()->new DeviceNotFound(command.deviceId()));
         var newMacAddress = new MacAddress(command.macAddress());
+        // Another type could exceed what the household contracted, which is only checked when assigning.
+        if (device.changesTypeTo(command.deviceType()) && assignmentRepository.findActiveByDeviceId(device.getId()).isPresent()) {
+            throw DeviceStillAssigned.typeChange(device.getId());
+        }
         if (!newMacAddress.equals(device.getMacAddress())) {
             ensureMacAddressIsFree(newMacAddress);
         }

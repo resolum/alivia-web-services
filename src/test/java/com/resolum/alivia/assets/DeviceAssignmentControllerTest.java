@@ -105,6 +105,36 @@ class DeviceAssignmentControllerTest {
     }
 
     @Test
+    void acceptsTheReasonAsAQueryParameterForClientsThatDropTheBodyOfADelete() throws Exception {
+        mvc.perform(delete(PATH).param("reason", "Reemplazo por falla del equipo").principal(CAREGIVER))
+                .andExpect(status().isNoContent());
+
+        var captor = ArgumentCaptor.forClass(UnassignDeviceCommand.class);
+        verify(service).handle(captor.capture());
+        assertEquals("Reemplazo por falla del equipo", captor.getValue().reason());
+        assertEquals(9L, captor.getValue().unassignedBy());
+    }
+
+    @Test
+    void theReasonInTheBodyWinsOverTheQueryParameter() throws Exception {
+        mvc.perform(delete(PATH).param("reason", "del parametro").principal(CAREGIVER)
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isNoContent());
+
+        var captor = ArgumentCaptor.forClass(UnassignDeviceCommand.class);
+        verify(service).handle(captor.capture());
+        assertEquals("Reemplazo por falla del equipo", captor.getValue().reason());
+    }
+
+    @Test
+    void rejectsABlankOrMissingQueryReason() throws Exception {
+        mvc.perform(delete(PATH).param("reason", " ").principal(CAREGIVER)).andExpect(status().isBadRequest());
+        mvc.perform(delete(PATH).principal(CAREGIVER)).andExpect(status().isBadRequest());
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
     void rejectsAMissingBlankOrOversizedReasonWithoutCallingTheService() throws Exception {
         mvc.perform(delete(PATH).principal(CAREGIVER).contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest());

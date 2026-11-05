@@ -9,6 +9,7 @@ import com.resolum.alivia.assets.domain.model.aggregates.DeviceNetwork;
 import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceNetworkCommand;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceNetworkByInstallationIdQuery;
 import com.resolum.alivia.assets.domain.model.valueobjects.NetworkStatus;
+import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceAssignmentRepository;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.DeviceNetworkRepository;
 import com.resolum.alivia.shared.domain.model.valueobjects.InstallationId;
 import org.junit.jupiter.api.BeforeEach;
@@ -109,7 +110,7 @@ class DeviceNetworkTest {
     void findsTheNetworkByInstallation() {
         var network = new DeviceNetwork(3L, 5L, 1L);
         when(networks.findByInstallationId(new InstallationId(3L))).thenReturn(Optional.of(network));
-        var queries = new DeviceNetworkQueryServiceImpl(networks);
+        var queries = new DeviceNetworkQueryServiceImpl(networks, mock(DeviceAssignmentRepository.class));
 
         assertSame(network, queries.handle(new GetDeviceNetworkByInstallationIdQuery(3L)).orElseThrow());
         assertTrue(queries.handle(new GetDeviceNetworkByInstallationIdQuery(4L)).isEmpty());

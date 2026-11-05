@@ -63,12 +63,13 @@ public class DevicesController {
     }
 
     @PutMapping(value = "/{deviceId}", consumes = APPLICATION_JSON_VALUE)
-    @Operation(summary = "Actualizar un dispositivo", description = "Actualiza la MAC y el tipo del dispositivo.")
+    @Operation(summary = "Actualizar un dispositivo",
+            description = "Actualiza la MAC y el tipo del dispositivo. Mientras está asignado a un hogar solo puede cambiar la MAC: para cambiar el tipo hay que desasignarlo antes.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Dispositivo actualizado"),
             @ApiResponse(responseCode = "400", description = "MAC o tipo inválidos"),
             @ApiResponse(responseCode = "404", description = "El dispositivo no existe"),
-            @ApiResponse(responseCode = "409", description = "El identificador físico ya está registrado")
+            @ApiResponse(responseCode = "409", description = "El identificador físico ya está registrado, o se pide cambiar el tipo de un dispositivo asignado")
     })
     public ResponseEntity<DeviceResource> updateDevice(@PathVariable Long deviceId, @Valid @RequestBody UpdateDeviceResource resource) {
         var updateDeviceCommand = UpdateDeviceCommandFromResourceAssembler.toCommandFromResource(deviceId, resource);

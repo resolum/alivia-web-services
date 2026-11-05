@@ -20,6 +20,8 @@ import static org.junit.jupiter.api.Assertions.*;
 @Import({ClockConfiguration.class, JpaAuditingConfiguration.class})
 @TestPropertySource(properties = {
         "spring.test.database.replace=none",
+        // These tests provoke unique-constraint violations on purpose; Hibernate would log each one as a warning.
+        "logging.level.org.hibernate.orm.jdbc.error=OFF",
         "spring.datasource.url=jdbc:h2:mem:networks;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH",
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.datasource.username=sa",

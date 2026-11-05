@@ -16,6 +16,8 @@ import org.springframework.test.context.TestPropertySource;
 
 import java.time.LocalDateTime;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /** The counts that decide whether a device fits the plan only see active assignments. */
@@ -149,6 +151,28 @@ class DeviceAssignmentPersistenceTest {
         assignments.saveAndFlush(saved);
 
         assertTrue(assignments.findActiveByDeviceIdForUpdate(device.getId()).isEmpty());
+    }
+
+    @Test
+    void listsTheActiveDevicesOfAnInstallationWithTheirDeviceLoadedAndOrderedById() {
+        var second = registered("DOOR");
+        var first = registered("LIGHT");
+        var closed = registered("LIGHT");
+        assignments.saveAndFlush(second.assignTo(3L, 5L, "cuarto", "Puerta", 9L, NOW));
+        assignments.saveAndFlush(first.assignTo(3L, 5L, "sala", "Luz", 9L, NOW));
+        var closedAssignment = assignments.saveAndFlush(closed.assignTo(3L, 5L, "sala", "Luz 2", 9L, NOW));
+        closedAssignment.unassign("Mudanza", 8L, NOW.plusDays(1));
+        assignments.saveAndFlush(closedAssignment);
+        assignments.saveAndFlush(registered("LIGHT").assignTo(4L, 6L, "sala", "Otra casa", 9L, NOW));
+        entityManager.clear();
+
+        var active = assignments.findAllActiveByInstallationId(3L);
+
+        assertEquals(List.of(second.getId(), first.getId()).stream().sorted().toList(),
+                active.stream().map(assignment -> assignment.getDevice().getId()).toList());
+        assertTrue(entityManager.getEntityManagerFactory().getPersistenceUnitUtil()
+                .isLoaded(active.get(0).getDevice()), "the device comes with the assignment");
+        assertTrue(assignments.findAllActiveByInstallationId(99L).isEmpty());
     }
 
     @Test

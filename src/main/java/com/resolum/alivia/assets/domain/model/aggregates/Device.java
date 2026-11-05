@@ -77,6 +77,11 @@ public class Device extends Asset {
         return assignment;
     }
 
+    /** Whether {@link #update} with this type would change the type of the device (it also validates the type). */
+    public boolean changesTypeTo(String deviceType) {
+        return parseType(deviceType) != this.deviceType;
+    }
+
     private static String requireAlias(String alias) {
         if (alias == null || alias.isBlank()) {
             throw new IllegalArgumentException("Device alias cannot be null or blank.");

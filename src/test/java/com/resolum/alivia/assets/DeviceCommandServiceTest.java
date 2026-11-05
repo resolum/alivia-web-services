@@ -184,6 +184,55 @@ class DeviceCommandServiceTest {
     }
 
     @Test
+    void theTypeOfAnAssignedDeviceCannotChangeUntilItIsUnassigned() {
+        var device = storedDevice();
+        device.changeStatusTo(AssetStatus.IN_USE);
+        when(devices.findById(7L)).thenReturn(Optional.of(device));
+        when(assignments.findActiveByDeviceId(7L)).thenReturn(Optional.of(mock(DeviceAssignment.class)));
+
+        var exception = assertThrows(DeviceStillAssigned.class,
+                () -> service.handle(new UpdateDeviceCommand(7L, MAC, "door")));
+
+        assertTrue(exception.getMessage().contains("unassign it first"));
+        assertEquals(DeviceType.LIGHT, device.getDeviceType());
+        verify(devices, never()).save(any());
+    }
+
+    @Test
+    void anAssignedDeviceMayStillChangeItsMacOrRepeatItsType() {
+        var device = storedDevice();
+        device.changeStatusTo(AssetStatus.IN_USE);
+        when(devices.findById(7L)).thenReturn(Optional.of(device));
+        when(assignments.findActiveByDeviceId(7L)).thenReturn(Optional.of(mock(DeviceAssignment.class)));
+
+        service.handle(new UpdateDeviceCommand(7L, "aa:bb:cc:dd:ee:00", "light"));
+
+        assertEquals("AA:BB:CC:DD:EE:00", device.getMacAddress().macAddress());
+        assertEquals(DeviceType.LIGHT, device.getDeviceType());
+        verify(devices).save(device);
+    }
+
+    @Test
+    void aDeviceWithoutAssignmentMayChangeItsType() {
+        var device = storedDevice();
+        when(devices.findById(7L)).thenReturn(Optional.of(device));
+        when(assignments.findActiveByDeviceId(7L)).thenReturn(Optional.empty());
+
+        service.handle(new UpdateDeviceCommand(7L, MAC, "door"));
+
+        assertEquals(DeviceType.DOOR, device.getDeviceType());
+    }
+
+    @Test
+    void anInvalidTypeIsRejectedBeforeLookingAtTheAssignment() {
+        when(devices.findById(7L)).thenReturn(Optional.of(storedDevice()));
+
+        assertThrows(IllegalArgumentException.class, () -> service.handle(new UpdateDeviceCommand(7L, MAC, "TOASTER")));
+
+        verifyNoInteractions(assignments);
+    }
+
+    @Test
     void aDeviceBecomesInUseOnlyByBeingAssigned() {
         var device = storedDevice();
         when(devices.findById(7L)).thenReturn(Optional.of(device));

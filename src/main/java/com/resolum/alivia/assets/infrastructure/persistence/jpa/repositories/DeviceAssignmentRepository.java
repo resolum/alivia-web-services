@@ -27,6 +27,11 @@ public interface DeviceAssignmentRepository extends JpaRepository<DeviceAssignme
     @Query("select a from DeviceAssignment a where a.device.id = :deviceId and a.unassignedAt is null")
     Optional<DeviceAssignment> findActiveByDeviceIdForUpdate(@Param("deviceId") Long deviceId);
 
+    /** The devices currently placed in the installation, with their device loaded. */
+    @Query("select a from DeviceAssignment a join fetch a.device "
+            + "where a.installationId = :installationId and a.unassignedAt is null order by a.device.id")
+    List<DeviceAssignment> findAllActiveByInstallationId(@Param("installationId") Long installationId);
+
     /** Every placement of the device, closed or not, most recent first. */
     @Query("select a from DeviceAssignment a where a.device.id = :deviceId order by a.assignedAt desc, a.id desc")
     List<DeviceAssignment> findHistoryByDeviceId(@Param("deviceId") Long deviceId);

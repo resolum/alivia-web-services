@@ -1,5 +1,7 @@
 package com.resolum.alivia.assets.application.internal.outboundservices.edge;
 
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeAccessTable;
+
 /**
  * What the edge services of an installation need to know after something changed in the inventory of that
  * installation. Only facts, no free text: the reason of an unassignment stays in the history.
@@ -14,9 +16,12 @@ package com.resolum.alivia.assets.application.internal.outboundservices.edge;
  * @param status         status of the asset after the change
  * @param roomKey        room of the placement, for assignments
  * @param function       function in the room, for assignments
+ * @param table          the complete table of devices of the household after the change. The edge replaces its
+ *                       copy with it, so the message is idempotent. Null only if the installation is unknown
  */
 public record EdgeSyncMessage(Type type, Long installationId, Long householdId, AssetKind assetKind, Long assetId,
-                              String macAddress, String assetType, String status, String roomKey, String function) {
+                              String macAddress, String assetType, String status, String roomKey, String function,
+                              EdgeAccessTable table) {
 
     public enum Type {
         DEVICE_ASSIGNED,

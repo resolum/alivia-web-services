@@ -2,6 +2,7 @@ package com.resolum.alivia.assets;
 
 import com.resolum.alivia.assets.domain.exceptions.BusinessNotFound;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
+import com.resolum.alivia.assets.domain.exceptions.DeviceStillAssigned;
 import com.resolum.alivia.assets.domain.exceptions.InvalidMacAddress;
 import com.resolum.alivia.assets.domain.exceptions.MacAddressAlreadyExists;
 import com.resolum.alivia.assets.domain.model.aggregates.Device;
@@ -171,6 +172,16 @@ class DevicesControllerTest {
                         .content("{\"macAddress\":\"AA:BB:CC:DD:EE:FF\",\"deviceType\":\"LIGHT\"}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("device_not_found"));
+    }
+
+    @Test
+    void answers409WhenChangingTheTypeOfAnAssignedDevice() throws Exception {
+        when(commands.handle(any(UpdateDeviceCommand.class))).thenThrow(DeviceStillAssigned.typeChange(7L));
+
+        mvc.perform(put("/api/v1/devices/7").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"macAddress\":\"AA:BB:CC:DD:EE:FF\",\"deviceType\":\"DOOR\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("device_still_assigned"));
     }
 
     @Test
