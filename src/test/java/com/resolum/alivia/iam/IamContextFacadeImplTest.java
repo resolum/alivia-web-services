@@ -6,6 +6,9 @@ import com.resolum.alivia.iam.domain.model.aggregates.User;
 import com.resolum.alivia.iam.domain.model.commands.IssueEdgeCredentialCommand;
 import com.resolum.alivia.iam.domain.model.commands.RevokeEdgeCredentialCommand;
 import com.resolum.alivia.iam.domain.model.commands.SignUpCommand;
+import com.resolum.alivia.iam.domain.model.queries.GetEdgeCredentialByEdgeIdQuery;
+import com.resolum.alivia.iam.domain.model.valueobjects.EdgeCredentialView;
+import com.resolum.alivia.iam.domain.services.EdgeCredentialQueryService;
 import com.resolum.alivia.iam.domain.model.valueobjects.AccessRole;
 import com.resolum.alivia.iam.domain.model.valueobjects.EdgeKind;
 import com.resolum.alivia.iam.domain.model.valueobjects.IssuedEdgeCredential;
@@ -16,6 +19,8 @@ import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,31 +41,61 @@ class IamContextFacadeImplTest {
     private final UserRepository userRepository = mock(UserRepository.class);
     private final UserCommandService userCommandService = mock(UserCommandService.class);
     private final EdgeCredentialCommandService edgeCredentials = mock(EdgeCredentialCommandService.class);
+    private final EdgeCredentialQueryService edgeCredentialQueries = mock(EdgeCredentialQueryService.class);
     private final IamContextFacadeImpl facade = new IamContextFacadeImpl(userRepository, userCommandService,
-            mock(com.resolum.alivia.iam.domain.services.AccountActivationService.class), edgeCredentials);
+            mock(com.resolum.alivia.iam.domain.services.AccountActivationService.class), edgeCredentials,
+            edgeCredentialQueries);
 
     @Test
     void issuesTheCredentialOfAnEdgeAndReturnsWhatTheEdgeMustSend() {
-        when(edgeCredentials.handle(new IssueEdgeCredentialCommand(7L, EdgeKind.MICROPHONE)))
+        when(edgeCredentials.handle(new IssueEdgeCredentialCommand(7L, EdgeKind.MICROPHONE, 3L)))
                 .thenReturn(new IssuedEdgeCredential(7L, EdgeKind.MICROPHONE, "7.secret"));
 
-        assertEquals("7.secret", facade.issueEdgeCredential(7L, " microphone "));
+        assertEquals("7.secret", facade.issueEdgeCredential(7L, " microphone ", 3L));
     }
 
     @Test
     void rejectsAnUnknownEdgeKindOrIdWithoutIssuingAnything() {
-        assertThrows(IllegalArgumentException.class, () -> facade.issueEdgeCredential(7L, "CAMERA"));
-        assertThrows(IllegalArgumentException.class, () -> facade.issueEdgeCredential(0L, "ACTUATOR"));
-        assertThrows(IllegalArgumentException.class, () -> facade.issueEdgeCredential(null, "ACTUATOR"));
+        assertThrows(IllegalArgumentException.class, () -> facade.issueEdgeCredential(7L, "CAMERA", 3L));
+        assertThrows(IllegalArgumentException.class, () -> facade.issueEdgeCredential(0L, "ACTUATOR", 3L));
+        assertThrows(IllegalArgumentException.class, () -> facade.issueEdgeCredential(null, "ACTUATOR", 3L));
+        assertThrows(IllegalArgumentException.class, () -> facade.issueEdgeCredential(7L, "ACTUATOR", null));
+        assertThrows(IllegalArgumentException.class, () -> facade.issueEdgeCredential(7L, "ACTUATOR", 0L));
 
         verifyNoInteractions(edgeCredentials);
     }
 
     @Test
     void revokesTheCredentialOfAnEdge() {
-        facade.revokeEdgeCredential(7L);
+        facade.revokeEdgeCredential(7L, 9L, "REVOKED_BY_ADMINISTRATOR");
+        facade.revokeEdgeCredential(8L, null, "EDGE_RETIRED");
 
-        verify(edgeCredentials).handle(new RevokeEdgeCredentialCommand(7L));
+        verify(edgeCredentials).handle(new RevokeEdgeCredentialCommand(7L, 9L, "REVOKED_BY_ADMINISTRATOR"));
+        verify(edgeCredentials).handle(new RevokeEdgeCredentialCommand(8L, null, "EDGE_RETIRED"));
+    }
+
+    @Test
+    void rejectsARevocationWithoutReasonOrWithABadAccount() {
+        assertThrows(IllegalArgumentException.class, () -> facade.revokeEdgeCredential(7L, 9L, null));
+        assertThrows(IllegalArgumentException.class, () -> facade.revokeEdgeCredential(7L, 0L, "EDGE_RETIRED"));
+        assertThrows(IllegalArgumentException.class, () -> facade.revokeEdgeCredential(0L, 9L, "EDGE_RETIRED"));
+
+        verifyNoInteractions(edgeCredentials);
+    }
+
+    @Test
+    void describesTheCredentialOfAnEdgeWithoutItsSecret() {
+        var issuedAt = LocalDateTime.of(2026, 1, 1, 8, 0);
+        when(edgeCredentialQueries.handle(new GetEdgeCredentialByEdgeIdQuery(7L))).thenReturn(Optional.of(
+                new EdgeCredentialView(7L, EdgeKind.MICROPHONE, true, issuedAt, 3L, 308, false, null, null, null, null)));
+        when(edgeCredentialQueries.handle(new GetEdgeCredentialByEdgeIdQuery(8L))).thenReturn(Optional.empty());
+
+        var summary = facade.getEdgeCredentialSummary(7L).orElseThrow();
+
+        assertEquals(new com.resolum.alivia.iam.interfaces.acl.IamContextFacade.EdgeCredentialSummary(
+                7L, true, issuedAt, 3L, 308, false, null, null, null, null), summary);
+        assertTrue(facade.getEdgeCredentialSummary(8L).isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> facade.getEdgeCredentialSummary(0L));
     }
 
     @Test

@@ -46,9 +46,9 @@ class EdgeCredentialsServiceTest {
     @Test
     void issuesTheCredentialOfAnEdgeOfItsTypeAndReturnsTheSecretOnce() {
         storedEdge(7, "MICROPHONE_EDGE");
-        when(iam.issueEdgeCredential(7L, EdgeType.MICROPHONE_EDGE)).thenReturn("7.the-secret");
+        when(iam.issueEdgeCredential(7L, EdgeType.MICROPHONE_EDGE, 3L)).thenReturn("7.the-secret");
 
-        var issued = service.handle(new IssueEdgeCredentialCommand(7L));
+        var issued = service.handle(new IssueEdgeCredentialCommand(7L, 3L));
 
         assertEquals(7L, issued.edgeId());
         assertEquals(EdgeType.MICROPHONE_EDGE, issued.edgeType());
@@ -60,11 +60,11 @@ class EdgeCredentialsServiceTest {
     void theEdgeIsReadUnderLockBeforeIamStoresTheCredential() {
         storedEdge(7, "ACTUATOR_EDGE");
 
-        service.handle(new IssueEdgeCredentialCommand(7L));
+        service.handle(new IssueEdgeCredentialCommand(7L, 3L));
 
         var order = inOrder(edges, iam);
         order.verify(edges).findByIdForUpdate(7L);
-        order.verify(iam).issueEdgeCredential(7L, EdgeType.ACTUATOR_EDGE);
+        order.verify(iam).issueEdgeCredential(7L, EdgeType.ACTUATOR_EDGE, 3L);
     }
 
     @Test
@@ -73,7 +73,7 @@ class EdgeCredentialsServiceTest {
             var edge = storedEdge(7, "ACTUATOR_EDGE");
             ReflectionTestUtils.setField(edge, "assetStatus", status);
 
-            assertDoesNotThrow(() -> service.handle(new IssueEdgeCredentialCommand(7L)), status.name());
+            assertDoesNotThrow(() -> service.handle(new IssueEdgeCredentialCommand(7L, 3L)), status.name());
         }
     }
 
@@ -82,7 +82,7 @@ class EdgeCredentialsServiceTest {
         var edge = storedEdge(7, "ACTUATOR_EDGE");
         ReflectionTestUtils.setField(edge, "assetStatus", AssetStatus.RETIRED);
 
-        assertThrows(EdgeRetired.class, () -> service.handle(new IssueEdgeCredentialCommand(7L)));
+        assertThrows(EdgeRetired.class, () -> service.handle(new IssueEdgeCredentialCommand(7L, 3L)));
 
         verifyNoInteractions(iam);
     }
@@ -92,8 +92,8 @@ class EdgeCredentialsServiceTest {
         when(edges.findByIdForUpdate(9L)).thenReturn(Optional.empty());
         when(edges.existsById(9L)).thenReturn(false);
 
-        assertThrows(EdgeNotFound.class, () -> service.handle(new IssueEdgeCredentialCommand(9L)));
-        assertThrows(EdgeNotFound.class, () -> service.handle(new RevokeEdgeCredentialCommand(9L)));
+        assertThrows(EdgeNotFound.class, () -> service.handle(new IssueEdgeCredentialCommand(9L, 3L)));
+        assertThrows(EdgeNotFound.class, () -> service.handle(new RevokeEdgeCredentialCommand(9L, 3L)));
 
         verifyNoInteractions(iam);
     }
@@ -102,16 +102,21 @@ class EdgeCredentialsServiceTest {
     void revokesTheCredentialOfAnExistingEdge() {
         when(edges.existsById(7L)).thenReturn(true);
 
-        service.handle(new RevokeEdgeCredentialCommand(7L));
+        service.handle(new RevokeEdgeCredentialCommand(7L, 3L));
 
-        verify(iam).revokeEdgeCredential(7L);
+        verify(iam).revokeEdgeCredential(7L, 3L, com.resolum.alivia.assets.domain.model.valueobjects.EdgeCredentialRevocationReason.REVOKED_BY_ADMINISTRATOR);
     }
 
     @Test
     void theCommandsRejectInvalidIds() {
-        assertThrows(IllegalArgumentException.class, () -> new IssueEdgeCredentialCommand(null));
-        assertThrows(IllegalArgumentException.class, () -> new IssueEdgeCredentialCommand(0L));
-        assertThrows(IllegalArgumentException.class, () -> new RevokeEdgeCredentialCommand(-1L));
+        assertThrows(IllegalArgumentException.class, () -> new IssueEdgeCredentialCommand(null, 3L));
+        assertThrows(IllegalArgumentException.class, () -> new IssueEdgeCredentialCommand(0L, 3L));
+        assertThrows(IllegalArgumentException.class, () -> new RevokeEdgeCredentialCommand(-1L, 3L));
+        // An administrator is always behind these two (the changes of the edge itself go through the adapter).
+        assertThrows(IllegalArgumentException.class, () -> new IssueEdgeCredentialCommand(7L, null));
+        assertThrows(IllegalArgumentException.class, () -> new IssueEdgeCredentialCommand(7L, 0L));
+        assertThrows(IllegalArgumentException.class, () -> new RevokeEdgeCredentialCommand(7L, null));
+        assertThrows(IllegalArgumentException.class, () -> new RevokeEdgeCredentialCommand(7L, -1L));
     }
 
     // --- the adapter towards IAM ---
@@ -120,15 +125,30 @@ class EdgeCredentialsServiceTest {
     void theAdapterNamesTheKindOfEachTypeOfEdgeForIam() {
         var facade = mock(IamContextFacade.class);
         var adapter = new ExternalIamService(facade, mock(EdgeTableWaitService.class));
-        when(facade.issueEdgeCredential(any(), any())).thenReturn("1.secret");
+        when(facade.issueEdgeCredential(any(), any(), any())).thenReturn("1.secret");
 
-        assertEquals("1.secret", adapter.issueEdgeCredential(1L, EdgeType.MICROPHONE_EDGE));
-        adapter.issueEdgeCredential(2L, EdgeType.ACTUATOR_EDGE);
-        adapter.revokeEdgeCredential(2L);
+        assertEquals("1.secret", adapter.issueEdgeCredential(1L, EdgeType.MICROPHONE_EDGE, 3L));
+        adapter.issueEdgeCredential(2L, EdgeType.ACTUATOR_EDGE, 3L);
+        adapter.revokeEdgeCredential(2L, 9L, com.resolum.alivia.assets.domain.model.valueobjects.EdgeCredentialRevocationReason.REVOKED_BY_ADMINISTRATOR);
+        adapter.revokeEdgeCredential(4L, null, com.resolum.alivia.assets.domain.model.valueobjects.EdgeCredentialRevocationReason.EDGE_RETIRED);
 
-        verify(facade).issueEdgeCredential(1L, "MICROPHONE");
-        verify(facade).issueEdgeCredential(2L, "ACTUATOR");
-        verify(facade).revokeEdgeCredential(2L);
+        verify(facade).issueEdgeCredential(1L, "MICROPHONE", 3L);
+        verify(facade).issueEdgeCredential(2L, "ACTUATOR", 3L);
+        verify(facade).revokeEdgeCredential(2L, 9L, "REVOKED_BY_ADMINISTRATOR");
+        verify(facade).revokeEdgeCredential(4L, null, "EDGE_RETIRED");
+    }
+
+    @Test
+    void theAdapterReadsTheStateOfACredentialThroughTheFacade() {
+        var facade = mock(IamContextFacade.class);
+        var adapter = new ExternalIamService(facade, mock(EdgeTableWaitService.class));
+        var summary = new IamContextFacade.EdgeCredentialSummary(7L, true, java.time.LocalDateTime.of(2026, 1, 1, 8, 0), 3L, 308,
+                false, null, null, null, null);
+        when(facade.getEdgeCredentialSummary(7L)).thenReturn(Optional.of(summary));
+        when(facade.getEdgeCredentialSummary(8L)).thenReturn(Optional.empty());
+
+        assertEquals(Optional.of(summary), adapter.getEdgeCredentialSummary(7L));
+        assertTrue(adapter.getEdgeCredentialSummary(8L).isEmpty());
     }
 
     // --- the wait of an edge ends when its credential changes ---
@@ -138,15 +158,15 @@ class EdgeCredentialsServiceTest {
         var facade = mock(IamContextFacade.class);
         var waits = mock(EdgeTableWaitService.class);
         var adapter = new ExternalIamService(facade, waits);
-        when(facade.issueEdgeCredential(any(), any())).thenReturn("1.secret");
+        when(facade.issueEdgeCredential(any(), any(), any())).thenReturn("1.secret");
 
-        adapter.revokeEdgeCredential(7L);
-        adapter.issueEdgeCredential(8L, EdgeType.ACTUATOR_EDGE);
+        adapter.revokeEdgeCredential(7L, null, com.resolum.alivia.assets.domain.model.valueobjects.EdgeCredentialRevocationReason.EDGE_REMOVED_FROM_INSTALLATION);
+        adapter.issueEdgeCredential(8L, EdgeType.ACTUATOR_EDGE, 3L);
 
         var order = inOrder(facade, waits);
-        order.verify(facade).revokeEdgeCredential(7L);
+        order.verify(facade).revokeEdgeCredential(7L, null, "EDGE_REMOVED_FROM_INSTALLATION");
         order.verify(waits).endWaitOf(7L);
-        order.verify(facade).issueEdgeCredential(8L, "ACTUATOR");
+        order.verify(facade).issueEdgeCredential(8L, "ACTUATOR", 3L);
         order.verify(waits).endWaitOf(8L);
     }
 
@@ -155,11 +175,11 @@ class EdgeCredentialsServiceTest {
         var facade = mock(IamContextFacade.class);
         var waits = mock(EdgeTableWaitService.class);
         var adapter = new ExternalIamService(facade, waits);
-        doThrow(new IllegalStateException("iam down")).when(facade).revokeEdgeCredential(7L);
-        when(facade.issueEdgeCredential(any(), any())).thenThrow(new IllegalStateException("iam down"));
+        doThrow(new IllegalStateException("iam down")).when(facade).revokeEdgeCredential(7L, null, "EDGE_RETIRED");
+        when(facade.issueEdgeCredential(any(), any(), any())).thenThrow(new IllegalStateException("iam down"));
 
-        assertThrows(IllegalStateException.class, () -> adapter.revokeEdgeCredential(7L));
-        assertThrows(IllegalStateException.class, () -> adapter.issueEdgeCredential(8L, EdgeType.ACTUATOR_EDGE));
+        assertThrows(IllegalStateException.class, () -> adapter.revokeEdgeCredential(7L, null, com.resolum.alivia.assets.domain.model.valueobjects.EdgeCredentialRevocationReason.EDGE_RETIRED));
+        assertThrows(IllegalStateException.class, () -> adapter.issueEdgeCredential(8L, EdgeType.ACTUATOR_EDGE, 3L));
 
         verifyNoInteractions(waits);
     }

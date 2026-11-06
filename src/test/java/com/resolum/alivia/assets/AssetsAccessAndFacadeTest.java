@@ -135,10 +135,15 @@ class AssetsAccessAndFacadeTest {
             var commands = mock(EdgeCredentialCommandService.class);
             when(commands.handle(any(IssueEdgeCredentialCommand.class)))
                     .thenReturn(new IssuedEdgeCredential(7L, EdgeType.ACTUATOR_EDGE, "7.secret"));
-            return new EdgeCredentialsController(commands);
+            var queries = mock(com.resolum.alivia.assets.domain.services.EdgeCredentialQueryService.class);
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetEdgeCredentialStatusQuery.class)))
+                    .thenReturn(com.resolum.alivia.assets.domain.model.valueobjects.EdgeCredentialStatus.notIssued(7L));
+            return new EdgeCredentialsController(commands, queries);
         }
     }
 
+    private static final org.springframework.security.core.Authentication ACTOR =
+            new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("1", null);
     private static final RegisterDeviceResource REGISTER = new RegisterDeviceResource("AA:BB:CC:DD:EE:FF", "Luz", "LIGHT");
     private static final com.resolum.alivia.assets.interfaces.rest.resources.ChangeDeviceStatusResource DEVICE_STATUS =
             new com.resolum.alivia.assets.interfaces.rest.resources.ChangeDeviceStatusResource("MAINTENANCE");
@@ -179,8 +184,9 @@ class AssetsAccessAndFacadeTest {
             assertEquals(3L, context.getBean(EdgesController.class).changeEdgeStatus(3L, EDGE_STATUS).id());
             assertDoesNotThrow(() -> context.getBean(InstallationEdgesController.class).placeEdge(3L, 7L));
             assertDoesNotThrow(() -> context.getBean(InstallationEdgesController.class).removeEdge(3L, 7L));
-            assertDoesNotThrow(() -> context.getBean(EdgeCredentialsController.class).issueCredential(7L));
-            assertDoesNotThrow(() -> context.getBean(EdgeCredentialsController.class).revokeCredential(7L));
+            assertDoesNotThrow(() -> context.getBean(EdgeCredentialsController.class).issueCredential(7L, ACTOR));
+            assertDoesNotThrow(() -> context.getBean(EdgeCredentialsController.class).revokeCredential(7L, ACTOR));
+            assertEquals(7L, context.getBean(EdgeCredentialsController.class).getCredentialStatus(7L).edgeId());
         }
     }
 
@@ -215,9 +221,11 @@ class AssetsAccessAndFacadeTest {
                 assertThrows(AccessDeniedException.class,
                         () -> context.getBean(InstallationEdgesController.class).removeEdge(3L, 7L), role);
                 assertThrows(AccessDeniedException.class,
-                        () -> context.getBean(EdgeCredentialsController.class).issueCredential(7L), role);
+                        () -> context.getBean(EdgeCredentialsController.class).issueCredential(7L, ACTOR), role);
                 assertThrows(AccessDeniedException.class,
-                        () -> context.getBean(EdgeCredentialsController.class).revokeCredential(7L), role);
+                        () -> context.getBean(EdgeCredentialsController.class).revokeCredential(7L, ACTOR), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(EdgeCredentialsController.class).getCredentialStatus(7L), role);
             }
         }
     }

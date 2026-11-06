@@ -10,6 +10,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -36,6 +37,9 @@ import java.util.Optional;
  * <p>A check that cannot be done (the database is down, for example) is not a bad credential and is not answered as one:
  * it is logged as a warning and answered {@code 503} with {@code Retry-After}, which the edge services retry. Answering
  * 401 would look like every credential had been revoked, and the cause would stay hidden.</p>
+ *
+ * <p>A source that presents too many wrong credentials is refused with {@code 429} and {@code Retry-After} before any of
+ * this work ({@link EdgeFailedAttemptsLimiter}).</p>
  */
 @Slf4j
 @Component
@@ -49,9 +53,12 @@ public class EdgeAuthorizationRequestFilter extends OncePerRequestFilter {
 
     private final SecurityContextRepository contextRepository = new RequestAttributeSecurityContextRepository();
     private final EdgeCredentialCommandService credentialService;
+    private final EdgeFailedAttemptsLimiter failedAttempts;
 
-    public EdgeAuthorizationRequestFilter(EdgeCredentialCommandService credentialService) {
+    public EdgeAuthorizationRequestFilter(EdgeCredentialCommandService credentialService,
+                                          EdgeFailedAttemptsLimiter failedAttempts) {
         this.credentialService = credentialService;
+        this.failedAttempts = failedAttempts;
     }
 
     @Override
@@ -65,6 +72,14 @@ public class EdgeAuthorizationRequestFilter extends OncePerRequestFilter {
         var header = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (header != null && header.startsWith(BEARER_PREFIX)
                 && SecurityContextHolder.getContext().getAuthentication() == null) {
+            var source = request.getRemoteAddr();
+            var wait = failedAttempts.secondsToWait(source);
+            if (wait > 0) {
+                log.warn("Too many rejected edge credentials from {}; refusing it for {} s", source, wait);
+                response.setHeader(HttpHeaders.RETRY_AFTER, String.valueOf(wait));
+                response.sendError(HttpStatus.TOO_MANY_REQUESTS.value(), "Too Many Requests");
+                return;
+            }
             Optional<AuthenticatedEdge> authenticated;
             try {
                 authenticated = credentialService.handle(new AuthenticateEdgeCommand(header.substring(BEARER_PREFIX.length())));
@@ -74,8 +89,10 @@ public class EdgeAuthorizationRequestFilter extends OncePerRequestFilter {
                 response.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE, "Service Unavailable");
                 return;
             }
-            authenticated.ifPresentOrElse(edge -> authenticate(edge, request, response),
-                    () -> log.debug("Edge credential rejected"));
+            authenticated.ifPresentOrElse(edge -> authenticate(edge, request, response), () -> {
+                failedAttempts.recordFailure(source);
+                log.debug("Edge credential rejected");
+            });
         }
         filterChain.doFilter(request, response);
     }

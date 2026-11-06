@@ -51,11 +51,12 @@ public class EdgeCredentialCommandServiceImpl implements EdgeCredentialCommandSe
     public IssuedEdgeCredential handle(IssueEdgeCredentialCommand command) {
         var secret = tokenService.generateEdgeSecret();
         var hash = tokenService.hashEdgeSecret(secret);
+        var now = LocalDateTime.now(clock);
         var credential = repository.findByEdgeIdForUpdate(command.edgeId())
-                .map(existing -> existing.rotate(command.edgeKind(), hash))
-                .orElseGet(() -> EdgeCredential.issue(command.edgeId(), command.edgeKind(), hash));
+                .map(existing -> existing.rotate(command.edgeKind(), hash, command.issuedBy(), now))
+                .orElseGet(() -> EdgeCredential.issue(command.edgeId(), command.edgeKind(), hash, command.issuedBy(), now));
         repository.save(credential);
-        log.info("Credential issued for edge {} ({})", command.edgeId(), command.edgeKind());
+        log.info("Credential issued for edge {} ({}) by account {}", command.edgeId(), command.edgeKind(), command.issuedBy());
         return new IssuedEdgeCredential(command.edgeId(), command.edgeKind(), command.edgeId() + "" + SEPARATOR + secret);
     }
 
@@ -63,9 +64,10 @@ public class EdgeCredentialCommandServiceImpl implements EdgeCredentialCommandSe
     @Transactional
     public void handle(RevokeEdgeCredentialCommand command) {
         repository.findByEdgeIdForUpdate(command.edgeId()).ifPresent(credential -> {
-            if (credential.revoke(LocalDateTime.now(clock))) {
+            if (credential.revoke(LocalDateTime.now(clock), command.revokedBy(), command.reason())) {
                 repository.save(credential);
-                log.info("Credential revoked for edge {}", command.edgeId());
+                log.info("Credential revoked for edge {} ({}) by {}", command.edgeId(), command.reason(),
+                        command.revokedBy() == null ? "a change of the edge" : "account " + command.revokedBy());
             }
         });
     }

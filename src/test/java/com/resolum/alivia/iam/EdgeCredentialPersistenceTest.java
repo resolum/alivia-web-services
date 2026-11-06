@@ -41,12 +41,14 @@ class EdgeCredentialPersistenceTest {
 
     @Test
     void storesAndFindsTheCredentialOfAnEdgeWithoutExposingThePlainSecret() {
-        credentials.saveAndFlush(EdgeCredential.issue(7L, EdgeKind.MICROPHONE, "a".repeat(64)));
+        credentials.saveAndFlush(EdgeCredential.issue(7L, EdgeKind.MICROPHONE, "a".repeat(64), 3L, NOW));
         entityManager.clear();
 
         var found = credentials.findByEdgeId(7L).orElseThrow();
 
         assertEquals(EdgeKind.MICROPHONE, found.getEdgeKind());
+        assertEquals(3L, found.getIssuedBy());
+        assertEquals(NOW, found.getIssuedAt());
         assertTrue(found.matches("a".repeat(64)));
         assertTrue(credentials.findByEdgeId(8L).isEmpty());
         assertTrue(credentials.findByEdgeIdForUpdate(7L).isPresent());
@@ -54,15 +56,15 @@ class EdgeCredentialPersistenceTest {
 
     @Test
     void anEdgeHasOneCredentialOnly() {
-        credentials.saveAndFlush(EdgeCredential.issue(7L, EdgeKind.MICROPHONE, "hash-1"));
+        credentials.saveAndFlush(EdgeCredential.issue(7L, EdgeKind.MICROPHONE, "hash-1", 3L, NOW));
 
         assertThrows(DataIntegrityViolationException.class,
-                () -> credentials.saveAndFlush(EdgeCredential.issue(7L, EdgeKind.ACTUATOR, "hash-2")));
+                () -> credentials.saveAndFlush(EdgeCredential.issue(7L, EdgeKind.ACTUATOR, "hash-2", 3L, NOW)));
     }
 
     @Test
     void theLastUseIsWrittenOnlyWhenNoRecentUseWasRecorded() {
-        credentials.saveAndFlush(EdgeCredential.issue(7L, EdgeKind.ACTUATOR, "hash"));
+        credentials.saveAndFlush(EdgeCredential.issue(7L, EdgeKind.ACTUATOR, "hash", 3L, NOW));
         entityManager.clear();
 
         assertEquals(1, credentials.recordUse(7L, NOW, NOW.minusMinutes(1)));
@@ -78,8 +80,8 @@ class EdgeCredentialPersistenceTest {
 
     @Test
     void recordingTheUseDoesNotTouchTheSecretOrTheRevocation() {
-        var credential = EdgeCredential.issue(7L, EdgeKind.ACTUATOR, "hash");
-        credential.revoke(NOW);
+        var credential = EdgeCredential.issue(7L, EdgeKind.ACTUATOR, "hash", 3L, NOW);
+        credential.revoke(NOW, 9L, "REVOKED_BY_ADMINISTRATOR");
         credentials.saveAndFlush(credential);
         entityManager.clear();
 
@@ -88,6 +90,8 @@ class EdgeCredentialPersistenceTest {
 
         var found = credentials.findByEdgeId(7L).orElseThrow();
         assertEquals(NOW, found.getRevokedAt());
+        assertEquals(9L, found.getRevokedBy());
+        assertEquals("REVOKED_BY_ADMINISTRATOR", found.getRevokedReason());
         assertTrue(found.matches("hash"));
         assertEquals(NOW.plusHours(1), found.getLastUsedAt());
     }

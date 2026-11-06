@@ -5,6 +5,7 @@ import com.resolum.alivia.assets.domain.exceptions.EdgeNotFound;
 import com.resolum.alivia.assets.domain.exceptions.EdgeRetired;
 import com.resolum.alivia.assets.domain.model.commands.IssueEdgeCredentialCommand;
 import com.resolum.alivia.assets.domain.model.commands.RevokeEdgeCredentialCommand;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeCredentialRevocationReason;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.model.valueobjects.IssuedEdgeCredential;
 import com.resolum.alivia.assets.domain.services.EdgeCredentialCommandService;
@@ -35,7 +36,7 @@ public class EdgeCredentialCommandServiceImpl implements EdgeCredentialCommandSe
         if (edge.getAssetStatus() == AssetStatus.RETIRED) {
             throw new EdgeRetired(edge.getId());
         }
-        var credential = externalIamService.issueEdgeCredential(edge.getId(), edge.getEdgeType());
+        var credential = externalIamService.issueEdgeCredential(edge.getId(), edge.getEdgeType(), command.issuedBy());
         return new IssuedEdgeCredential(edge.getId(), edge.getEdgeType(), credential);
     }
 
@@ -45,6 +46,7 @@ public class EdgeCredentialCommandServiceImpl implements EdgeCredentialCommandSe
         if (!edgeRepository.existsById(command.edgeId())) {
             throw new EdgeNotFound(command.edgeId());
         }
-        externalIamService.revokeEdgeCredential(command.edgeId());
+        externalIamService.revokeEdgeCredential(command.edgeId(), command.revokedBy(),
+                EdgeCredentialRevocationReason.REVOKED_BY_ADMINISTRATOR);
     }
 }

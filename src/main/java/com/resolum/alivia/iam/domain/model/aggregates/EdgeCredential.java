@@ -30,6 +30,8 @@ import java.time.LocalDateTime;
 @Getter
 public class EdgeCredential extends AuditableAbstractAggregateRoot<EdgeCredential> {
 
+    public static final int REASON_MAX_LENGTH = 40;
+
     @Column(name = "edge_id", nullable = false, updatable = false)
     private Long edgeId;
 
@@ -41,37 +43,59 @@ public class EdgeCredential extends AuditableAbstractAggregateRoot<EdgeCredentia
     @Column(name = "secret_hash", nullable = false, length = 64)
     private String secretHash;
 
+    /** When the current secret was issued or rotated. */
+    @Column(name = "issued_at", nullable = false)
+    private LocalDateTime issuedAt;
+
+    /** Account of the administrator who issued the current secret. */
+    @Column(name = "issued_by")
+    private Long issuedBy;
+
     @Column(name = "last_used_at")
     private LocalDateTime lastUsedAt;
 
     @Column(name = "revoked_at")
     private LocalDateTime revokedAt;
 
+    /** Administrator who revoked it; empty when a change of the edge did, which {@code revokedReason} tells. */
+    @Column(name = "revoked_by")
+    private Long revokedBy;
+
+    @Column(name = "revoked_reason", length = REASON_MAX_LENGTH)
+    private String revokedReason;
+
     protected EdgeCredential() {
     }
 
-    private EdgeCredential(Long edgeId, EdgeKind edgeKind, String secretHash) {
+    private EdgeCredential(Long edgeId, EdgeKind edgeKind, String secretHash, Long issuedBy, LocalDateTime issuedAt) {
         if (edgeId == null || edgeId <= 0) {
             throw new IllegalArgumentException("Edge ID must be a positive number.");
         }
         this.edgeId = edgeId;
         this.edgeKind = requireKind(edgeKind);
         this.secretHash = requireHash(secretHash);
+        this.issuedBy = requireAccount(issuedBy);
+        this.issuedAt = requireMoment(issuedAt);
     }
 
     /** Creates the credential of an edge that has none. */
-    public static EdgeCredential issue(Long edgeId, EdgeKind edgeKind, String secretHash) {
-        return new EdgeCredential(edgeId, edgeKind, secretHash);
+    public static EdgeCredential issue(Long edgeId, EdgeKind edgeKind, String secretHash, Long issuedBy,
+                                       LocalDateTime issuedAt) {
+        return new EdgeCredential(edgeId, edgeKind, secretHash, issuedBy, issuedAt);
     }
 
     /**
      * Replaces the secret. The previous one stops working at once, and a revoked credential becomes valid again with
      * the new secret.
      */
-    public EdgeCredential rotate(EdgeKind edgeKind, String secretHash) {
+    public EdgeCredential rotate(EdgeKind edgeKind, String secretHash, Long issuedBy, LocalDateTime issuedAt) {
         this.edgeKind = requireKind(edgeKind);
         this.secretHash = requireHash(secretHash);
+        this.issuedBy = requireAccount(issuedBy);
+        this.issuedAt = requireMoment(issuedAt);
         this.revokedAt = null;
+        this.revokedBy = null;
+        this.revokedReason = null;
         this.lastUsedAt = null;
         return this;
     }
@@ -79,13 +103,23 @@ public class EdgeCredential extends AuditableAbstractAggregateRoot<EdgeCredentia
     /**
      * Stops the credential from authenticating.
      *
+     * @param revokedBy administrator who asked for it, or {@code null} when a change of the edge caused it
+     * @param reason    why, as a short code (for example {@code EDGE_RETIRED})
      * @return {@code true} when it was active; {@code false} when it was already revoked (nothing changes)
      */
-    public boolean revoke(LocalDateTime at) {
+    public boolean revoke(LocalDateTime at, Long revokedBy, String reason) {
         if (revokedAt != null) {
             return false;
         }
-        this.revokedAt = at;
+        if (reason == null || reason.isBlank() || reason.length() > REASON_MAX_LENGTH) {
+            throw new IllegalArgumentException("Revocation reason is required and at most " + REASON_MAX_LENGTH + " characters.");
+        }
+        if (revokedBy != null && revokedBy <= 0) {
+            throw new IllegalArgumentException("Revoking account must be a positive number.");
+        }
+        this.revokedAt = requireMoment(at);
+        this.revokedBy = revokedBy;
+        this.revokedReason = reason;
         return true;
     }
 
@@ -97,6 +131,20 @@ public class EdgeCredential extends AuditableAbstractAggregateRoot<EdgeCredentia
     public boolean matches(String candidateHash) {
         return candidateHash != null && MessageDigest.isEqual(
                 secretHash.getBytes(StandardCharsets.US_ASCII), candidateHash.getBytes(StandardCharsets.US_ASCII));
+    }
+
+    private static Long requireAccount(Long account) {
+        if (account == null || account <= 0) {
+            throw new IllegalArgumentException("Issuing account must be a positive number.");
+        }
+        return account;
+    }
+
+    private static LocalDateTime requireMoment(LocalDateTime moment) {
+        if (moment == null) {
+            throw new IllegalArgumentException("The moment is required.");
+        }
+        return moment;
     }
 
     private static EdgeKind requireKind(EdgeKind edgeKind) {

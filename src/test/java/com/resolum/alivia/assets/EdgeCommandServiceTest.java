@@ -153,7 +153,7 @@ class EdgeCommandServiceTest {
 
         service.handle(new UpdateEdgeCommand(3L, MAC, "MICROPHONE_EDGE"));
 
-        verify(iam).revokeEdgeCredential(3L);
+        verify(iam).revokeEdgeCredential(3L, null, com.resolum.alivia.assets.domain.model.valueobjects.EdgeCredentialRevocationReason.EDGE_TYPE_CHANGED);
     }
 
     @Test
@@ -162,7 +162,7 @@ class EdgeCommandServiceTest {
 
         service.handle(new UpdateEdgeCommand(3L, "AA:BB:CC:DD:EE:00", "ACTUATOR_EDGE"));
 
-        verify(iam, never()).revokeEdgeCredential(any());
+        verify(iam, never()).revokeEdgeCredential(any(), any(), any());
     }
 
     @Test
@@ -174,7 +174,7 @@ class EdgeCommandServiceTest {
         assertThrows(EdgeStillAssigned.class, () -> service.handle(new UpdateEdgeCommand(3L, MAC, "MICROPHONE_EDGE")));
 
         verify(edges, never()).saveAndFlush(any());
-        verify(iam, never()).revokeEdgeCredential(any());
+        verify(iam, never()).revokeEdgeCredential(any(), any(), any());
         assertEquals(EdgeType.ACTUATOR_EDGE, edge.getEdgeType());
     }
 
@@ -212,7 +212,7 @@ class EdgeCommandServiceTest {
         service.handle(new ChangeEdgeStatusCommand(3L, "RETIRED"));
 
         assertEquals(AssetStatus.RETIRED, edge.getAssetStatus());
-        verify(iam).revokeEdgeCredential(3L);
+        verify(iam).revokeEdgeCredential(3L, null, com.resolum.alivia.assets.domain.model.valueobjects.EdgeCredentialRevocationReason.EDGE_RETIRED);
     }
 
     @Test
@@ -221,7 +221,7 @@ class EdgeCommandServiceTest {
 
         service.handle(new ChangeEdgeStatusCommand(3L, "BROKEN"));
 
-        verify(iam, never()).revokeEdgeCredential(any());
+        verify(iam, never()).revokeEdgeCredential(any(), any(), any());
     }
 
     @Test
@@ -237,7 +237,7 @@ class EdgeCommandServiceTest {
         }
 
         verify(edges, never()).saveAndFlush(any());
-        verify(iam, never()).revokeEdgeCredential(any());
+        verify(iam, never()).revokeEdgeCredential(any(), any(), any());
     }
 
     @Test

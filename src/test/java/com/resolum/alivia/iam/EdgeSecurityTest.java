@@ -8,6 +8,7 @@ import com.resolum.alivia.iam.domain.services.EdgeCredentialCommandService;
 import com.resolum.alivia.iam.infrastructure.authorization.sfs.configuration.WebSecurityConfiguration;
 import com.resolum.alivia.iam.infrastructure.authorization.sfs.pipeline.BearerAuthorizationRequestFilter;
 import com.resolum.alivia.iam.infrastructure.authorization.sfs.pipeline.EdgeAuthorizationRequestFilter;
+import com.resolum.alivia.iam.infrastructure.authorization.sfs.pipeline.EdgeFailedAttemptsLimiter;
 import com.resolum.alivia.iam.infrastructure.authorization.sfs.pipeline.UnauthorizedRequestHandlerEntryPoint;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,11 +31,17 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -61,11 +68,15 @@ class EdgeSecurityTest {
     private TokenService tokenService;
     @Autowired
     private UserDetailsService userDetailsService;
+    @Autowired
+    private MutableClock clock;
 
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
+        // Every test starts with the counters of rejected credentials expired.
+        clock.advance(Duration.ofMinutes(2));
         reset(credentials, tokenService, userDetailsService);
         SecurityContextHolder.clearContext();
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(
@@ -167,6 +178,49 @@ class EdgeSecurityTest {
         mvc.perform(get("/api/v1/edge/wait").header(HttpHeaders.AUTHORIZATION, "Bearer 7.wrong")).andExpect(status().isUnauthorized());
     }
 
+    // --- failed attempts (the limit of the test configuration is 3 per minute) ---
+
+    @Test
+    void aSourceThatPresentsTooManyWrongCredentialsIsRefusedWithoutLookingAnythingUp() throws Exception {
+        givenEdge("7.microphone-secret", new AuthenticatedEdge(7L, EdgeKind.MICROPHONE));
+        for (int attempt = 0; attempt < 3; attempt++) {
+            mvc.perform(get(EDGE_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer 7.wrong")).andExpect(status().isUnauthorized());
+        }
+
+        // Not even the right credential gets through while the source is refused, and nothing is hashed or read.
+        mvc.perform(get(EDGE_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer 7.microphone-secret"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "60"));
+        verify(credentials, times(3)).handle(any(AuthenticateEdgeCommand.class));
+
+        clock.advance(Duration.ofSeconds(45));
+        mvc.perform(get(EDGE_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer 7.microphone-secret"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "15"));
+
+        clock.advance(Duration.ofSeconds(16));
+        mvc.perform(get(EDGE_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer 7.microphone-secret")).andExpect(status().isOk());
+    }
+
+    @Test
+    void correctCredentialsAndRequestsWithoutOneNeverCountAsFailures() throws Exception {
+        givenEdge("7.microphone-secret", new AuthenticatedEdge(7L, EdgeKind.MICROPHONE));
+
+        for (int attempt = 0; attempt < 10; attempt++) {
+            mvc.perform(get(EDGE_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer 7.microphone-secret")).andExpect(status().isOk());
+            mvc.perform(get(EDGE_PATH)).andExpect(status().isUnauthorized());
+        }
+    }
+
+    @Test
+    void aCredentialThatCouldNotBeCheckedIsNotAFailureOfTheSource() throws Exception {
+        when(credentials.handle(any(AuthenticateEdgeCommand.class))).thenThrow(new IllegalStateException("db down"));
+
+        for (int attempt = 0; attempt < 6; attempt++) {
+            mvc.perform(get(EDGE_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer 7.secret")).andExpect(status().isServiceUnavailable());
+        }
+    }
+
     private void givenEdge(String presented, AuthenticatedEdge edge) {
         when(credentials.handle(new AuthenticateEdgeCommand(presented))).thenReturn(Optional.of(edge));
     }
@@ -184,6 +238,16 @@ class EdgeSecurityTest {
         }
 
         @Bean
+        MutableClock clock() {
+            return new MutableClock();
+        }
+
+        @Bean
+        EdgeFailedAttemptsLimiter edgeFailedAttemptsLimiter(Clock clock) {
+            return new EdgeFailedAttemptsLimiter(3, clock);
+        }
+
+        @Bean
         TokenService tokenService() {
             return mock(TokenService.class);
         }
@@ -191,6 +255,30 @@ class EdgeSecurityTest {
         @Bean
         UserDetailsService userDetailsService() {
             return mock(UserDetailsService.class);
+        }
+    }
+
+    /** A clock that only moves when the test moves it. */
+    static class MutableClock extends Clock {
+        private Instant now = Instant.parse("2026-11-05T12:00:00Z");
+
+        void advance(Duration time) {
+            now = now.plus(time);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneId.of("UTC");
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return now;
         }
     }
 

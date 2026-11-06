@@ -7,7 +7,7 @@ Flyway es el dueño del esquema. Las migraciones viven en
 
 | Elemento | Valor |
 |---|---|
-| Migraciones existentes | `V1` a `V15` (ver el [historial](#historial-de-migraciones)); la última es `V15__add_edge_sync_states.sql` |
+| Migraciones existentes | `V1` a `V16` (ver el [historial](#historial-de-migraciones)); la última es `V16__add_edge_credential_audit.sql` |
 | `ddl-auto` en `dev` | `update` (Hibernate puede crear tablas que falten; úsalo solo en local) |
 | `ddl-auto` en `prod` | `validate` — Flyway crea el esquema y Hibernate solo lo comprueba al arrancar |
 | `ddl-auto` en `test` | El del perfil de pruebas; Flyway está deshabilitado (ver más abajo) |
@@ -31,6 +31,7 @@ Flyway es el dueño del esquema. Las migraciones viven en
 | `V13` | Paridad con lo que trajo `develop` (columnas y `CHECK` de incidencias, citas y contratos) y columna `version` de dispositivos y edges (bloqueo optimista). | AP-68 |
 | `V14` | `edge_credentials`: la credencial de cada edge service (solo el hash). | AP-68 |
 | `V15` | `edge_sync_states`: qué versión de su tabla confirmó cada edge y cuándo se le vio por última vez. | AP-68 |
+| `V16` | `edge_credentials`: cuándo se emitió el secreto vigente y quién lo emitió y lo revocó (con el motivo). Las filas existentes toman `updated_at` como fecha de emisión (una estimación) y no tienen emisor; `issued_at` pasa a ser obligatoria. Probada con un `V15` con credenciales actualizado por Flyway (`EdgeCredentialMigrationOnPostgresTest`). | AP-68 |
 
 `V1` no es un marcador: contiene el DDL completo que Hibernate genera para las
 entidades JPA actuales. Se capturó con el procedimiento de la sección
@@ -185,8 +186,8 @@ Ejecutada contra PostgreSQL 18.6 con `V1` y `V2`:
 | Índices de `V1` (`pg_indexes`) | ✅ 45/45 idénticos |
 | `.\mvnw.cmd clean verify` | ✅ 848 pruebas, 0 fallos, 8 *skipped* |
 
-Verificación posterior (`V12` a `V15`, AP-68): las pruebas de `integration` arrancan la aplicación
-sobre PostgreSQL 18 con `V1`..`V15` y `ddl-auto=validate` en cada ejecución (ver
+Verificación posterior (`V12` a `V16`, AP-68): las pruebas de `integration` arrancan la aplicación
+sobre PostgreSQL 18 con `V1`..`V16` y `ddl-auto=validate` en cada ejecución (ver
 [Pruebas contra PostgreSQL real](#pruebas-contra-postgresql-real)).
 
 La prueba de deriva es la que justifica `validate` en producción: sin ella, Hibernate habría

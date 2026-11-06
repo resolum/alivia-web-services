@@ -10,6 +10,7 @@ import com.resolum.alivia.assets.domain.model.aggregates.Edge;
 import com.resolum.alivia.assets.domain.model.commands.ChangeEdgeStatusCommand;
 import com.resolum.alivia.assets.domain.model.commands.RegisterEdgeCommand;
 import com.resolum.alivia.assets.domain.model.commands.UpdateEdgeCommand;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeCredentialRevocationReason;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.model.valueobjects.MacAddress;
 import com.resolum.alivia.assets.domain.services.EdgeCommandService;
@@ -84,7 +85,7 @@ public class EdgeCommandServiceImpl implements EdgeCommandService {
         edge.update(command.macAddress(),command.edgeType());
         saveEdge(edge);
         if (changesType) {
-            externalIamService.revokeEdgeCredential(edge.getId());
+            externalIamService.revokeEdgeCredential(edge.getId(), null, EdgeCredentialRevocationReason.EDGE_TYPE_CHANGED);
         }
         return edge.getId();
 
@@ -114,7 +115,7 @@ public class EdgeCommandServiceImpl implements EdgeCommandService {
         edge.updateAssetStatus(command.status());
         edgeRepository.saveAndFlush(edge);
         if (edge.getAssetStatus() == AssetStatus.RETIRED) {
-            externalIamService.revokeEdgeCredential(edge.getId());
+            externalIamService.revokeEdgeCredential(edge.getId(), null, EdgeCredentialRevocationReason.EDGE_RETIRED);
         }
         return edge.getId();
     }

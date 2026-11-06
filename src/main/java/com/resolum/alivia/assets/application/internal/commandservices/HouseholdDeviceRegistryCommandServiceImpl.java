@@ -11,6 +11,7 @@ import com.resolum.alivia.assets.domain.model.aggregates.HouseholdDeviceRegistry
 import com.resolum.alivia.assets.domain.model.commands.PlaceEdgeInInstallationCommand;
 import com.resolum.alivia.assets.domain.model.commands.RegisterInstallationCommand;
 import com.resolum.alivia.assets.domain.model.commands.RemoveEdgeFromInstallationCommand;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeCredentialRevocationReason;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.model.valueobjects.InstallationEdges;
 import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryCommandService;
@@ -85,7 +86,7 @@ public class HouseholdDeviceRegistryCommandServiceImpl implements HouseholdDevic
             throw new EdgeNotAvailable(edge.getId(), AssetStatus.IN_USE);
         }
         replaced.ifPresent(left -> {
-            externalIamService.revokeEdgeCredential(left.getId());
+            externalIamService.revokeEdgeCredential(left.getId(), null, EdgeCredentialRevocationReason.EDGE_REPLACED_IN_INSTALLATION);
             syncStates.deleteByEdgeId(left.getId());
         });
         if (!alreadyThere) {
@@ -104,7 +105,7 @@ public class HouseholdDeviceRegistryCommandServiceImpl implements HouseholdDevic
 
         edgeRepository.save(removed);
         registryRepository.saveAndFlush(registry);
-        externalIamService.revokeEdgeCredential(removed.getId());
+        externalIamService.revokeEdgeCredential(removed.getId(), null, EdgeCredentialRevocationReason.EDGE_REMOVED_FROM_INSTALLATION);
         syncStates.deleteByEdgeId(removed.getId());
         return InstallationEdges.of(registry, removed);
     }

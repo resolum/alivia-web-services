@@ -100,8 +100,8 @@ class InstallationEdgesCommandServiceTest {
         assertEquals(AssetStatus.AVAILABLE, old.getAssetStatus());
         assertEquals(AssetStatus.IN_USE, replacement.getAssetStatus());
         verify(edges).save(old);
-        verify(iam).revokeEdgeCredential(1L);
-        verify(iam, never()).revokeEdgeCredential(2L);
+        verify(iam).revokeEdgeCredential(1L, null, com.resolum.alivia.assets.domain.model.valueobjects.EdgeCredentialRevocationReason.EDGE_REPLACED_IN_INSTALLATION);
+        verify(iam, never()).revokeEdgeCredential(eq(2L), any(), any());
     }
 
     @Test
@@ -166,7 +166,7 @@ class InstallationEdgesCommandServiceTest {
         assertEquals(AssetStatus.AVAILABLE, microphone.getAssetStatus());
         verify(edges).save(microphone);
         verify(registries).saveAndFlush(registry);
-        verify(iam).revokeEdgeCredential(1L);
+        verify(iam).revokeEdgeCredential(1L, null, com.resolum.alivia.assets.domain.model.valueobjects.EdgeCredentialRevocationReason.EDGE_REMOVED_FROM_INSTALLATION);
     }
 
     @Test
