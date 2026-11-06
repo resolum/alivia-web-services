@@ -2,14 +2,19 @@ package com.resolum.alivia.assets.interfaces.rest.controllers;
 
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceByIdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetDeviceInventoryItemByIdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetDevicesQuery;
 import com.resolum.alivia.assets.domain.services.DeviceCommandService;
 import com.resolum.alivia.assets.domain.services.DeviceQueryService;
 import com.resolum.alivia.assets.interfaces.rest.resources.ChangeDeviceStatusResource;
+import com.resolum.alivia.assets.interfaces.rest.resources.DeviceInventoryItemResource;
 import com.resolum.alivia.assets.interfaces.rest.resources.DeviceResource;
+import com.resolum.alivia.assets.interfaces.rest.resources.InventoryPageResource;
 import com.resolum.alivia.assets.interfaces.rest.resources.RegisterDeviceResource;
 import com.resolum.alivia.assets.interfaces.rest.resources.UpdateDeviceResource;
 import com.resolum.alivia.assets.interfaces.rest.transform.ChangeDeviceStatusCommandFromResourceAssembler;
 import com.resolum.alivia.assets.interfaces.rest.transform.DeviceResourceFromEntityAssembler;
+import com.resolum.alivia.assets.interfaces.rest.transform.InventoryResourcesFromViewAssembler;
 import com.resolum.alivia.assets.interfaces.rest.transform.RegisterDeviceCommandFromResourceAssembler;
 import com.resolum.alivia.assets.interfaces.rest.transform.UpdateDeviceCommandFromResourceAssembler;
 import io.swagger.v3.oas.annotations.Operation;
@@ -62,6 +67,37 @@ public class DevicesController {
         var device = deviceQueryService.handle(new GetDeviceByIdQuery(deviceId))
                 .orElseThrow(() -> new DeviceNotFound(deviceId));
         return DeviceResourceFromEntityAssembler.toResourceFromEntity(device);
+    }
+
+    @GetMapping
+    @Operation(summary = "Listar el inventario de dispositivos",
+            description = "Página de los dispositivos del negocio, ordenados por id, con la instalación donde está asignado cada uno "
+                    + "(nulo si no lo está). Se puede filtrar por estado (status) y por tipo (type); el tamaño de página es de 1 a 200.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Página de dispositivos"),
+            @ApiResponse(responseCode = "400", description = "Estado o tipo desconocidos, página negativa o tamaño fuera de 1 a 200")
+    })
+    public InventoryPageResource<DeviceInventoryItemResource> getDevices(
+            @RequestParam(required = false) String status, @RequestParam(required = false) String type,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "" + InventoryResourcesFromViewAssembler.DEFAULT_PAGE_SIZE) int size) {
+        var query = new GetDevicesQuery(defaultBusinessId, InventoryResourcesFromViewAssembler.status(status),
+                InventoryResourcesFromViewAssembler.deviceType(type), InventoryResourcesFromViewAssembler.pageable(page, size));
+        return InventoryResourcesFromViewAssembler.toPageResource(deviceQueryService.handle(query),
+                InventoryResourcesFromViewAssembler::toResource);
+    }
+
+    @GetMapping("/{deviceId}")
+    @Operation(summary = "Consultar un dispositivo",
+            description = "Un dispositivo del inventario, con la instalación donde está asignado (nulo si no lo está).")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "El dispositivo"),
+            @ApiResponse(responseCode = "404", description = "El dispositivo no existe")
+    })
+    public DeviceInventoryItemResource getDevice(@PathVariable Long deviceId) {
+        return deviceQueryService.handle(new GetDeviceInventoryItemByIdQuery(deviceId))
+                .map(InventoryResourcesFromViewAssembler::toResource)
+                .orElseThrow(() -> new DeviceNotFound(deviceId));
     }
 
     @PutMapping(value = "/{deviceId}", consumes = APPLICATION_JSON_VALUE)

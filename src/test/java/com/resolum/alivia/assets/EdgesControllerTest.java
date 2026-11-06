@@ -7,6 +7,14 @@ import com.resolum.alivia.assets.domain.exceptions.InvalidAssetStatusTransition;
 import com.resolum.alivia.assets.domain.exceptions.MacAddressAlreadyExists;
 import com.resolum.alivia.assets.domain.model.aggregates.Edge;
 import com.resolum.alivia.assets.domain.model.commands.ChangeEdgeStatusCommand;
+import com.resolum.alivia.assets.domain.model.queries.GetEdgeInventoryItemByIdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetEdgesQuery;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeInventoryItem;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeType;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import java.util.List;
 import com.resolum.alivia.assets.domain.model.commands.RegisterEdgeCommand;
 import com.resolum.alivia.assets.domain.model.commands.UpdateEdgeCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
@@ -26,6 +34,7 @@ import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -176,5 +185,63 @@ class EdgesControllerTest {
                 .andExpect(jsonPath("$.code").value("validation_failed"));
 
         verifyNoInteractions(commands);
+    }
+
+    // --- reading the inventory ---
+
+    private static PageRequest pageOf(int page, int size) {
+        return PageRequest.of(page, size, Sort.by("id"));
+    }
+
+    @Test
+    void listsTheEdgesWithTheirInstallation() throws Exception {
+        var placed = edge();
+        var spare = edge();
+        ReflectionTestUtils.setField(spare, "id", 4L);
+        when(queries.handle(any(GetEdgesQuery.class))).thenReturn(new PageImpl<>(
+                List.of(new EdgeInventoryItem(placed, 30L), new EdgeInventoryItem(spare, null)), pageOf(0, 20), 2));
+
+        mvc.perform(get("/api/v1/edges"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.content[0].id").value(3))
+                .andExpect(jsonPath("$.content[0].edgeType").value("ACTUATOR_EDGE"))
+                .andExpect(jsonPath("$.content[0].installationId").value(30))
+                .andExpect(jsonPath("$.content[1].installationId").doesNotExist())
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.totalPages").value(1));
+
+        verify(queries).handle(new GetEdgesQuery(1L, null, null, pageOf(0, 20)));
+    }
+
+    @Test
+    void theFiltersAndThePageAreReadIgnoringCaseAndBadOnesAreRejected() throws Exception {
+        when(queries.handle(any(GetEdgesQuery.class))).thenReturn(new PageImpl<>(List.of(), pageOf(1, 5), 0));
+
+        mvc.perform(get("/api/v1/edges").param("status", "in_use").param("type", " microphone_edge ").param("page", "1").param("size", "5"))
+                .andExpect(status().isOk());
+        verify(queries).handle(new GetEdgesQuery(1L, AssetStatus.IN_USE, EdgeType.MICROPHONE_EDGE, pageOf(1, 5)));
+
+        clearInvocations(queries);
+        mvc.perform(get("/api/v1/edges").param("type", "MICROPHONE"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.detail").value("Unknown edge type: MICROPHONE."));
+        mvc.perform(get("/api/v1/edges").param("status", "x")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/edges").param("size", "201")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/edges").param("page", "-2")).andExpect(status().isBadRequest());
+        verifyNoInteractions(queries);
+    }
+
+    @Test
+    void readsOneEdgeWithItsInstallationOrAnswers404() throws Exception {
+        when(queries.handle(new GetEdgeInventoryItemByIdQuery(3L))).thenReturn(Optional.of(new EdgeInventoryItem(edge(), 30L)));
+        when(queries.handle(new GetEdgeInventoryItemByIdQuery(9L))).thenReturn(Optional.empty());
+
+        mvc.perform(get("/api/v1/edges/3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(3))
+                .andExpect(jsonPath("$.status").value("AVAILABLE"))
+                .andExpect(jsonPath("$.installationId").value(30));
+        mvc.perform(get("/api/v1/edges/9"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("edge_not_found"));
     }
 }

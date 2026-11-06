@@ -2,14 +2,19 @@ package com.resolum.alivia.assets.interfaces.rest.controllers;
 
 import com.resolum.alivia.assets.domain.exceptions.EdgeNotFound;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeByIdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetEdgeInventoryItemByIdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetEdgesQuery;
 import com.resolum.alivia.assets.domain.services.EdgeCommandService;
 import com.resolum.alivia.assets.domain.services.EdgeQueryService;
 import com.resolum.alivia.assets.interfaces.rest.resources.ChangeEdgeStatusResource;
+import com.resolum.alivia.assets.interfaces.rest.resources.EdgeInventoryItemResource;
 import com.resolum.alivia.assets.interfaces.rest.resources.EdgeResource;
+import com.resolum.alivia.assets.interfaces.rest.resources.InventoryPageResource;
 import com.resolum.alivia.assets.interfaces.rest.resources.RegisterEdgeResource;
 import com.resolum.alivia.assets.interfaces.rest.resources.UpdateEdgeResource;
 import com.resolum.alivia.assets.interfaces.rest.transform.ChangeEdgeStatusCommandFromResourceAssembler;
 import com.resolum.alivia.assets.interfaces.rest.transform.EdgeResourceFromEntityAssembler;
+import com.resolum.alivia.assets.interfaces.rest.transform.InventoryResourcesFromViewAssembler;
 import com.resolum.alivia.assets.interfaces.rest.transform.RegisterEdgeCommandFromResourceAssembler;
 import com.resolum.alivia.assets.interfaces.rest.transform.UpdateEdgeCommandFromResourceAssembler;
 import io.swagger.v3.oas.annotations.Operation;
@@ -62,6 +67,37 @@ public class EdgesController {
                 RegisterEdgeCommandFromResourceAssembler.toCommandFromResource(resource, defaultBusinessId));
         return edgeQueryService.handle(new GetEdgeByIdQuery(edgeId))
                 .map(EdgeResourceFromEntityAssembler::toResourceFromEntity)
+                .orElseThrow(() -> new EdgeNotFound(edgeId));
+    }
+
+    @GetMapping
+    @Operation(summary = "Listar el inventario de edges",
+            description = "Página de los edges del negocio, ordenados por id, con la instalación donde está asignado cada uno "
+                    + "(nulo si no lo está). Se puede filtrar por estado (status) y por tipo (type); el tamaño de página es de 1 a 200.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Página de edges"),
+            @ApiResponse(responseCode = "400", description = "Estado o tipo desconocidos, página negativa o tamaño fuera de 1 a 200")
+    })
+    public InventoryPageResource<EdgeInventoryItemResource> getEdges(
+            @RequestParam(required = false) String status, @RequestParam(required = false) String type,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "" + InventoryResourcesFromViewAssembler.DEFAULT_PAGE_SIZE) int size) {
+        var query = new GetEdgesQuery(defaultBusinessId, InventoryResourcesFromViewAssembler.status(status),
+                InventoryResourcesFromViewAssembler.edgeType(type), InventoryResourcesFromViewAssembler.pageable(page, size));
+        return InventoryResourcesFromViewAssembler.toPageResource(edgeQueryService.handle(query),
+                InventoryResourcesFromViewAssembler::toResource);
+    }
+
+    @GetMapping("/{edgeId}")
+    @Operation(summary = "Consultar un edge",
+            description = "Un edge del inventario, con la instalación donde está asignado (nulo si no lo está).")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "El edge"),
+            @ApiResponse(responseCode = "404", description = "El edge no existe")
+    })
+    public EdgeInventoryItemResource getEdge(@PathVariable Long edgeId) {
+        return edgeQueryService.handle(new GetEdgeInventoryItemByIdQuery(edgeId))
+                .map(InventoryResourcesFromViewAssembler::toResource)
                 .orElseThrow(() -> new EdgeNotFound(edgeId));
     }
 

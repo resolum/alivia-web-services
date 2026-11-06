@@ -10,6 +10,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -43,6 +45,11 @@ public interface HouseholdDeviceRegistryRepository extends JpaRepository<Househo
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from HouseholdDeviceRegistry r where r.microphoneEdge.id = :edgeId or r.actuatorEdge.id = :edgeId")
     Optional<HouseholdDeviceRegistry> findByAssignedEdgeIdForUpdate(@Param("edgeId") Long edgeId);
+
+    /** The registries that have any of these edges as one of their edge services, in one query. */
+    @Query("select r from HouseholdDeviceRegistry r "
+            + "where r.microphoneEdge.id in :edgeIds or r.actuatorEdge.id in :edgeIds")
+    List<HouseholdDeviceRegistry> findAllByAssignedEdgeIdIn(@Param("edgeIds") Collection<Long> edgeIds);
 
     /** The registry that has the edge as one of its edge services, without locking it (to read its table). */
     @Query("select r from HouseholdDeviceRegistry r where r.microphoneEdge.id = :edgeId or r.actuatorEdge.id = :edgeId")

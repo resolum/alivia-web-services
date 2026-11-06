@@ -70,6 +70,10 @@ class AssetsAccessAndFacadeTest {
             ReflectionTestUtils.setField(device, "id", 7L);
             when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetDeviceByIdQuery.class)))
                     .thenReturn(Optional.of(device));
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetDevicesQuery.class)))
+                    .thenReturn(org.springframework.data.domain.Page.empty());
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetDeviceInventoryItemByIdQuery.class)))
+                    .thenReturn(Optional.of(new com.resolum.alivia.assets.domain.model.valueobjects.DeviceInventoryItem(device, null)));
             return new DevicesController(commands, queries, 1L);
         }
 
@@ -83,6 +87,10 @@ class AssetsAccessAndFacadeTest {
             ReflectionTestUtils.setField(edge, "id", 3L);
             when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetEdgeByIdQuery.class)))
                     .thenReturn(Optional.of(edge));
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetEdgesQuery.class)))
+                    .thenReturn(org.springframework.data.domain.Page.empty());
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetEdgeInventoryItemByIdQuery.class)))
+                    .thenReturn(Optional.of(new com.resolum.alivia.assets.domain.model.valueobjects.EdgeInventoryItem(edge, null)));
             return new EdgesController(commands, queries, 1L);
         }
 
@@ -162,6 +170,10 @@ class AssetsAccessAndFacadeTest {
             assertEquals(7L, context.getBean(DevicesController.class).registerDevice(REGISTER).id());
             assertDoesNotThrow(() -> context.getBean(DevicesController.class).updateDevice(7L, UPDATE));
             assertEquals(7L, context.getBean(DevicesController.class).changeDeviceStatus(7L, DEVICE_STATUS).id());
+            assertEquals(0, context.getBean(DevicesController.class).getDevices(null, null, 0, 20).totalElements());
+            assertEquals(7L, context.getBean(DevicesController.class).getDevice(7L).id());
+            assertEquals(0, context.getBean(EdgesController.class).getEdges(null, null, 0, 20).totalElements());
+            assertEquals(3L, context.getBean(EdgesController.class).getEdge(3L).id());
             assertDoesNotThrow(() -> context.getBean(EdgesController.class).updateEdge(3L, UPDATE_EDGE));
             assertEquals(3L, context.getBean(EdgesController.class).registerEdge(REGISTER_EDGE).id());
             assertEquals(3L, context.getBean(EdgesController.class).changeEdgeStatus(3L, EDGE_STATUS).id());
@@ -184,6 +196,14 @@ class AssetsAccessAndFacadeTest {
                         () -> context.getBean(DevicesController.class).updateDevice(7L, UPDATE), role);
                 assertThrows(AccessDeniedException.class,
                         () -> context.getBean(DevicesController.class).changeDeviceStatus(7L, DEVICE_STATUS), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(DevicesController.class).getDevices(null, null, 0, 20), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(DevicesController.class).getDevice(7L), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(EdgesController.class).getEdges(null, null, 0, 20), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(EdgesController.class).getEdge(3L), role);
                 assertThrows(AccessDeniedException.class,
                         () -> context.getBean(EdgesController.class).updateEdge(3L, UPDATE_EDGE), role);
                 assertThrows(AccessDeniedException.class,
