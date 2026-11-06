@@ -9,6 +9,7 @@ import com.resolum.alivia.assets.domain.model.commands.IssueEdgeCredentialComman
 import com.resolum.alivia.assets.domain.model.commands.RevokeEdgeCredentialCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.AssetStatus;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeType;
+import com.resolum.alivia.assets.domain.services.EdgeTableWaitService;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.EdgeRepository;
 import com.resolum.alivia.iam.interfaces.acl.IamContextFacade;
 import org.junit.jupiter.api.BeforeEach;
@@ -118,7 +119,7 @@ class EdgeCredentialsServiceTest {
     @Test
     void theAdapterNamesTheKindOfEachTypeOfEdgeForIam() {
         var facade = mock(IamContextFacade.class);
-        var adapter = new ExternalIamService(facade);
+        var adapter = new ExternalIamService(facade, mock(EdgeTableWaitService.class));
         when(facade.issueEdgeCredential(any(), any())).thenReturn("1.secret");
 
         assertEquals("1.secret", adapter.issueEdgeCredential(1L, EdgeType.MICROPHONE_EDGE));
@@ -128,5 +129,38 @@ class EdgeCredentialsServiceTest {
         verify(facade).issueEdgeCredential(1L, "MICROPHONE");
         verify(facade).issueEdgeCredential(2L, "ACTUATOR");
         verify(facade).revokeEdgeCredential(2L);
+    }
+
+    // --- the wait of an edge ends when its credential changes ---
+
+    @Test
+    void revokingOrReplacingTheCredentialEndsTheWaitThatBeganWithTheOldOne() {
+        var facade = mock(IamContextFacade.class);
+        var waits = mock(EdgeTableWaitService.class);
+        var adapter = new ExternalIamService(facade, waits);
+        when(facade.issueEdgeCredential(any(), any())).thenReturn("1.secret");
+
+        adapter.revokeEdgeCredential(7L);
+        adapter.issueEdgeCredential(8L, EdgeType.ACTUATOR_EDGE);
+
+        var order = inOrder(facade, waits);
+        order.verify(facade).revokeEdgeCredential(7L);
+        order.verify(waits).endWaitOf(7L);
+        order.verify(facade).issueEdgeCredential(8L, "ACTUATOR");
+        order.verify(waits).endWaitOf(8L);
+    }
+
+    @Test
+    void ifIamFailsTheCredentialIsUnchangedSoTheWaitIsNotEnded() {
+        var facade = mock(IamContextFacade.class);
+        var waits = mock(EdgeTableWaitService.class);
+        var adapter = new ExternalIamService(facade, waits);
+        doThrow(new IllegalStateException("iam down")).when(facade).revokeEdgeCredential(7L);
+        when(facade.issueEdgeCredential(any(), any())).thenThrow(new IllegalStateException("iam down"));
+
+        assertThrows(IllegalStateException.class, () -> adapter.revokeEdgeCredential(7L));
+        assertThrows(IllegalStateException.class, () -> adapter.issueEdgeCredential(8L, EdgeType.ACTUATOR_EDGE));
+
+        verifyNoInteractions(waits);
     }
 }

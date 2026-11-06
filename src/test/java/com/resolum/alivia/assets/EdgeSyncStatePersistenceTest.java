@@ -128,4 +128,26 @@ class EdgeSyncStatePersistenceTest {
         entityManager.clear();
         assertEquals(5L, states.findById(7L).orElseThrow().getAppliedVersion());
     }
+
+    @Test
+    void aConfirmationHigherThanTheTableIsForgottenAndOneThatIsNotIsKept() {
+        seed(7L, 3L, T0);
+        states.raiseAppliedVersion(7L, 40L, T0);
+
+        // The table is at 40 or above: nothing to forget.
+        assertEquals(0, states.resetIfAheadOfTable(7L, 40L));
+        assertEquals(0, states.resetIfAheadOfTable(7L, 41L));
+        assertEquals(40L, states.findById(7L).orElseThrow().getAppliedVersion());
+
+        // The database went back to version 10.
+        assertEquals(1, states.resetIfAheadOfTable(7L, 10L));
+        var state = states.findById(7L).orElseThrow();
+        assertNull(state.getAppliedVersion());
+        assertNull(state.getAckedAt());
+        assertEquals(3L, state.getInstallationId());
+        // Nothing is left to forget, and the edge can confirm again from the lower version.
+        assertEquals(0, states.resetIfAheadOfTable(7L, 10L));
+        assertEquals(1, states.raiseAppliedVersion(7L, 8L, T0.plusMinutes(1)));
+        assertEquals(8L, states.findById(7L).orElseThrow().getAppliedVersion());
+    }
 }

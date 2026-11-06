@@ -160,8 +160,7 @@ class AssetsConcurrencyOnPostgresTest extends PostgresIntegrationTest {
 
     @Test
     void placingAnEdgeAndRetiringItAtTheSameTimeNeverLeavesARetiredEdgePlaced() throws Exception {
-        int placed = 0;
-        int retired = 0;
+        // The retirement waits a random few milliseconds, so over the rounds both orders of the race happen.
         for (int round = 0; round < 60; round++) {
             var edge = newEdge("ACTUATOR_EDGE");
             long installation = newRegistry();
@@ -179,13 +178,7 @@ class AssetsConcurrencyOnPostgresTest extends PostgresIntegrationTest {
                     Long.class, edge.getId());
             assertTrue(("IN_USE".equals(status) && holders == 1) || ("RETIRED".equals(status) && holders == 0),
                     "round " + round + ": " + status + " held by " + holders + " " + outcomes);
-            if (holders == 1) {
-                placed++;
-            } else {
-                retired++;
-            }
         }
-        System.out.println("place-vs-retire: placed " + placed + ", retired " + retired);
     }
 
     @Test

@@ -67,7 +67,7 @@ class EdgeDeviceTableControllerTest {
     void answersWithTheCompleteTableAndItsVersionAsEtag() throws Exception {
         mvc.perform(get(PATH).principal(EDGE))
                 .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.ETAG, "\"12\""))
+                .andExpect(header().string(HttpHeaders.ETAG, "\"3.12\""))
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
                 .andExpect(jsonPath("$.installationId").value(3))
                 .andExpect(jsonPath("$.householdId").value(5))
@@ -90,16 +90,16 @@ class EdgeDeviceTableControllerTest {
 
         mvc.perform(get(PATH).principal(EDGE))
                 .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.ETAG, "\"0\""))
+                .andExpect(header().string(HttpHeaders.ETAG, "\"3.0\""))
                 .andExpect(jsonPath("$.version").value(0))
                 .andExpect(jsonPath("$.nodes.length()").value(0));
     }
 
     @Test
     void anEdgeThatIsUpToDateGetsAnEmpty304WithoutReadingTheTable() throws Exception {
-        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"12\""))
+        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"3.12\""))
                 .andExpect(status().isNotModified())
-                .andExpect(header().string(HttpHeaders.ETAG, "\"12\""))
+                .andExpect(header().string(HttpHeaders.ETAG, "\"3.12\""))
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
                 .andExpect(content().string(""));
 
@@ -108,7 +108,7 @@ class EdgeDeviceTableControllerTest {
 
     @Test
     void theVersionMayComeAsAWeakTagInAListOrAsAStar() throws Exception {
-        for (var header : new String[]{"W/\"12\"", "\"3\", \"12\"", " \"3\" ,W/\"12\" ", "*"}) {
+        for (var header : new String[]{"W/\"3.12\"", "\"3.3\", \"3.12\"", " \"3.3\" ,W/\"3.12\" ", "*"}) {
             mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, header))
                     .andExpect(status().isNotModified());
         }
@@ -116,7 +116,7 @@ class EdgeDeviceTableControllerTest {
 
     @Test
     void anOlderOrNewerOrMalformedVersionGetsTheTable() throws Exception {
-        for (var header : new String[]{"\"11\"", "\"13\"", "12", "\"\"", "garbage", "\"12", "", "  ", "\"012\"", "\"1,2\""}) {
+        for (var header : new String[]{"\"3.11\"", "12", "\"\"", "garbage", "\"12", "", "  ", "\"3.012\"", "\"1,2\""}) {
             mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, header))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.version").value(12));
@@ -128,9 +128,9 @@ class EdgeDeviceTableControllerTest {
         when(queries.handle(new GetEdgeAccessTableByEdgeIdQuery(7L)))
                 .thenReturn(Optional.of(new EdgeAccessTable(3L, 5L, 13L, List.of())));
 
-        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"11\""))
+        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"3.11\""))
                 .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.ETAG, "\"13\""))
+                .andExpect(header().string(HttpHeaders.ETAG, "\"3.13\""))
                 .andExpect(jsonPath("$.version").value(13));
     }
 
@@ -181,7 +181,7 @@ class EdgeDeviceTableControllerTest {
     @Test
     void everyAskIsRecordedWhetherTheEdgeGetsTheTableOrA304() throws Exception {
         mvc.perform(get(PATH).principal(EDGE)).andExpect(status().isOk());
-        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"12\"")).andExpect(status().isNotModified());
+        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"3.12\"")).andExpect(status().isNotModified());
 
         verify(sync, times(2)).handle(new RecordEdgeSeenCommand(7L, 3L));
     }
@@ -200,7 +200,7 @@ class EdgeDeviceTableControllerTest {
         doThrow(new IllegalStateException("database busy")).when(sync).handle(any(RecordEdgeSeenCommand.class));
 
         mvc.perform(get(PATH).principal(EDGE)).andExpect(status().isOk()).andExpect(jsonPath("$.version").value(12));
-        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"12\"")).andExpect(status().isNotModified());
+        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"3.12\"")).andExpect(status().isNotModified());
     }
 
     // --- ?wait=n: the request waits for a newer table ---
@@ -221,14 +221,14 @@ class EdgeDeviceTableControllerTest {
         var pending = new CompletableFuture<Optional<EdgeAccessTable>>();
         when(waits.awaitNewerTable(7L, 3L, 12L, Duration.ofSeconds(20))).thenReturn(pending);
 
-        var result = waiting("\"12\"", "20");
+        var result = waiting("\"3.12\"", "20");
         // Nothing is answered while there is no newer table, and the table was not read.
         verify(queries, never()).handle(any(GetEdgeAccessTableByEdgeIdQuery.class));
         pending.complete(Optional.of(NEWER));
 
         mvc.perform(asyncDispatch(result))
                 .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.ETAG, "\"13\""))
+                .andExpect(header().string(HttpHeaders.ETAG, "\"3.13\""))
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
                 .andExpect(jsonPath("$.version").value(13))
                 .andExpect(jsonPath("$.nodes.length()").value(1));
@@ -239,12 +239,12 @@ class EdgeDeviceTableControllerTest {
         var pending = new CompletableFuture<Optional<EdgeAccessTable>>();
         when(waits.awaitNewerTable(eq(7L), eq(3L), eq(12L), any())).thenReturn(pending);
 
-        var result = waiting("\"12\"", "25");
+        var result = waiting("\"3.12\"", "25");
         pending.complete(Optional.empty());
 
         mvc.perform(asyncDispatch(result))
                 .andExpect(status().isNotModified())
-                .andExpect(header().string(HttpHeaders.ETAG, "\"12\""))
+                .andExpect(header().string(HttpHeaders.ETAG, "\"3.12\""))
                 .andExpect(content().string(""));
     }
 
@@ -253,7 +253,7 @@ class EdgeDeviceTableControllerTest {
         var pending = new CompletableFuture<Optional<EdgeAccessTable>>();
         when(waits.awaitNewerTable(eq(7L), eq(3L), eq(12L), any())).thenReturn(pending);
 
-        var result = waiting("\"12\"", "25");
+        var result = waiting("\"3.12\"", "25");
         pending.completeExceptionally(new EdgeWithoutInstallation(7L));
 
         mvc.perform(asyncDispatch(result))
@@ -263,7 +263,7 @@ class EdgeDeviceTableControllerTest {
 
     @Test
     void anEdgeThatIsBehindIsAnsweredAtOnceWithoutWaiting() throws Exception {
-        for (var header : new String[]{"\"11\"", "garbage", null}) {
+        for (var header : new String[]{"\"3.11\"", "garbage", null}) {
             var result = waiting(header, "25");
             mvc.perform(asyncDispatch(result)).andExpect(status().isOk()).andExpect(jsonPath("$.version").value(12));
         }
@@ -273,9 +273,9 @@ class EdgeDeviceTableControllerTest {
 
     @Test
     void waitingZeroSecondsIsTheOrdinary304() throws Exception {
-        var result = waiting("\"12\"", "0");
+        var result = waiting("\"3.12\"", "0");
 
-        mvc.perform(asyncDispatch(result)).andExpect(status().isNotModified()).andExpect(header().string(HttpHeaders.ETAG, "\"12\""));
+        mvc.perform(asyncDispatch(result)).andExpect(status().isNotModified()).andExpect(header().string(HttpHeaders.ETAG, "\"3.12\""));
         verifyNoInteractions(waits);
     }
 
@@ -283,7 +283,7 @@ class EdgeDeviceTableControllerTest {
     void theWaitIsCutAtTwentyFiveSeconds() throws Exception {
         when(waits.awaitNewerTable(eq(7L), eq(3L), eq(12L), any())).thenReturn(new CompletableFuture<>());
 
-        waiting("\"12\"", "3600");
+        waiting("\"3.12\"", "3600");
 
         verify(waits).awaitNewerTable(7L, 3L, 12L, Duration.ofSeconds(25));
     }
@@ -291,7 +291,7 @@ class EdgeDeviceTableControllerTest {
     @Test
     void aNegativeOrNonNumericWaitIsRejectedBeforeAnythingHappens() throws Exception {
         for (var wait : new String[]{"-1", "abc", "1.5", ""}) {
-            mvc.perform(get(PATH).param("wait", wait).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"12\""))
+            mvc.perform(get(PATH).param("wait", wait).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"3.12\""))
                     .andExpect(status().isBadRequest());
         }
 
@@ -302,7 +302,7 @@ class EdgeDeviceTableControllerTest {
     void aWaitingEdgeIsRecordedAsHeardOnceWhenItAsks() throws Exception {
         when(waits.awaitNewerTable(eq(7L), eq(3L), eq(12L), any())).thenReturn(new CompletableFuture<>());
 
-        waiting("\"12\"", "25");
+        waiting("\"3.12\"", "25");
 
         verify(sync, times(1)).handle(new RecordEdgeSeenCommand(7L, 3L));
     }
@@ -317,6 +317,88 @@ class EdgeDeviceTableControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("edge_without_installation"));
 
+        verifyNoInteractions(waits);
+    }
+
+    // --- the tag carries the installation (an edge that was moved must get the table of its new home) ---
+
+    @Test
+    void aTagOfAnotherInstallationNeverMatchesEvenAtTheSameVersion() throws Exception {
+        for (var header : new String[]{"\"8.12\"", "W/\"8.12\"", "\"8.12\", \"9.12\""}) {
+            mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, header))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string(HttpHeaders.ETAG, "\"3.12\""))
+                    .andExpect(jsonPath("$.installationId").value(3));
+        }
+    }
+
+    @Test
+    void theOldTagThatHadOnlyTheVersionNeverMatches() throws Exception {
+        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"12\""))
+                .andExpect(status().isOk());
+        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"3.012\""))
+                .andExpect(status().isOk());
+        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"3.12.1\""))
+                .andExpect(status().isOk());
+        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"-3.12\""))
+                .andExpect(status().isOk());
+    }
+
+    // --- an edge that is ahead of the server (the database went back in time) ---
+
+    @Test
+    void anEdgeAheadOfTheServerIsToldSoAndNeverGetsTheOlderTableToIgnore() throws Exception {
+        for (var header : new String[]{"\"3.13\"", "\"3.40\"", "W/\"3.99999\"", "\"8.12\", \"3.13\""}) {
+            mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, header))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("table_version_ahead"))
+                    .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("without If-None-Match")));
+        }
+
+        verify(queries, never()).handle(any(GetEdgeAccessTableByEdgeIdQuery.class));
+    }
+
+    @Test
+    void anEdgeAheadOfAnotherInstallationIsNotAheadOfThisOne() throws Exception {
+        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"8.40\""))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void theExactTagWinsOverAnAheadOneInTheSameList() throws Exception {
+        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"3.40\", \"3.12\""))
+                .andExpect(status().isNotModified());
+    }
+
+    @Test
+    void afterTheConflictTheEdgeAsksAgainWithoutATagAndGetsTheTableOfTheServer() throws Exception {
+        mvc.perform(get(PATH).principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"3.40\""))
+                .andExpect(status().isConflict());
+
+        mvc.perform(get(PATH).principal(EDGE))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, "\"3.12\""))
+                .andExpect(jsonPath("$.version").value(12));
+    }
+
+    @Test
+    void theWaitingVariantAlsoToldsAnAheadEdgeInsteadOfAnsweringImmediatelyForever() throws Exception {
+        mvc.perform(get(PATH).param("wait", "25").principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"3.40\""))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("table_version_ahead"));
+
+        verifyNoInteractions(waits);
+        verify(sync, times(1)).handle(new RecordEdgeSeenCommand(7L, 3L));
+    }
+
+    @Test
+    void theWaitingVariantGivesTheTableToAnEdgeFromAnotherInstallationAtOnce() throws Exception {
+        var result = mvc.perform(get(PATH).param("wait", "25").principal(EDGE).header(HttpHeaders.IF_NONE_MATCH, "\"8.12\""))
+                .andExpect(request().asyncStarted()).andReturn();
+
+        mvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, "\"3.12\""));
         verifyNoInteractions(waits);
     }
 }

@@ -75,6 +75,7 @@ class EdgeSyncCommandServiceTest {
         var order = inOrder(syncStates);
         order.verify(syncStates).insertIfAbsent(7L, 3L, NOW);
         order.verify(syncStates).resetIfOtherInstallation(7L, 3L);
+        order.verify(syncStates).resetIfAheadOfTable(7L, 12L);
         order.verify(syncStates).raiseAppliedVersion(7L, 10L, NOW);
         order.verify(syncStates).touchLastSeen(7L, NOW, NOW.minusMinutes(1));
         order.verify(syncStates).findById(7L);
@@ -171,5 +172,18 @@ class EdgeSyncCommandServiceTest {
         when(syncStates.findById(7L)).thenReturn(Optional.of(stored(99L, 5L, NOW, NOW)));
         service.handle(new RecordEdgeSeenCommand(7L, 3L));
         verify(syncStates).resetIfOtherInstallation(7L, 3L);
+    }
+
+    @Test
+    void whatTheEdgeConfirmedBeforeARestoreIsForgottenInsteadOfKeptAsAMaximum() {
+        // The database went back to version 10 but the stored confirmation says 40: it can no longer be true.
+        ReflectionTestUtils.setField(registry, "tableVersion", 10L);
+        when(syncStates.findById(7L)).thenReturn(Optional.of(stored(3L, 8L, NOW, NOW)));
+
+        service.handle(new AcknowledgeEdgeVersionCommand(7L, 8L));
+
+        var order = inOrder(syncStates);
+        order.verify(syncStates).resetIfAheadOfTable(7L, 10L);
+        order.verify(syncStates).raiseAppliedVersion(7L, 8L, NOW);
     }
 }

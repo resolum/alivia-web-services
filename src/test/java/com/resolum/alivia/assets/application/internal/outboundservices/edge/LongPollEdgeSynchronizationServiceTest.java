@@ -8,6 +8,8 @@ import com.resolum.alivia.assets.domain.model.valueobjects.EdgeAccessTable;
 import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryQueryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Duration;
 import java.util.List;
@@ -220,5 +222,60 @@ class LongPollEdgeSynchronizationServiceTest {
     void thePollIntervalMustBePositive() {
         assertThrows(IllegalArgumentException.class, () -> new LongPollEdgeSynchronizationService(queries, Runnable::run, null, Duration.ZERO));
         assertThrows(IllegalArgumentException.class, () -> new LongPollEdgeSynchronizationService(queries, Runnable::run, null, Duration.ofSeconds(-1)));
+    }
+
+    // --- the wait of an edge ends when its credential is revoked or replaced ---
+
+    @Test
+    void endingTheWaitOfAnEdgeAnswersItWithNothingAndLeavesTheOthersWaiting() throws Exception {
+        var revoked = await(7L, 3L, 12L);
+        var other = await(8L, 3L, 12L);
+
+        service.endWaitOf(7L);
+
+        assertTrue(revoked.get(1, TimeUnit.SECONDS).isEmpty());
+        assertFalse(other.isDone());
+        assertEquals(1, service.waiting());
+    }
+
+    @Test
+    void endingTheWaitOfAnEdgeThatIsNotWaitingDoesNothing() {
+        var waiting = await(8L, 3L, 12L);
+
+        assertDoesNotThrow(() -> service.endWaitOf(7L));
+
+        assertFalse(waiting.isDone());
+    }
+
+    @Test
+    void insideATransactionTheWaitEndsOnlyWhenItCommits() throws Exception {
+        var waiting = await(7L, 3L, 12L);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.endWaitOf(7L);
+            assertFalse(waiting.isDone(), "the change is not visible yet: the edge could start a new wait with the old credential");
+
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        assertTrue(waiting.get(1, TimeUnit.SECONDS).isEmpty());
+    }
+
+    @Test
+    void ifTheTransactionRollsBackTheCredentialDidNotChangeAndTheWaitGoesOn() {
+        var waiting = await(7L, 3L, 12L);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.endWaitOf(7L);
+            // A rollback calls afterCompletion, never afterCommit.
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(synchronization -> synchronization.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        assertFalse(waiting.isDone());
     }
 }

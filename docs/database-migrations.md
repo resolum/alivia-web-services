@@ -67,7 +67,7 @@ suite H2. `FlywayMigrationTest` solo valida convenciones de los archivos (nombre
 ### Pruebas contra PostgreSQL real
 
 Las clases de `src/test/java/com/resolum/alivia/integration` arrancan **la aplicación completa
-contra un PostgreSQL 17 desechable** (Testcontainers, `postgres:17`): Flyway aplica de `V1` a
+contra un PostgreSQL 18 desechable** (Testcontainers, `postgres:18`): Flyway aplica de `V1` a
 la última migración, Hibernate solo valida (`ddl-auto=validate`, como en producción) y las
 peticiones pasan por el servidor y la cadena de seguridad reales. Cubren lo que H2 no puede
 mostrar: que las migraciones por sí solas construyen un esquema que Hibernate acepta, que cada
@@ -186,7 +186,7 @@ Ejecutada contra PostgreSQL 18.6 con `V1` y `V2`:
 | `.\mvnw.cmd clean verify` | ✅ 848 pruebas, 0 fallos, 8 *skipped* |
 
 Verificación posterior (`V12` a `V15`, AP-68): las pruebas de `integration` arrancan la aplicación
-sobre PostgreSQL 17 con `V1`..`V15` y `ddl-auto=validate` en cada ejecución (ver
+sobre PostgreSQL 18 con `V1`..`V15` y `ddl-auto=validate` en cada ejecución (ver
 [Pruebas contra PostgreSQL real](#pruebas-contra-postgresql-real)).
 
 La prueba de deriva es la que justifica `validate` en producción: sin ella, Hibernate habría

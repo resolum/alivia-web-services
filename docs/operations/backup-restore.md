@@ -203,6 +203,30 @@ El registro formal del simulacro de `P-483.2`, con la plantilla para repetirlo, 
   restaurar. La restauración con `--exit-on-error` detecta un archivo corrupto o
   incompatible.
 
+## Después de restaurar: los edge services
+
+La tabla de dispositivos de cada hogar tiene una versión que solo sube
+(`household_device_registries.table_version`), y los edge services guardan la que vieron. Una
+restauración devuelve la base a una copia anterior, así que la versión del servidor puede quedar
+**por debajo** de la que un edge ya tiene.
+
+No hace falta ningún paso manual: un edge que pide la tabla con un `ETag` de su instalación y una
+versión mayor que la vigente recibe `409 table_version_ahead`, descarta su `ETag`, pide la tabla sin
+`If-None-Match` y la reemplaza aunque su versión sea menor. Además, la confirmación guardada en
+`edge_sync_states` que quede por encima de la versión de la tabla se olvida en la siguiente confirmación
+del edge, de modo que `GET /api/v1/installations/{id}/edge-sync` vuelve a mostrar el retraso real.
+
+Qué esperar y qué comprobar tras una restauración:
+
+- En el registro de la aplicación aparecen respuestas `409` con `table_version_ahead` de cada edge
+  (una por edge y por restauración); si persisten para el mismo edge, ese edge no implementa la regla
+  del contrato (sección 2.4 de los planes de los edge).
+- Los cambios de dispositivos hechos entre la copia y la restauración se perdieron con ella, así que
+  la tabla que reciben los edge es la de la copia. Si hace falta, repáralos desde la API.
+- Los secretos de los edge (`edge_credentials`) también vuelven a su estado de la copia: un secreto
+  rotado o revocado después de ella vuelve a ser el anterior. Revisa las credenciales de los edge
+  afectados.
+
 ## Referencias
 
 - `docs/operations/restore-drill.md`: plantilla y registro del simulacro de `P-483.2`.

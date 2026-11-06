@@ -13,6 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestPropertySource;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -33,6 +34,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
+// Only events wake a waiting edge unless a class asks for a faster poll: the tests then tell "woken by the event" from
+// "woken by the poll" by what happens, not by how long it takes.
+@TestPropertySource(properties = "alivia.assets.edge-sync.poll-interval=PT10M")
 @EnabledIf(value = "com.resolum.alivia.integration.PostgresContainerSupport#dockerAvailable",
         disabledReason = "Docker is not available, so there is no PostgreSQL to test against")
 public abstract class PostgresIntegrationTest {

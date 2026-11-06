@@ -11,6 +11,7 @@ import com.resolum.alivia.assets.domain.exceptions.EdgeNotAvailable;
 import com.resolum.alivia.assets.domain.exceptions.EdgeNotFound;
 import com.resolum.alivia.assets.domain.exceptions.EdgeRetired;
 import com.resolum.alivia.assets.domain.exceptions.EdgeStillAssigned;
+import com.resolum.alivia.assets.domain.exceptions.EdgeTableVersionAhead;
 import com.resolum.alivia.assets.domain.exceptions.EdgeWithoutInstallation;
 import com.resolum.alivia.assets.domain.exceptions.InstallationAccessDenied;
 import com.resolum.alivia.assets.domain.exceptions.InstallationAlreadyRegistered;
@@ -488,6 +489,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AppliedVersionAhead.class)
     public ProblemDetail handleAppliedVersionAhead(AppliedVersionAhead exception) {
         return problem(HttpStatus.UNPROCESSABLE_ENTITY, "applied_version_ahead", exception.getMessage(), List.of());
+    }
+
+    /** The database went back in time (a restore): the edge has to take the table the server has. */
+    @ExceptionHandler(EdgeTableVersionAhead.class)
+    public ProblemDetail handleEdgeTableVersionAhead(EdgeTableVersionAhead exception) {
+        return problem(HttpStatus.CONFLICT, "table_version_ahead", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(EdgeWithoutInstallation.class)

@@ -28,8 +28,11 @@ class FlywaySchemaOnPostgresTest extends PostgresIntegrationTest {
     void theApplicationStartsOnTheSchemaThatTheMigrationsAloneBuild() {
         // Reaching this line means the context started: every bean has a unique name and Hibernate validated every table
         // and column of every entity against what Flyway created.
-        assertTrue(context.getBeanDefinitionCount() > 100);
         assertEquals("validate", context.getEnvironment().getProperty("spring.jpa.hibernate.ddl-auto"));
+        // IAM and Assets each have a service called EdgeCredentialCommandServiceImpl: they only coexist by explicit names.
+        assertTrue(context.containsBean("edgeCredentialCommandServiceImpl"));
+        assertTrue(context.containsBean("assetsEdgeCredentialCommandService"));
+        assertNotSame(context.getBean("edgeCredentialCommandServiceImpl"), context.getBean("assetsEdgeCredentialCommandService"));
     }
 
     @Test

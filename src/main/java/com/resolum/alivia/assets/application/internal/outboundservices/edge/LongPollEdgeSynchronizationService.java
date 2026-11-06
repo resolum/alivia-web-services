@@ -12,6 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Duration;
 import java.util.List;
@@ -135,6 +137,27 @@ public class LongPollEdgeSynchronizationService implements EdgeSynchronizationSe
             future.complete(Optional.empty());
         }
         return future;
+    }
+
+    @Override
+    public void endWaitOf(Long edgeId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    endNow(edgeId);
+                }
+            });
+        } else {
+            endNow(edgeId);
+        }
+    }
+
+    private void endNow(Long edgeId) {
+        var waiter = waiters.get(edgeId);
+        if (waiter != null) {
+            waiter.future().complete(Optional.empty());
+        }
     }
 
     int waiting() {

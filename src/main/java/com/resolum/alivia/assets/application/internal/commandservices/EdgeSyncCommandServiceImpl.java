@@ -55,6 +55,8 @@ public class EdgeSyncCommandServiceImpl implements EdgeSyncCommandService {
         var now = LocalDateTime.now(clock);
 
         ensureStateOf(command.edgeId(), installationId, now);
+        // After a restore the stored confirmation can be higher than the table: it is forgotten, not kept as a maximum.
+        syncStates.resetIfAheadOfTable(command.edgeId(), registry.getTableVersion());
         syncStates.raiseAppliedVersion(command.edgeId(), command.appliedVersion(), now);
         // A report is also a sign of life, even when it did not raise the version.
         syncStates.touchLastSeen(command.edgeId(), now, now.minus(SEEN_RECORD_INTERVAL));

@@ -32,6 +32,15 @@ public interface EdgeSyncStateRepository extends JpaRepository<EdgeSyncState, Lo
             + "where s.edgeId = :edgeId and s.installationId <> :installationId")
     int resetIfOtherInstallation(@Param("edgeId") Long edgeId, @Param("installationId") Long installationId);
 
+    /**
+     * A confirmation higher than the table is impossible unless the database went back in time (a restore): what was
+     * confirmed then no longer means anything, so it is forgotten and the edge starts over.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update EdgeSyncState s set s.appliedVersion = null, s.ackedAt = null "
+            + "where s.edgeId = :edgeId and s.appliedVersion > :tableVersion")
+    int resetIfAheadOfTable(@Param("edgeId") Long edgeId, @Param("tableVersion") Long tableVersion);
+
     /** Raises the confirmed version; it never lowers it and does nothing for an equal or lower one. */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("update EdgeSyncState s set s.appliedVersion = :version, s.ackedAt = :ackedAt, s.lastSeenAt = :ackedAt "

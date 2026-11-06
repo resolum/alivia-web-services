@@ -26,4 +26,12 @@ public interface EdgeTableWaitService {
      */
     CompletableFuture<Optional<EdgeAccessTable>> awaitNewerTable(Long edgeId, Long installationId, long knownVersion,
                                                                  Duration timeout);
+
+    /**
+     * Ends the wait of an edge (it completes with empty, which answers 304) because its credential was revoked or
+     * replaced: a wait that began with the old credential must not keep receiving tables. Nothing happens when the
+     * edge is not waiting. Inside a transaction it takes effect when the transaction commits, so the edge cannot start
+     * a new wait with the old credential before the change is visible.
+     */
+    void endWaitOf(Long edgeId);
 }

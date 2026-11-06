@@ -41,6 +41,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -105,11 +106,24 @@ class EdgeSecurityTest {
     }
 
     @Test
-    void aFailureCheckingTheCredentialAnswers401InsteadOfFailing() throws Exception {
+    void aFailureCheckingTheCredentialIsATemporaryFailureNotAnInvalidCredential() throws Exception {
         when(credentials.handle(any(AuthenticateEdgeCommand.class))).thenThrow(new IllegalStateException("db down"));
 
         mvc.perform(get(EDGE_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer 7.secret"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "5"));
+    }
+
+    @Test
+    void anInvalidCredentialIsStillAnOrdinary401EvenAfterAFailure() throws Exception {
+        when(credentials.handle(any(AuthenticateEdgeCommand.class)))
+                .thenThrow(new IllegalStateException("db down"))
+                .thenReturn(Optional.empty());
+
+        mvc.perform(get(EDGE_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer 7.secret")).andExpect(status().isServiceUnavailable());
+        mvc.perform(get(EDGE_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer 7.wrong"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().doesNotExist(HttpHeaders.RETRY_AFTER));
     }
 
     @Test
