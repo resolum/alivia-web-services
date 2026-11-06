@@ -4,7 +4,7 @@ Este documento es la matriz de `P-482.1` (AP-482): qué restricciones e índices
 faltaban, dónde se añadieron y por qué algunas relaciones se dejaron sin clave
 foránea. El DDL de esa primera pasada está en
 `src/main/resources/db/migration/V2__constraints_and_indexes.sql`. Las tablas de dispositivos,
-registros y edge (`V5` a `V15`, AP-68) tienen su propia sección,
+registros y edge (`V5` a `V17`, AP-68) tienen su propia sección,
 [Dispositivos, registros y edge](#dispositivos-registros-y-edge-assets).
 
 ## Punto de partida
@@ -110,8 +110,8 @@ expresar una restricción lo hace cumplir el servicio, con el bloqueo indicado m
 | `device_assignments` | Pertenece al registro de su hogar. | `fk_device_assignments_registry` e `idx_device_assignments_registry_active` (`V12`). |
 | `household_device_registries` | Un registro por hogar y por instalación. | `uk_household_device_registries_household`, `..._installation`. |
 | `household_device_registries` | Un edge pertenece a **una** instalación y ocupa un solo lugar. | `uk_household_device_registries_microphone_edge`, `..._actuator_edge` y sus claves foráneas a `edges`. |
-| `edge_credentials` | Una credencial por edge; solo se guarda el hash del secreto. | `uk_edge_credentials_edge` (`V14`). Sin clave foránea a `edges`: es del contexto `iam` y ve el edge por su id. |
-| `edge_sync_states` | Una fila por edge, que no se puede referir a un edge inexistente ni confirmar una versión negativa. | Clave primaria `edge_id`, `fk_edge_sync_states_edge` y `edge_sync_states_applied_version_check` (`V15`). |
+| `edge_credentials` | Una credencial por edge; solo se guarda el hash del secreto. | `uk_edge_credentials_edge` (`V15`). Sin clave foránea a `edges`: es del contexto `iam` y ve el edge por su id. |
+| `edge_sync_states` | Una fila por edge, que no se puede referir a un edge inexistente ni confirmar una versión negativa. | Clave primaria `edge_id`, `fk_edge_sync_states_edge` y `edge_sync_states_applied_version_check` (`V16`). |
 
 Las tablas de Hibernate se pluralizan siempre, incluso con `@Table(name = ...)`: la tabla es
 `edge_sync_states`, no `edge_sync_state`
@@ -191,5 +191,5 @@ abierto por OSIV para resolver colecciones perezosas.
 La suite H2 deshabilita Flyway, así que las migraciones no se ejecutan en ella. Se verifican
 contra PostgreSQL real: a mano, con los resultados de
 [`database-migrations.md`](database-migrations.md#resultado-de-la-última-verificación), y en cada
-ejecución por las pruebas de `integration`, que arrancan la aplicación sobre `V1`..`V15` con
+ejecución por las pruebas de `integration`, que arrancan la aplicación sobre `V1`..`V18` con
 `ddl-auto=validate` (ver [`testing.md`](testing.md)).

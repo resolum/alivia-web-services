@@ -7,7 +7,7 @@ Flyway es el dueño del esquema. Las migraciones viven en
 
 | Elemento | Valor |
 |---|---|
-| Migraciones existentes | `V1` a `V16` (ver el [historial](#historial-de-migraciones)); la última es `V16__add_edge_credential_audit.sql` |
+| Migraciones existentes | `V1` a `V18` (ver el [historial](#historial-de-migraciones)); la última es `V18__add_assisted_person_care_profiles.sql` |
 | `ddl-auto` en `dev` | `update` (Hibernate puede crear tablas que falten; úsalo solo en local) |
 | `ddl-auto` en `prod` | `validate` — Flyway crea el esquema y Hibernate solo lo comprueba al arrancar |
 | `ddl-auto` en `test` | El del perfil de pruebas; Flyway está deshabilitado (ver más abajo) |
@@ -29,9 +29,11 @@ Flyway es el dueño del esquema. Las migraciones viven en
 | `V10`, `V11` | `V10` añadió el estado pendiente de una red; `V11` lo revirtió porque esa confirmación pertenece a Operations. Se conservan ambas: una migración aplicada no se edita. | AP-376 |
 | `V12` | `household_device_registries`: un registro por hogar con sus entradas vigentes, versión de la tabla y edges. Reemplaza a `device_networks` moviendo sus datos. **Antes de aplicarla, ver [Antes de aplicar `V12`](#antes-de-aplicar-v12-asignaciones-sin-registro).** | AP-68 |
 | `V13` | Paridad con lo que trajo `develop` (columnas y `CHECK` de incidencias, citas y contratos) y columna `version` de dispositivos y edges (bloqueo optimista). | AP-68 |
-| `V14` | `edge_credentials`: la credencial de cada edge service (solo el hash). | AP-68 |
-| `V15` | `edge_sync_states`: qué versión de su tabla confirmó cada edge y cuándo se le vio por última vez. | AP-68 |
-| `V16` | `edge_credentials`: cuándo se emitió el secreto vigente y quién lo emitió y lo revocó (con el motivo). Las filas existentes toman `updated_at` como fecha de emisión (una estimación) y no tienen emisor; `issued_at` pasa a ser obligatoria. Probada con un `V15` con credenciales actualizado por Flyway (`EdgeCredentialMigrationOnPostgresTest`). | AP-68 |
+| `V14` | Citas sin datos de contacto obligatorios y sin la restricción de un único turno por borrador. Viene de `develop`/`main`. | citas |
+| `V15` | `edge_credentials`: la credencial de cada edge service (solo el hash). Se llamó `V14` mientras la rama `feature/edge-communication` no incluía la `V14` de `develop`: **al fusionar, las tres migraciones de AP-68 se renumeraron** (`V14`→`V15`, `V15`→`V16`, `V16`→`V17`); una base de desarrollo que ya las aplicó con los números anteriores debe recrearse. | AP-68 |
+| `V16` | `edge_sync_states`: qué versión de su tabla confirmó cada edge y cuándo se le vio por última vez. | AP-68 |
+| `V17` | `edge_credentials`: cuándo se emitió el secreto vigente y quién lo emitió y lo revocó (con el motivo). Las filas existentes toman `updated_at` como fecha de emisión (una estimación) y no tienen emisor; `issued_at` pasa a ser obligatoria. Probada con un `V15` con credenciales actualizado por Flyway (`EdgeCredentialMigrationOnPostgresTest`). | AP-68 |
+| `V18` | `assisted_person_care_profiles`: el perfil de cuidado de la persona asistida (módulo `nursing`). La entidad llegó a `develop` y `main` sin migración: solo funcionaba donde `ddl-auto=update` crea tablas, y con `validate` (producción) la aplicación no arrancaba. Las pruebas contra PostgreSQL real lo detectan. | nursing |
 
 `V1` no es un marcador: contiene el DDL completo que Hibernate genera para las
 entidades JPA actuales. Se capturó con el procedimiento de la sección
@@ -186,8 +188,8 @@ Ejecutada contra PostgreSQL 18.6 con `V1` y `V2`:
 | Índices de `V1` (`pg_indexes`) | ✅ 45/45 idénticos |
 | `.\mvnw.cmd clean verify` | ✅ 848 pruebas, 0 fallos, 8 *skipped* |
 
-Verificación posterior (`V12` a `V16`, AP-68): las pruebas de `integration` arrancan la aplicación
-sobre PostgreSQL 18 con `V1`..`V16` y `ddl-auto=validate` en cada ejecución (ver
+Verificación posterior (`V12` a `V18`, AP-68): las pruebas de `integration` arrancan la aplicación
+sobre PostgreSQL 18 con `V1`..`V18` y `ddl-auto=validate` en cada ejecución (ver
 [Pruebas contra PostgreSQL real](#pruebas-contra-postgresql-real)).
 
 La prueba de deriva es la que justifica `validate` en producción: sin ella, Hibernate habría
@@ -240,7 +242,7 @@ Ambas consultas se probaron sobre una base `V11` con datos heredados (PostgreSQL
 red e instalación, otro sin red pero con asignación con instalación (`V12` le crea el registro), dos
 con asignaciones activas sin instalación (las dos filas que las consultas devuelven, antes y
 después), uno con red y asignación sin instalación (se enlaza por el hogar y no se marca) y una
-asignación cerrada (no se marca). `V12` a `V15` se aplicaron sin errores sobre esos datos.
+asignación cerrada (no se marca). `V12` a `V15` (entonces `V12` a `V15`; hoy `V12`, `V13`, `V15` y `V16`) se aplicaron sin errores sobre esos datos.
 
 ## Añadir una entidad nueva al esquema
 

@@ -8,7 +8,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * What V16 does to the credentials that already exist: a database at V15 with credentials, upgraded by Flyway as it
+ * What V17 does to the credentials that already exist: a database at V16 with credentials, upgraded by Flyway as it
  * would be in production.
  */
 class EdgeCredentialMigrationOnPostgresTest extends PostgresIntegrationTest {
@@ -16,12 +16,12 @@ class EdgeCredentialMigrationOnPostgresTest extends PostgresIntegrationTest {
     @Test
     void existingCredentialsKeepWorkingTakeTheirLastChangeAsIssueDateAndHaveNoIssuer() {
         var postgres = PostgresContainerSupport.container();
-        jdbc.execute("drop database if exists upgrade_v16");
-        jdbc.execute("create database upgrade_v16");
-        var url = postgres.getJdbcUrl().replaceFirst("/[^/?]+(\\?|$)", "/upgrade_v16$1");
+        jdbc.execute("drop database if exists upgrade_v17");
+        jdbc.execute("create database upgrade_v17");
+        var url = postgres.getJdbcUrl().replaceFirst("/[^/?]+(\\?|$)", "/upgrade_v17$1");
 
         Flyway.configure().dataSource(url, postgres.getUsername(), postgres.getPassword())
-                .locations("classpath:db/migration").target("15").load().migrate();
+                .locations("classpath:db/migration").target("16").load().migrate();
         var old = new JdbcTemplate(new DriverManagerDataSource(url, postgres.getUsername(), postgres.getPassword()));
         old.update("insert into edge_credentials (created_at, updated_at, edge_id, edge_kind, secret_hash, revoked_at) "
                 + "values ('2026-06-01 08:00', '2026-09-15 10:30', 41, 'MICROPHONE', repeat('a', 64), null)");
@@ -45,6 +45,8 @@ class EdgeCredentialMigrationOnPostgresTest extends PostgresIntegrationTest {
                 + "where table_name = 'edge_credentials' and column_name = 'issued_by'", String.class));
         assertThrows(Exception.class, () -> old.update("insert into edge_credentials (created_at, updated_at, edge_id, "
                 + "edge_kind, secret_hash) values (now(), now(), 43, 'ACTUATOR', repeat('c', 64))"));
-        assertEquals("16", old.queryForObject("select max(version::int)::text from flyway_schema_history", String.class));
+        // The audit migration is the one that ran last of the two, whatever migrations come after it.
+        assertEquals("17", old.queryForObject("select version from flyway_schema_history "
+                + "where description = 'add edge credential audit' and success", String.class));
     }
 }
