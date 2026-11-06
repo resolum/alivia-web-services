@@ -1,4 +1,4 @@
--- V15: what each edge service has confirmed of the table of devices of its household (AP-68, transport towards the edge
+-- V16: what each edge service has confirmed of the table of devices of its household (AP-68, transport towards the edge
 -- services).
 --
 -- One row per edge. applied_version is the highest version of the table that the edge reported as applied (null until

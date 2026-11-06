@@ -1,4 +1,4 @@
--- V16: who issued and who revoked each edge credential, and when the current secret was issued (AP-68, H-06).
+-- V17: who issued and who revoked each edge credential, and when the current secret was issued (AP-68, H-06).
 --
 -- issued_at is when the current secret was issued or rotated (it lets the API say how old a credential is).
 -- updated_at cannot stand for it: it also changes when the credential is revoked. Rows that already exist take

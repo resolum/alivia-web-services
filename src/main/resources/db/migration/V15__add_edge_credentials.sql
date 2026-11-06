@@ -1,4 +1,4 @@
--- V14: credentials of the edge services (AP-68, transport towards the edge services).
+-- V15: credentials of the edge services (AP-68, transport towards the edge services).
 --
 -- Each edge service of a household (microphone and actuators) identifies itself to the API with its own secret. Only
 -- the SHA-256 hash of the secret is stored. edge_id is the inventory id of the edge (assets context); there is no
