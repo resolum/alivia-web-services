@@ -131,10 +131,30 @@ class EvaluationSlotHoldTest {
 
     @Test
     void turnsASimultaneousHoldIntoATakenWindow() {
-        when(holds.saveAndFlush(any(EvaluationSlotHold.class))).thenThrow(new DataIntegrityViolationException("uk"));
+        when(holds.saveAndFlush(any(EvaluationSlotHold.class)))
+                .thenThrow(violationOf("UK_EVALUATION_SLOT_HOLDS_TECHNICIAN_WINDOW"));
+        assertThrows(AppointmentSlotTaken.class,
+                () -> holdService.handle(new HoldEvaluationSlotCommand("d1", TOMORROW, TEN.start(), TEN.end(), 7L)));
+    }
+
+    @Test
+    void recognisesTheTakenWindowFromTheDriverMessage() {
+        var driver = new java.sql.SQLException(
+                "ERROR: duplicate key value violates unique constraint \"uk_evaluation_slot_holds_technician_window\"");
+        when(holds.saveAndFlush(any(EvaluationSlotHold.class)))
+                .thenThrow(new DataIntegrityViolationException("could not execute statement", driver));
 
         assertThrows(AppointmentSlotTaken.class,
                 () -> holdService.handle(new HoldEvaluationSlotCommand("d1", TOMORROW, TEN.start(), TEN.end(), 7L)));
+    }
+
+    @Test
+    void rethrowsHoldViolationsOtherThanTheTechnicianWindow() {
+        var draft = violationOf("uk_evaluation_slot_holds_draft");
+        when(holds.saveAndFlush(any(EvaluationSlotHold.class))).thenThrow(draft);
+
+        assertSame(draft, assertThrows(DataIntegrityViolationException.class,
+                () -> holdService.handle(new HoldEvaluationSlotCommand("d1", TOMORROW, TEN.start(), TEN.end(), 7L))));
     }
 
     @Test
@@ -207,5 +227,12 @@ class EvaluationSlotHoldTest {
 
     private static TimeRange range(int from, int to) {
         return new TimeRange(LocalTime.of(from, 0), LocalTime.of(to, 0));
+    }
+
+    /** What Spring raises when PostgreSQL rejects a row for the named unique constraint. */
+    private static DataIntegrityViolationException violationOf(String constraint) {
+        var sql = new java.sql.SQLException("ERROR: duplicate key value violates unique constraint \"" + constraint + "\"", "23505");
+        return new DataIntegrityViolationException("could not execute statement",
+                new org.hibernate.exception.ConstraintViolationException("could not execute statement", sql, constraint));
     }
 }
