@@ -2,8 +2,10 @@
 
 Este documento es la matriz de `P-482.1` (AP-482): qué restricciones e índices
 faltaban, dónde se añadieron y por qué algunas relaciones se dejaron sin clave
-foránea. El DDL está en
-`src/main/resources/db/migration/V2__constraints_and_indexes.sql`.
+foránea. El DDL de esa primera pasada está en
+`src/main/resources/db/migration/V2__constraints_and_indexes.sql`. Las tablas de dispositivos,
+registros y edge (`V5` a `V17`, AP-68) tienen su propia sección,
+[Dispositivos, registros y edge](#dispositivos-registros-y-edge-assets).
 
 ## Punto de partida
 
@@ -94,6 +96,56 @@ aunque ese repositorio todavía no se use desde un servicio de producción.
 | `users.account_id`                                                                                                 | Identificador de cuenta externo de IAM.                                                                                                                                                                                                                                                                        |
 | `configuration_drafts.stripe_*`, `subscriptions.stripe_*`, `payments.stripe_*`                                     | Identificadores de Stripe.                                                                                                                                                                                                                                                                                     |
 
+## Dispositivos, registros y edge (Assets)
+
+Lo que la base de datos garantiza por sí misma en el contexto Assets (AP-68). Lo que no puede
+expresar una restricción lo hace cumplir el servicio, con el bloqueo indicado más abajo.
+
+| Tabla | Garantía | Objeto |
+|---|---|---|
+| `devices`, `edges` | Un identificador físico (MAC) por activo. | `uk_devices_mac_address`, `uk_edges_mac_address`. Que una MAC no la compartan un dispositivo y un edge abarca dos tablas: lo comprueba el servicio. |
+| `devices`, `edges` | Detectar dos cambios simultáneos del mismo activo. | Columna `version` (`@Version`, `V13`): el segundo cambio falla con 409 en vez de pisar al primero. |
+| `device_assignments` | Un dispositivo tiene **una sola asignación activa**. | Índice único parcial `uk_device_assignments_active_device` (`WHERE unassigned_at IS NULL`, `V6`); `@Entity` no puede declararlo. |
+| `device_assignments` | Una asignación cerrada dice quién, cuándo y por qué, y no termina antes de empezar. | `device_assignments_closed_check` (`V8`). El historial no se borra. |
+| `device_assignments` | Pertenece al registro de su hogar. | `fk_device_assignments_registry` e `idx_device_assignments_registry_active` (`V12`). |
+| `household_device_registries` | Un registro por hogar y por instalación. | `uk_household_device_registries_household`, `..._installation`. |
+| `household_device_registries` | Un edge pertenece a **una** instalación y ocupa un solo lugar. | `uk_household_device_registries_microphone_edge`, `..._actuator_edge` y sus claves foráneas a `edges`. |
+| `edge_credentials` | Una credencial por edge; solo se guarda el hash del secreto. | `uk_edge_credentials_edge` (`V15`). Sin clave foránea a `edges`: es del contexto `iam` y ve el edge por su id. |
+| `edge_sync_states` | Una fila por edge, que no se puede referir a un edge inexistente ni confirmar una versión negativa. | Clave primaria `edge_id`, `fk_edge_sync_states_edge` y `edge_sync_states_applied_version_check` (`V16`). |
+
+Las tablas de Hibernate se pluralizan siempre, incluso con `@Table(name = ...)`: la tabla es
+`edge_sync_states`, no `edge_sync_state`
+([`database-migrations.md`](database-migrations.md#3-escribe-el-ddl)).
+
+### Orden de bloqueo
+
+Todo cambio de los dispositivos o los edge de un hogar toma **primero el registro del hogar**
+(`PESSIMISTIC_WRITE`) y **después** lee el activo. Con el orden contrario, desasignar un
+dispositivo y cambiarle el estado a la vez se bloqueaban entre sí (interbloqueo en 60 de 60
+rondas medidas), y asignarlo y retirarlo a la vez dejaba ambas operaciones con éxito y perdía la
+retirada (180 de 180). Colocar o quitar un edge, cambiar su tipo o su estado y emitirle una
+credencial siguen la misma regla. El `@Version` de los activos es la red de seguridad cuando la
+otra operación no toma el registro.
+
+| Cambio | Primero | Después |
+|---|---|---|
+| Asignar un dispositivo | Registro de la instalación | Dispositivo |
+| Desasignar, cambiar estado, MAC o tipo de un dispositivo | Registro que lo tiene asignado | Dispositivo |
+| Colocar o quitar un edge | Registro de la instalación | Edge |
+| Cambiar estado, MAC o tipo de un edge | Registro que lo tiene asignado | Edge |
+| Emitir la credencial de un edge | Edge (bloqueado) | Credencial (en `iam`) |
+
+La confirmación de versión de un edge (`edge_sync_states`) y la anotación de su última
+consulta no bloquean nada: son sentencias únicas (`insert ... on conflict do nothing` y
+`update ... where applied_version < :v`), de modo que dos confirmaciones simultáneas dejan la
+mayor sin errores y leer la tabla nunca espera a una confirmación.
+
+La lectura de la tabla de dispositivos de un edge usa una transacción de solo lectura con
+aislamiento `REPEATABLE_READ`: la versión y las entradas salen de la misma foto de la base.
+
+Estas reglas se comprueban contra PostgreSQL real en
+`AssetsConcurrencyOnPostgresTest` ([`testing.md`](testing.md)).
+
 ## Transacciones (P-482.2)
 
 Límites transaccionales de los servicios de comando. Todas las escrituras de un mismo
@@ -136,6 +188,8 @@ abierto por OSIV para resolver colecciones perezosas.
 
 ## Verificación
 
-La suite usa H2 y deshabilita Flyway, así que `V2` no se ejecuta en los tests. Se
-verifica contra PostgreSQL real; los resultados de la última ejecución están en
-[`database-migrations.md`](database-migrations.md#resultado-de-la-última-verificación).
+La suite H2 deshabilita Flyway, así que las migraciones no se ejecutan en ella. Se verifican
+contra PostgreSQL real: a mano, con los resultados de
+[`database-migrations.md`](database-migrations.md#resultado-de-la-última-verificación), y en cada
+ejecución por las pruebas de `integration`, que arrancan la aplicación sobre `V1`..`V18` con
+`ddl-auto=validate` (ver [`testing.md`](testing.md)).

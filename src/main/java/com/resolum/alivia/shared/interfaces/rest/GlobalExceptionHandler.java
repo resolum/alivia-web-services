@@ -1,11 +1,18 @@
 package com.resolum.alivia.shared.interfaces.rest;
 
+import com.resolum.alivia.assets.domain.exceptions.AppliedVersionAhead;
 import com.resolum.alivia.assets.domain.exceptions.DeviceIncompatibleWithPlan;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotAssigned;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotAvailable;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotFound;
 import com.resolum.alivia.assets.domain.exceptions.DeviceStillAssigned;
+import com.resolum.alivia.assets.domain.exceptions.EdgeNotAssigned;
+import com.resolum.alivia.assets.domain.exceptions.EdgeNotAvailable;
 import com.resolum.alivia.assets.domain.exceptions.EdgeNotFound;
+import com.resolum.alivia.assets.domain.exceptions.EdgeRetired;
+import com.resolum.alivia.assets.domain.exceptions.EdgeStillAssigned;
+import com.resolum.alivia.assets.domain.exceptions.EdgeTableVersionAhead;
+import com.resolum.alivia.assets.domain.exceptions.EdgeWithoutInstallation;
 import com.resolum.alivia.assets.domain.exceptions.InstallationAccessDenied;
 import com.resolum.alivia.assets.domain.exceptions.InstallationAlreadyRegistered;
 import com.resolum.alivia.assets.domain.exceptions.InstallationNotActive;
@@ -37,6 +44,7 @@ import com.resolum.alivia.iam.domain.exceptions.AccountNotActiveException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotFoundException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotPendingVerificationException;
 import com.resolum.alivia.iam.domain.exceptions.DniAlreadyRegisteredException;
+import com.resolum.alivia.iam.domain.exceptions.EdgeCredentialConflictException;
 import com.resolum.alivia.iam.domain.exceptions.EmailAlreadyRegisteredException;
 import com.resolum.alivia.iam.domain.exceptions.InvalidCredentialsException;
 import com.resolum.alivia.iam.domain.exceptions.InvalidRefreshTokenException;
@@ -459,6 +467,50 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(EdgeNotFound.class)
     public ProblemDetail handleEdgeNotFound(EdgeNotFound exception) {
         return problem(HttpStatus.NOT_FOUND, "edge_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(EdgeNotAvailable.class)
+    public ProblemDetail handleEdgeNotAvailable(EdgeNotAvailable exception) {
+        var code = exception.isAlreadyAssigned() ? "edge_already_assigned" : "edge_not_available";
+        return problem(HttpStatus.CONFLICT, code, exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(EdgeNotAssigned.class)
+    public ProblemDetail handleEdgeNotAssigned(EdgeNotAssigned exception) {
+        return problem(HttpStatus.CONFLICT, "edge_not_assigned", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(EdgeStillAssigned.class)
+    public ProblemDetail handleEdgeStillAssigned(EdgeStillAssigned exception) {
+        return problem(HttpStatus.CONFLICT, "edge_still_assigned", exception.getMessage(), List.of());
+    }
+
+    /** The edge reported a version that the table has not reached. */
+    @ExceptionHandler(AppliedVersionAhead.class)
+    public ProblemDetail handleAppliedVersionAhead(AppliedVersionAhead exception) {
+        return problem(HttpStatus.UNPROCESSABLE_ENTITY, "applied_version_ahead", exception.getMessage(), List.of());
+    }
+
+    /** The database went back in time (a restore): the edge has to take the table the server has. */
+    @ExceptionHandler(EdgeTableVersionAhead.class)
+    public ProblemDetail handleEdgeTableVersionAhead(EdgeTableVersionAhead exception) {
+        return problem(HttpStatus.CONFLICT, "table_version_ahead", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(EdgeWithoutInstallation.class)
+    public ProblemDetail handleEdgeWithoutInstallation(EdgeWithoutInstallation exception) {
+        return problem(HttpStatus.NOT_FOUND, "edge_without_installation", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(EdgeRetired.class)
+    public ProblemDetail handleEdgeRetired(EdgeRetired exception) {
+        return problem(HttpStatus.CONFLICT, "edge_retired", exception.getMessage(), List.of());
+    }
+
+    /** Two requests issued the first credential of the same edge at once; the caller can try again. */
+    @ExceptionHandler(EdgeCredentialConflictException.class)
+    public ProblemDetail handleEdgeCredentialConflict(EdgeCredentialConflictException exception) {
+        return problem(HttpStatus.CONFLICT, "edge_credential_conflict", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(MacAddressAlreadyExists.class)

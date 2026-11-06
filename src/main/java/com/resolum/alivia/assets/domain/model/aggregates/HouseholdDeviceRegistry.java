@@ -2,12 +2,14 @@ package com.resolum.alivia.assets.domain.model.aggregates;
 
 import com.resolum.alivia.assets.domain.exceptions.DeviceIncompatibleWithPlan;
 import com.resolum.alivia.assets.domain.exceptions.DeviceNotAssigned;
+import com.resolum.alivia.assets.domain.exceptions.EdgeNotAssigned;
 import com.resolum.alivia.assets.domain.exceptions.InstallationNotActive;
 import com.resolum.alivia.assets.domain.model.events.HouseholdDevicesChangedEvent;
 import com.resolum.alivia.assets.domain.model.events.HouseholdDevicesChangedEvent.Cause;
 import com.resolum.alivia.assets.domain.model.valueobjects.ContractedActuators;
 import com.resolum.alivia.assets.domain.model.valueobjects.DeviceType;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeAccessTable;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeType;
 import com.resolum.alivia.assets.domain.model.valueobjects.RegistryStatus;
 import com.resolum.alivia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
 import com.resolum.alivia.shared.domain.model.valueobjects.BusinessId;
@@ -99,6 +101,63 @@ public class HouseholdDeviceRegistry extends AuditableAbstractAggregateRoot<Hous
 
     public boolean isActive() {
         return status == RegistryStatus.ACTIVE;
+    }
+
+    /**
+     * Puts an available edge in the place of its type (microphone or actuators) and leaves it {@code IN_USE}. The edge
+     * that was there goes back to the inventory. Edges are not entries of the table of devices, so neither the version
+     * nor the event change. Placing the edge that already holds its place changes nothing.
+     *
+     * @return the edge that left the installation, or empty when the place was free or the same edge was already in it
+     * @throws InstallationNotActive when the registry is not active
+     * @throws com.resolum.alivia.assets.domain.exceptions.EdgeNotAvailable when the edge is not {@code AVAILABLE}
+     */
+    public Optional<Edge> placeEdge(Edge edge) {
+        if (!isActive()) {
+            throw new InstallationNotActive(installationId.installationId());
+        }
+        var current = edge.getEdgeType() == EdgeType.MICROPHONE_EDGE ? microphoneEdge : actuatorEdge;
+        if (current != null && current.getId().equals(edge.getId())) {
+            return Optional.empty();
+        }
+        // placeInUse validates the status before it changes anything.
+        edge.placeInUse();
+        if (edge.getEdgeType() == EdgeType.MICROPHONE_EDGE) {
+            microphoneEdge = edge;
+        } else {
+            actuatorEdge = edge;
+        }
+        if (current != null) {
+            current.release();
+        }
+        return Optional.ofNullable(current);
+    }
+
+    /** Whether the edge is one of the edge services of this installation. */
+    public boolean hasEdge(Long edgeId) {
+        return (microphoneEdge != null && microphoneEdge.getId().equals(edgeId))
+                || (actuatorEdge != null && actuatorEdge.getId().equals(edgeId));
+    }
+
+    /**
+     * Takes an edge out of the installation; it goes back to the inventory (available, unless it was in maintenance or
+     * broken). It is allowed even when the registry is no longer active, so a deactivated installation can be cleaned up.
+     *
+     * @throws EdgeNotAssigned when the edge is not one of the installation's edge services
+     */
+    public Edge removeEdge(Long edgeId) {
+        Edge removed;
+        if (microphoneEdge != null && microphoneEdge.getId().equals(edgeId)) {
+            removed = microphoneEdge;
+            microphoneEdge = null;
+        } else if (actuatorEdge != null && actuatorEdge.getId().equals(edgeId)) {
+            removed = actuatorEdge;
+            actuatorEdge = null;
+        } else {
+            throw new EdgeNotAssigned(edgeId, installationId.installationId());
+        }
+        removed.release();
+        return removed;
     }
 
     /**
