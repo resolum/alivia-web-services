@@ -26,7 +26,6 @@ import java.time.Instant;
 public class EvaluationSlotHoldCommandServiceImpl implements EvaluationSlotHoldCommandService {
     /** Unique constraint that keeps one hold per technician and window (EvaluationSlotHold, Flyway V9). */
     static final String TECHNICIAN_WINDOW_CONSTRAINT = "uk_evaluation_slot_holds_technician_window";
-
     private final EvaluationSlotHoldRepository holds;
     private final AppointmentRepository appointments;
     private final ExternalHcmService hcm;

@@ -133,7 +133,6 @@ class EvaluationSlotHoldTest {
     void turnsASimultaneousHoldIntoATakenWindow() {
         when(holds.saveAndFlush(any(EvaluationSlotHold.class)))
                 .thenThrow(violationOf("UK_EVALUATION_SLOT_HOLDS_TECHNICIAN_WINDOW"));
-
         assertThrows(AppointmentSlotTaken.class,
                 () -> holdService.handle(new HoldEvaluationSlotCommand("d1", TOMORROW, TEN.start(), TEN.end(), 7L)));
     }
