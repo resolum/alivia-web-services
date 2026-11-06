@@ -11,8 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Duration;
-import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
+import java.time.ZonedDateTime;
 import java.util.Optional;
 
 /**
@@ -44,9 +43,11 @@ public class EdgeCredentialQueryServiceImpl implements EdgeCredentialQueryServic
     }
 
     private EdgeCredentialView viewOf(EdgeCredential credential) {
-        var now = LocalDateTime.now(clock);
-        var age = Duration.between(credential.getIssuedAt(), now);
-        var ageDays = Math.max(0, ChronoUnit.DAYS.between(credential.getIssuedAt(), now));
+        // The issue date is stored without a zone: it is the local time of the application clock, so that zone is the one
+        // that gives it meaning when it is compared with the present.
+        var now = ZonedDateTime.now(clock);
+        var age = Duration.between(credential.getIssuedAt().atZone(clock.getZone()), now);
+        var ageDays = Math.max(0, age.toDays());
         return new EdgeCredentialView(credential.getEdgeId(), credential.getEdgeKind(), credential.isActive(),
                 credential.getIssuedAt(), credential.getIssuedBy(), ageDays,
                 credential.isActive() && age.compareTo(rotationRecommendedAfter) > 0, credential.getLastUsedAt(),
