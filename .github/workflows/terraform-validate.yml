@@ -1,0 +1,54 @@
+name: Terraform - format, validate and simulated test
+
+# Validation only: it has no credentials for Azure or MongoDB Atlas and no state. Provisioning is done by hand (see
+# docs/operations/azure-deployment.md).
+on:
+  pull_request:
+    branches: [ 'main', 'develop' ]
+    paths:
+      - 'infrastructure/terraform/**'
+      - '.github/workflows/terraform-validate.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Check - Terraform ${{ matrix.root }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        root: [ shared, staging, production ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.17.1
+
+      - name: Format
+        working-directory: infrastructure/terraform
+        run: terraform fmt -check -recursive -diff
+
+      # The lock file is committed: init must use exactly the provider versions in it.
+      - name: Init
+        working-directory: infrastructure/terraform/environments/${{ matrix.root }}
+        run: terraform init -input=false -lockfile=readonly
+
+      - name: Validate
+        working-directory: infrastructure/terraform/environments/${{ matrix.root }}
+        run: terraform validate
+
+      # Runs with simulated providers: it checks how the configuration behaves, not Azure itself.
+      - name: Test
+        if: matrix.root != 'shared'
+        working-directory: infrastructure/terraform/environments/${{ matrix.root }}
+        run: terraform test
