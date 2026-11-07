@@ -91,6 +91,12 @@ variable "operator_ips" {
   default     = []
 }
 
+variable "github_repository" {
+  description = "GitHub repository (owner/name) whose workflows deploy to this environment."
+  type        = string
+  default     = "resolum/alivia-web-services"
+}
+
 variable "tags" {
   description = "Tags for every resource."
   type        = map(string)
@@ -104,6 +110,9 @@ variable "tags" {
 data "azurerm_resource_group" "this" {
   name = var.resource_group_name
 }
+
+# The tenant and subscription the GitHub workflow signs in to (outputs below).
+data "azurerm_client_config" "current" {}
 
 data "azurerm_container_registry" "this" {
   name                = var.acr_name
@@ -154,6 +163,21 @@ module "mongodb_atlas" {
   tags            = local.tags
 }
 
+# The identity the GitHub workflow signs in as (OIDC, no secret). It can push to the registry and change this
+# environment's Web App, and only jobs that run in this GitHub environment can use it.
+module "deploy_identity" {
+  source = "../../modules/deploy-identity"
+
+  name                = "id-alivia-${local.environment}-deploy"
+  resource_group_name = data.azurerm_resource_group.this.name
+  location            = data.azurerm_resource_group.this.location
+  github_repository   = var.github_repository
+  github_environment  = local.environment
+  acr_id              = data.azurerm_container_registry.this.id
+  webapp_id           = module.platform.app_id
+  tags                = local.tags
+}
+
 # What deploy.sh and the GitHub environment need. The sensitive ones are read once with `terraform output -raw` and
 # stored as GitHub secrets (see the deployment document); they are never printed by a plain `terraform output`.
 
@@ -175,6 +199,21 @@ output "webapp_name" {
 output "webapp_id" {
   description = "Resource id of the Web App (scope of the Website Contributor role of the deployment identity)."
   value       = module.platform.app_id
+}
+
+output "deploy_identity_client_id" {
+  description = "AZURE_CLIENT_ID (GitHub variable of the environment). An identifier, not a secret."
+  value       = module.deploy_identity.client_id
+}
+
+output "azure_tenant_id" {
+  description = "AZURE_TENANT_ID (GitHub variable of the environment)."
+  value       = data.azurerm_client_config.current.tenant_id
+}
+
+output "azure_subscription_id" {
+  description = "AZURE_SUBSCRIPTION_ID (GitHub variable of the environment)."
+  value       = data.azurerm_client_config.current.subscription_id
 }
 
 output "default_hostname" {

@@ -1,9 +1,10 @@
 # Despliegue de la API en Microsoft Azure (CI/CD)
 
 > **Estado: en ejecución** (TS-41, rama `cd/workflow-for-deployment`; última revisión 2026-11-06). Los pasos 1 y 2 del
-> §13 están hechos y el 3 está aplicado en Azure a falta de su cierre (ver *Avance*): el Terraform y el Dockerfile existen
-> y `shared` y `staging` están creados. **Todavía no existen** el script de despliegue ni el workflow de CD (pasos 4 y 5),
-> y `production` no se ha aplicado. Cada afirmación lleva una marca:
+> §13 están hechos, el 3 está aplicado en Azure a falta de su cierre y el 4 está implementado pero sin ejecutar contra
+> Azure (ver *Avance*): el Terraform, el Dockerfile y `deploy.sh` existen y `shared` y `staging` están creados.
+> **Todavía no existe** el workflow de CD (paso 5), la identidad de despliegue (D-6 revisada) está definida en Terraform
+> pero sin aplicar, y `production` no se ha aplicado. Cada afirmación lleva una marca:
 > **[Confirmado]** respaldado por el repositorio o por una decisión del equipo, **[Derivado]** deducido de lo anterior,
 > **[Pendiente]** requiere verificarse en la cuenta de Azure antes de implementarlo.
 
@@ -52,7 +53,7 @@ entorno. Sí hay que definirlas todas (§9).
 | D-3 | Terraform gestiona **la plataforma de la API, PostgreSQL (Azure Database for PostgreSQL, servidor flexible) y MongoDB Atlas** | §6 |
 | D-4 | **Sin Azure Key Vault** (cuenta universitaria con créditos): los secretos viven en **GitHub Secrets** | §9 |
 | D-5 | Dos entornos: **staging** y **production** | §4, §7 |
-| D-6 | La autenticación de GitHub Actions contra Azure es coherente con D-4: **service principal con secreto guardado en GitHub Secrets** (OIDC queda como mejora, ver R-02) | §7.3, §9 |
+| D-6 | **Revisada el 2026-11-06.** GitHub Actions se autentica contra Azure con **OIDC y una identidad administrada asignada por el usuario, una por entorno**, gestionada con Terraform. No hay secreto de larga vida. Sustituye a la decisión original (service principal con secreto en GitHub Secrets), que no es viable en la suscripción de la persona asignada (R-02). Una identidad administrada es una función de Azure, no un servicio facturable: no contradice D-9 | §7.3, §9 |
 | D-7 | `terraform apply` es **manual** al provisionar; el CI solo valida (`fmt` y `validate`) | §6.5 |
 | D-8 | **Un único Resource Group** (`rg-alivia`) para todo. Un Resource Group es solo un contenedor y **no consume créditos**: el gasto lo generan los recursos que contiene, no cuántos grupos haya | §4.2 |
 | D-9 | **Solo se usan GitHub, Docker, Terraform y los servicios nombrados**: Azure Container Registry, App Service, Azure Database for PostgreSQL (servidor flexible) y MongoDB Atlas. Ningún otro servicio ni herramienta de terceros (por eso no hay Key Vault, cuenta de almacenamiento ni Log Analytics). **Única excepción: Trivy**, que es de código abierto, corre dentro del propio runner de GitHub Actions y **no necesita cuenta ni token** | todo el documento |
@@ -79,7 +80,7 @@ entorno. Sí hay que definirlas todas (§9).
 flowchart LR
   dev[Push a develop / main] --> gha[GitHub Actions<br/>cd-deploy.yml]
   gha -->|docker build + push<br/>tag = SHA| acr[(Azure Container Registry<br/>compartido)]
-  gha -->|az login<br/>service principal| script[infrastructure/scripts/deploy.sh]
+  gha -->|azure/login<br/>OIDC, identidad administrada| script[infrastructure/scripts/deploy.sh]
   script -->|configura imagen y variables<br/>reinicia| app[App Service<br/>Web App for Containers]
   acr -->|AcrPull<br/>identidad administrada| app
   app --> pg[(PostgreSQL<br/>servidor flexible)]
@@ -195,6 +196,7 @@ infrastructure/
       platform/                # plan, Web App, identidad administrada, registros de App Service
       postgres/                # servidor flexible, base de datos, reglas de firewall
       mongodb-atlas/           # proyecto, clúster, usuario, lista de acceso
+      deploy-identity/         # identidad de despliegue (OIDC), su credencial federada y sus dos roles
     environments/
       shared/                  # rg-alivia (el único Resource Group) + ACR
       staging/                 # plataforma + datos de staging
@@ -233,6 +235,7 @@ Los `*.tfvars`, `*.tfstate` y `.terraform/` entran en `.gitignore`; se versionan
 | `platform` | App Service Plan Linux, Web App con identidad administrada y rol `AcrPull` sobre el ACR, `https_only`, `ftps_state = Disabled`, `health_check_path = /actuator/health`, `always_on`, registros de aplicación y HTTP en el sistema de archivos de App Service | `webapp_name`, `default_hostname`, `outbound_ips` |
 | `postgres` | Servidor flexible, base de datos, `require_secure_transport = on`, una regla de firewall por IP de salida de la Web App, contraseña con `random_password` | `fqdn`, `database`, `admin_user`, `admin_password` (sensible) |
 | `mongodb-atlas` | Proyecto, clúster (M0 o M10), usuario de base de datos con contraseña aleatoria, lista de acceso con las IP de salida de la Web App | `connection_string_srv` (sensible), `database` |
+| `deploy-identity` | Identidad administrada `id-alivia-<entorno>-deploy`, una credencial federada para el entorno de GitHub del mismo nombre y dos roles: `AcrPush` sobre el ACR y `Website Contributor` sobre la Web App de ese entorno | `client_id`, `subject`, `role_assignments` |
 
 Los dos entornos usan los mismos módulos y difieren solo en tamaño y redundancia (variables de cada `environments/*`).
 Los recursos llevan las etiquetas `project=alivia`, `environment`, `ticket=TS-41` y `managed_by=terraform`. Con un solo
@@ -324,12 +327,30 @@ Microsoft). Se fijan versiones concretas al implementar.
 
 ### 7.3 Autenticación contra Azure (D-6)
 
-Un **service principal** con rol `AcrPush` sobre el ACR y `Website Contributor` sobre **cada Web App** (no `Contributor` sobre
-el grupo de recursos). Como todo vive en un mismo Resource Group (D-8), asignar los roles por recurso evita que una
-credencial pensada para staging pueda tocar production. Sus datos van como secretos de GitHub (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`,
-`AZURE_SUBSCRIPTION_ID`). El secreto tiene fecha de vencimiento: se anota la fecha de rotación en la documentación del
-entorno. Pasar a OIDC (credenciales federadas, sin secreto de larga vida) cambia solo el paso `azure/login` y la creación
-de la identidad.
+**OIDC con una identidad administrada por entorno** (módulo `deploy-identity`, aplicado con Terraform en `staging` y en
+`production`). GitHub demuestra quién es el trabajo con un token de corta vida y Azure confía en él solo para un sujeto
+concreto, así que no hay secreto que guardar ni rotar.
+
+| Identidad | Roles | Quién puede iniciar sesión (sujeto de la credencial federada) |
+|---|---|---|
+| `id-alivia-staging-deploy` | `AcrPush` sobre el ACR; `Website Contributor` sobre la Web App de staging | `repo:resolum/alivia-web-services:environment:staging` |
+| `id-alivia-production-deploy` | `AcrPush` sobre el ACR; `Website Contributor` sobre la Web App de production | `repo:resolum/alivia-web-services:environment:production` |
+
+- **Una identidad por entorno, no una compartida.** Con una sola identidad con roles sobre las dos Web Apps, un trabajo de
+  `staging` podría iniciar sesión con ella y desplegar en `production`, saltándose la aprobación de ese entorno. Con una por
+  entorno, la identidad de staging no tiene ningún permiso sobre la Web App de production, y `terraform test` lo comprueba
+  (exactamente dos roles, cada uno sobre su recurso y ninguno sobre el grupo de recursos).
+- **El nombre del entorno de GitHub debe coincidir exactamente** (`staging`, `production`): forma parte del sujeto. Un
+  trabajo que no corra en ese entorno, o que corra en un pull request, es rechazado por Azure.
+- **El workflow** necesita `permissions: id-token: write` y usa `azure/login` con `client-id`, `tenant-id` y
+  `subscription-id`. Los tres son identificadores y van como **variables** del entorno de GitHub, no como secretos; salen de
+  `terraform output` (§9.2). Ya no existe `AZURE_CLIENT_SECRET`.
+- **Repositorio:** la variable `github_repository` de Terraform vale `resolum/alivia-web-services` por defecto. Si el
+  repositorio cambia de dueño o de nombre, hay que cambiarla y volver a aplicar, porque Azure compara el sujeto
+  literalmente.
+- **[Pendiente]** El `apply` real de la identidad y de su credencial federada, el inicio de sesión desde GitHub y los
+  permisos efectivos de estos dos roles sobre `az acr repository show` y `az webapp config set` no están verificados: se
+  comprueban con el primer `apply` y con el primer despliegue desde el workflow (paso 5).
 
 ## 8. Script de despliegue (AP-465 y AP-466)
 
@@ -368,7 +389,7 @@ solo es seguro si las migraciones nuevas son compatibles hacia atrás; ver §11.
 
 | Tipo | Dónde | Ejemplos |
 |---|---|---|
-| Credenciales de Azure | GitHub Secrets del repositorio | `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` |
+| Inicio de sesión en Azure (OIDC, D-6) | GitHub Variables **del entorno**: son identificadores, no secretos | `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`. No hay `AZURE_CLIENT_SECRET` |
 | Secretos de la aplicación | GitHub Secrets **del entorno** (`staging`, `production`) | `IAM_JWT_SECRET`, `STRIPE_*`, `CLOUDINARY_API_*`, `DB_PASSWORD`, `MONGODB_URI`, `IAM_SUPER_ADMIN_PASSWORD`, `RESEND_API_KEY` |
 | Configuración no secreta | GitHub Variables **del entorno** | `CORS_ALLOWED_ORIGINS`, `IAM_EMAIL_VERIFICATION_LINK_BASE_URL`, `DB_URL`, `DB_USERNAME`, `MONGODB_DATABASE` |
 | Nombres de los recursos | GitHub Variables **del entorno** | `AZURE_RESOURCE_GROUP`, `AZURE_WEBAPP_NAME`, `ACR_NAME` (los nombres llevan un sufijo aleatorio, así que `deploy.sh` no puede deducirlos: los recibe) |
@@ -395,6 +416,9 @@ terraform output -raw mongodb_database                  # -> MONGODB_DATABASE
 terraform output -raw resource_group_name               # -> AZURE_RESOURCE_GROUP
 terraform output -raw webapp_name                       # -> AZURE_WEBAPP_NAME
 terraform output -raw acr_name                          # -> ACR_NAME
+terraform output -raw deploy_identity_client_id         # -> AZURE_CLIENT_ID (la identidad de ESTE entorno)
+terraform output -raw azure_tenant_id                   # -> AZURE_TENANT_ID
+terraform output -raw azure_subscription_id             # -> AZURE_SUBSCRIPTION_ID
 terraform output -raw default_hostname                  # -> la URL de la API es https://<este valor>
 ```
 
@@ -437,7 +461,7 @@ Opcionales de ajuste: `IAM_JWT_ACCESS_TOKEN_EXPIRATION_MINUTES`, `IAM_JWT_REFRES
 - `IAM_JWT_SECRET`: rotarlo invalida las sesiones activas; hacerlo fuera de horario.
 - Contraseñas de bases de datos: rotar con Terraform (`-replace=random_password.<recurso>`), actualizar el secreto de
   GitHub y volver a desplegar.
-- Secreto del service principal: anotar su vencimiento y renovarlo antes.
+- Identidad de despliegue (OIDC): no tiene secreto que rotar ni vencimiento.
 - La aplicación se conecta a PostgreSQL con el usuario administrador del servidor porque Flyway necesita crear y modificar
   tablas. Un usuario dedicado con permisos mínimos queda como mejora.
 
@@ -460,12 +484,14 @@ del plan. Alertas, paneles y retención larga quedan fuera de este alcance.
 
 ### 11.1 Primer despliegue de un entorno
 
-0. Resolver la región (§4.4); registrar los proveedores `Microsoft.Web`, `Microsoft.ContainerRegistry` y
-   `Microsoft.DBforPostgreSQL` en la suscripción (`az provider register`); copiar cada `terraform.tfvars.example` a
-   `terraform.tfvars`.
+0. Resolver la región (§4.4); registrar los proveedores `Microsoft.Web`, `Microsoft.ContainerRegistry`,
+   `Microsoft.DBforPostgreSQL` y `Microsoft.ManagedIdentity` en la suscripción (`az provider register`); copiar cada
+   `terraform.tfvars.example` a `terraform.tfvars`.
 1. Aplicar `shared` y el entorno con Terraform, este último **en dos pasos** (§6.5), y **copiar el estado a un lugar
-   protegido** (§6.1).
-2. Crear el service principal y asignarle los roles por recurso (§7.3); cargar los secretos de Azure en GitHub.
+   protegido** (§6.1). El segundo paso crea también la identidad de despliegue del entorno, su credencial federada y sus
+   dos roles (§7.3).
+2. Leer `deploy_identity_client_id`, `azure_tenant_id` y `azure_subscription_id` de `terraform output` y cargarlos como
+   variables del entorno de GitHub (§9.2). No hay ningún secreto de Azure que crear.
 3. Crear los entornos `staging` y `production` en GitHub; en `production`, añadir revisores obligatorios.
 4. Cargar secretos y variables del entorno (§9.2, §9.3).
 5. Ejecutar `workflow_dispatch` hacia `staging`; revisar el resumen y la verificación.
@@ -498,7 +524,7 @@ si los créditos se agotan, la primera palanca es **apagar staging** cuando no s
 | ID | Riesgo | Impacto | Cómo se verifica o mitiga |
 |---|---|---|---|
 | R-01 | Cuenta universitaria con la directiva *Allowed resource deployment regions* y límites de SKU y cuota; la lista de regiones cambia de una cuenta a otra | No se puede crear algún recurso, o la región ideal no está permitida | Procedimiento de §4.4 antes de fijar región y tamaños |
-| R-02 | El inquilino de Entra ID de la universidad puede **no permitir crear el service principal** (ni registros de aplicación) | Se cae D-6 | **Materializado el 2026-11-06:** `az ad sp create-for-rbac` falló en la suscripción de la persona asignada (se registró que falló, no el texto del error). **Alternativa viable [Confirmado en parte]:** una identidad administrada asignada por el usuario con credencial federada para GitHub (OIDC), que no necesita permiso de Entra para registrar aplicaciones: `az identity create` funcionó en `rg-alivia`, la persona asignada es *Owner* de la suscripción y Terraform ya creó un rol (`AcrPull`). **No verificado:** la creación de la credencial federada y el inicio de sesión desde GitHub. **[Pendiente]** decidir D-6 antes del paso 5 (cambia solo `azure/login` y los secretos de Azure: `AZURE_CLIENT_SECRET` desaparece). Último recurso: credenciales de administrador del ACR y perfil de publicación de la Web App como secretos de GitHub; `deploy.sh` cambiaría bastante |
+| R-02 | El inquilino de Entra ID de la universidad puede **no permitir crear el service principal** (ni registros de aplicación) | Se cae D-6 | **Materializado el 2026-11-06:** `az ad sp create-for-rbac` falló en la suscripción de la persona asignada (se registró que falló, no el texto del error). **Resuelto con D-6 revisado (2026-11-06):** una identidad administrada asignada por el usuario por entorno, con credencial federada para GitHub (OIDC) y gestionada con Terraform (módulo `deploy-identity`, §7.3). No necesita permiso de Entra para registrar aplicaciones: `az identity create` funcionó en `rg-alivia`, la persona asignada es *Owner* de la suscripción y Terraform ya creó el rol `AcrPull`. **No verificado:** el `apply` real de la identidad y de su credencial federada, y el inicio de sesión desde GitHub (paso 5). Último recurso, si OIDC fallara: credenciales de administrador del ACR y perfil de publicación de la Web App como secretos de GitHub; `deploy.sh` cambiaría bastante |
 | R-03 | La versión de PostgreSQL de las pruebas es la 18; Azure puede ofrecer menos versiones en la región, o no ofrecer el nivel Burstable ahí (se han reportado regiones sin él) | Diferencia entre pruebas y producción, o servidor no creable | Elegir la versión más alta disponible (mínimo 17: las migraciones se verificaron en 17 y 18) y comprobar `list-skus` por región |
 | R-04 | El nivel gratuito (F1) no admite contenedores propios **[Derivado]** | Hace falta B1 | Verificar al crear el plan |
 | R-05 | ACR Tasks puede estar bloqueado en suscripciones gratuitas | `az acr build` fallaría | Por eso P-3: construir en el runner |
@@ -551,10 +577,10 @@ Canada Central con un ACR y un PostgreSQL de prueba (sin imágenes ni bases que 
   una IP que no era la de quien probaba.
 - **R-14:** defecto del módulo `mongodb-atlas` en M0, corregido (`backup_enabled = local.free ? null : true`).
 - **R-15:** 31 reglas de firewall por IP de salida posibles (§6.3).
-- **R-02:** la prueba del service principal falló; la identidad administrada con OIDC es la alternativa (decisión D-6 pendiente).
+- **R-02:** la prueba del service principal falló; la identidad administrada con OIDC la sustituye (D-6 revisado, ver más abajo).
 
-**Pendiente de confirmar por la persona asignada para cerrar el paso 3:** `terraform plan` sin cambios en `staging` con
-`operator_ips` ya borrado, y la copia de los `terraform.tfstate` de `shared` y `staging` fuera del repositorio (§6.1).
+**Confirmado por la persona asignada (2026-11-06):** `terraform plan` en `staging` da *No changes*. **Pendiente de
+confirmar para cerrar el paso 3:** la copia de los `terraform.tfstate` de `shared` y `staging` fuera del repositorio (§6.1).
 `production` no se ha aplicado.
 
 **Paso 4 implementado el 2026-11-06, sin commit y sin ejecutarlo todavía contra Azure.** Se generó
@@ -566,6 +592,16 @@ Git entregaría el script con CRLF en Windows y Bash no lo ejecutaría. **No ver
 argumentos de `az`, los permisos de `az acr repository show` y de `az webapp config set` para la identidad de despliegue, y
 cómo reinicia una Web App real). El criterio de §13 (llega a `UP` en `staging` y un fallo provocado restaura la imagen) lo
 cierra la persona asignada ejecutándolo a mano.
+
+**D-6 revisada y definida en Terraform el 2026-11-06, sin aplicar.** La persona asignada aprobó OIDC con identidades
+administradas gestionadas por Terraform. Se creó el módulo `deploy-identity` y se conectó a `staging` y a `production`
+(variable `github_repository`, salidas `deploy_identity_client_id`, `azure_tenant_id` y `azure_subscription_id`). Una
+identidad por entorno, con `AcrPush` sobre el ACR y `Website Contributor` solo sobre su Web App; `terraform test` comprueba
+el sujeto de la credencial y que no haya ningún otro rol. Verificado: `fmt`, `validate` y `test` pasan en `shared`, `staging`
+y `production`, y la aserción del sujeto falla si se cambia el repositorio. **No verificado:** el `apply` contra Azure (el
+esquema de `azurerm` 5.13 exige `user_assigned_identity_id` en la credencial federada; se tomó del esquema real, no de
+memoria) ni el inicio de sesión desde GitHub. Antes del `apply` hay que registrar `Microsoft.ManagedIdentity` y borrar a mano
+la identidad de prueba `id-alivia-deploy` (y su credencial `gh-staging`, si se creó), que no está en el estado de Terraform.
 
 ## 14. Referencias
 

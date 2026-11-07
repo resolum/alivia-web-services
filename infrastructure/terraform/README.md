@@ -5,15 +5,16 @@ arquitectura, secretos, región, riesgos) está en [`docs/operations/azure-deplo
 Aquí solo están los comandos.
 
 ```
-modules/        registry (ACR) | platform (plan + Web App) | postgres (servidor flexible) | mongodb-atlas
+modules/        registry (ACR) | platform (plan + Web App) | postgres (servidor flexible) | mongodb-atlas | deploy-identity (OIDC)
 environments/   shared (rg-alivia + ACR) | staging | production
 ```
 
 ## Antes de empezar (una vez)
 
 1. `az login` y `az account set --subscription <id>`; exportar `ARM_SUBSCRIPTION_ID`.
-2. Registrar los tres proveedores de recursos que se usan (Terraform no los registra solo):
-   `az provider register --namespace Microsoft.Web`, `Microsoft.ContainerRegistry` y `Microsoft.DBforPostgreSQL`.
+2. Registrar los cuatro proveedores de recursos que se usan (Terraform no los registra solo):
+   `az provider register --namespace Microsoft.Web`, `Microsoft.ContainerRegistry`, `Microsoft.DBforPostgreSQL` y
+   `Microsoft.ManagedIdentity` (esta última, para la identidad con la que GitHub despliega).
 3. Para MongoDB Atlas: `MONGODB_ATLAS_PUBLIC_KEY` y `MONGODB_ATLAS_PRIVATE_KEY` (clave de la organización) en el entorno de
    quien aplica. **Nunca** en un archivo.
 4. En cada raíz: `cp terraform.tfvars.example terraform.tfvars` y ajustar (el archivo no se versiona).
