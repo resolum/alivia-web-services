@@ -1,0 +1,7 @@
+# Copy to terraform.tfvars (which is never versioned) and adjust.
+
+# Region of everything except MongoDB Atlas. The deployment document explains how to choose it in a student subscription.
+location = "brazilsouth"
+
+# The only resource group of the project.
+resource_group_name = "rg-alivia"

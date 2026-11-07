@@ -37,3 +37,12 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Terraform ###
+# The state holds the generated database passwords: it never goes in the repository (see docs/operations/azure-deployment.md).
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+tfplan
+crash.log

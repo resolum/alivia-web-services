@@ -1,0 +1,25 @@
+# Copy to terraform.tfvars (which is never versioned) and adjust.
+
+location            = "brazilsouth"
+resource_group_name = "rg-alivia"
+
+# Output acr_name of the shared configuration.
+acr_name = "acralivia00000"
+
+# Id of the MongoDB Atlas organization (Atlas > Organization Settings). The API keys are NOT set here: they go in
+# MONGODB_ATLAS_PUBLIC_KEY and MONGODB_ATLAS_PRIVATE_KEY in the environment of whoever applies.
+atlas_organization_id = "000000000000000000000000"
+
+# M0 is the free tier and is only offered in some regions: East US is the closest one to Brazil South.
+atlas_region        = "US_EAST"
+atlas_instance_size = "M0"
+
+app_service_sku   = "B1"
+postgres_sku_name = "B_Standard_B1ms"
+
+# The highest PostgreSQL version the region offers (17 at least). Check with:
+#   az postgres flexible-server list-skus -l <location>
+postgres_version = "17"
+
+# Your public address, only while checking the database connections by hand. Remove it afterwards and apply again.
+# operator_ips = ["203.0.113.10"]

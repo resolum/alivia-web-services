@@ -1,0 +1,33 @@
+# What the image build needs is pom.xml and src/. Everything else stays out of the build context: it is smaller, the
+# layer cache is not invalidated by unrelated changes, and nothing local ends up inside the image.
+
+# Local development profile: it holds credentials and is not versioned. It must never be baked into an image.
+src/main/resources/application-dev.properties
+
+# Build output and local data
+target/
+backups/
+
+# Version control, editors and tooling
+.git
+.github
+.idea
+.vscode
+.mvn
+opencode/
+graphify-out/
+
+# Documentation, infrastructure and scripts are not part of the application
+docs/
+infrastructure/
+scripts/
+*.md
+LICENSE.md
+sonar-project.properties
+
+# The build itself
+Dockerfile
+.dockerignore
+compose.yaml
+mvnw
+mvnw.cmd
