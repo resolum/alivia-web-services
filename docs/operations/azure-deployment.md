@@ -35,7 +35,7 @@ criterios de finalización de §13 son una propuesta para validar con quien la a
 | Perfil `prod`: `ddl-auto=validate`, Flyway activo, Swagger apagado | **[Confirmado]** | `application-prod.properties` |
 | `server.port=${PORT}` sin valor por defecto en `prod` | **[Confirmado]** la aplicación **no arranca** si `PORT` no está definida | `application-prod.properties` |
 | Sonda de salud pública `/actuator/health` (y `/actuator/info`) | **[Confirmado]**; con `show-details=when_authorized` solo informa `UP`/`DOWN` | `WebSecurityConfiguration`, `application.properties` |
-| Esquema creado solo por Flyway (`V1`..`V18`), verificado contra PostgreSQL 17 y 18 | **[Confirmado]** | `docs/database-migrations.md` |
+| Esquema creado solo por Flyway (`V1`..`V20`; `docs/database-migrations.md` aún dice `V18`). `V1`..`V18` se verificaron contra PostgreSQL 17 y 18; `V1`..`V20` solo contra **PostgreSQL 18**, con la imagen de `prod` (2026-11-07: 20 migraciones, 0 fallidas, `ddl-auto=validate` correcto) | **[Confirmado]** | `docs/database-migrations.md`, prueba local |
 | Detrás de un proxy hay que fijar `server.forward-headers-strategy`, o el límite de intentos de las credenciales de los edge cuenta a todos los clientes como uno | **[Confirmado]** | `application.properties`, `EdgeFailedAttemptsLimiter` |
 | Documentación antigua que menciona Oracle OCI como nube de despliegue | **[Confirmado]** contradice a TS-41/TS-42 (Azure); queda registrada como C-03 | `opencode/PROJECT_CONTEXT.md` |
 
@@ -465,7 +465,7 @@ Obligatorias (no tienen valor por defecto en `prod`) **[Confirmado]**:
 | `MONGODB_DATABASE` | variable | nombre de la base en Atlas |
 | `IAM_JWT_SECRET` | secreto | al menos 32 bytes |
 | `CORS_ALLOWED_ORIGINS` | variable | origen(es) del frontend |
-| `IAM_EMAIL_VERIFICATION_LINK_BASE_URL` | variable | URL del frontend para verificar correo |
+| `IAM_EMAIL_VERIFICATION_LINK_BASE_URL` | variable | URL del frontend. La aplicación sigue exigiéndola para arrancar (`TokenServiceImpl`), pero desde #52 el correo de verificación lleva un código de 6 dígitos y ya no la usa |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | secretos | usar claves de prueba en staging |
 | `STRIPE_PUBLISHABLE_KEY` | variable | clave pública por diseño; de prueba en staging |
 | `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | secretos | |
@@ -579,7 +579,7 @@ si los créditos se agotan, la primera palanca es **apagar staging** cuando no s
 | R-16 | Un entorno de GitHub que no existe se crea solo en la primera ejecución, **sin revisores** | El primer despliegue a `production` sale sin aprobación | Crear `production` con revisores y rama `main` antes de ejecutar nada (§11.1, paso 3). El workflow no puede comprobarlo por sí mismo |
 | R-17 | Las acciones de terceros reciben un token de Azure y publican imágenes; `trivy-action` ya fue comprometida (marzo de 2026) | Ejecución de código ajeno con acceso a Azure | Fijadas por SHA de commit (§7.2); revisar las notas de cada release antes de cambiar un SHA |
 | R-19 | El dominio gratuito de GitHub Education es de **duración limitada** (en la página del paquete: Namecheap `.me` y `.TECH`, un año; Name.com sin duración indicada) y el correo depende de él (D-12) | Al caducar, Resend deja de poder enviar y **nadie se puede registrar**; también el frontend, si usa el mismo dominio | Anotar la fecha de vencimiento y la persona que administra el DNS; recordatorio en un calendario con semanas de margen |
-| R-20 | Resend: el plan gratuito permite 100 correos al día y 3.000 al mes; sin dominio verificado solo envía a la dirección de la propia cuenta (403) | Al agotar la cuota el alta falla; con un remitente no verificado, nadie recibe nada | Verificar el dominio antes de abrir el acceso; vigilar el uso; plan de pago si crece. La aplicación solo registra la clase de la excepción: el motivo se consulta en el panel de Resend |
+| R-20 | Resend: el plan gratuito permite 100 correos al día y 3.000 al mes; sin dominio verificado solo envía a la dirección de la propia cuenta (403) | Al agotar la cuota el alta falla; con un remitente no verificado, nadie recibe nada | Verificar el dominio antes de abrir el acceso; vigilar el uso; plan de pago si crece. La aplicación solo registra la clase de la excepción: el motivo se consulta en el panel de Resend. Desde #52 `forgot-password` es una ruta **pública** que envía correo: cualquiera puede consumir la cuota llamándola con cuentas existentes (cada cuenta tiene un enfriamiento de 60 s por defecto; no se buscó ningún límite global por IP ni por total), y si el envío falla la API responde 202 igualmente, sin error visible |
 | R-18 | `workflow_dispatch` solo funciona con el workflow en la rama por defecto (`main`) **[Confirmado en la documentación de GitHub]**, y fusionar el workflow en `main` lanza un despliegue a `production` (el archivo coincide con el filtro de rutas) | No se puede probar con `workflow_dispatch` ni promover una imagen hasta fusionar a `main`; esa fusión pide aprobar un despliegue a `production` que quizá no esté listo | Probar primero fusionando en `develop` (el `push` usa el workflow del commit); fusionar a `main` solo con `production` aplicado y cargado, o rechazar esa ejecución (runbook, sección 4) |
 | R-14 | Atlas rechaza `backupEnabled` en un clúster M0, incluso con `false` (`TENANT_ATTRIBUTE_READ_ONLY`). **Ocurrió** en el paso 3 y está corregido: el módulo no envía el atributo en M0 | `apply` fallido a medias | `terraform test` usa proveedores simulados y **no detecta reglas de la API de Atlas ni de Azure**: solo un `apply` real lo comprueba. Al crear `production` hay que esperar los mismos tipos de fallo |
 | R-15 | La Web App tiene 31 IP de salida posibles; PostgreSQL y Atlas reciben una regla por cada una (§6.3) | Ruido y más superficie de acceso de la necesaria | Decisión deliberada frente a R-06; revisable si molesta |
@@ -674,6 +674,22 @@ y con envío de prueba, límites del plan gratuito) se tomaron de su documentaci
 verificación del dominio, los registros DNS exactos y el tiempo que tarda, las regiones disponibles, el nombre exacto del
 remitente de prueba, que la clave pueda limitarse a un dominio, y cualquier envío real. **Pendiente de la persona
 asignada:** qué dominio es, quién administra su DNS, su fecha de vencimiento y la cuenta de Resend.
+
+**Fusión de `develop` en esta rama analizada el 2026-11-07 (corrige el párrafo anterior en lo del correo).** La rama contiene
+ya todo `origin/develop` (fusión `a547891`), así que la entrega a `develop` no puede dar conflictos de texto; la fusión trajo
+33 archivos y ninguno de infraestructura, workflows, scripts, `Dockerfile` ni de la documentación de despliegue. Entró un solo
+commit de `develop` (#52, restablecer contraseña con códigos de 6 dígitos), con tres efectos **[Confirmado]**: (1) dos
+migraciones nuevas, `V19` y `V20` (columnas nuevas en `users`; numeración 1 a 20 sin huecos ni duplicados); (2) una ruta
+protegida nueva (`PATCH /api/v1/auth/change-password`) y rutas públicas nuevas (`forgot-password`, `reset-password`, que ya
+caían bajo `/auth/**`); (3) **un tercer correo** y un cambio en el de verificación, que pasó de enlace a código (§9.3).
+**Verificado con la imagen construida desde el código fusionado, perfil `prod`, PostgreSQL 18 y MongoDB desechables:** llega
+a `UP` en unos 12 s, aplica 20 migraciones con 0 fallidas, las cuatro columnas nuevas existen y las cuatro comprobaciones de
+`deploy.sh` siguen dando lo esperado (`/actuator/info` 200, `/api/v1/plans` 200, `/v3/api-docs` 404, `/api/v1/devices` 401);
+`forgot-password` responde 202, `reset-password` con datos inválidos 400 y `change-password` sin sesión 401. **Sin cambios en
+`deploy.sh` ni en el workflow:** no se añadió ninguna variable obligatoria (la única propiedad nueva,
+`alivia.iam.password-reset.expiration-minutes`, tiene valor por defecto de 60). **No verificado:** `V19` y `V20` contra
+PostgreSQL 17, las pruebas de Maven del código fusionado (las ejecutará el CI del pull request) y un envío real de correo.
+Pendiente de quien mantiene ese documento: `docs/database-migrations.md` y `docs/data-integrity.md` siguen diciendo `V18`.
 
 **Paso 6 redactado el 2026-11-06, sin ejecutar.** Se escribió `docs/operations/azure-first-deployment-runbook.md`: crear los
 entornos de GitHub y sus protecciones (interfaz y `gh`), la tabla de cada variable (22 obligatorias, 8 secretos y 14

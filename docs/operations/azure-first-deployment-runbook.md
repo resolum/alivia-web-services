@@ -112,7 +112,7 @@ definido: `deploy.sh` se detiene y lista los **nombres** que faltan, nunca los v
 | `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | **secretos** | Panel de Cloudinary | |
 | `CLOUDINARY_CLOUD_NAME` | variable | Panel de Cloudinary | |
 | `CORS_ALLOWED_ORIGINS` | variable | URL(s) del frontend de ese entorno | Separadas por coma, con `https://`, **sin** barra final |
-| `IAM_EMAIL_VERIFICATION_LINK_BASE_URL` | variable | `<url del frontend>/verify-email` | Revisa la ruta real del frontend |
+| `IAM_EMAIL_VERIFICATION_LINK_BASE_URL` | variable | `<url del frontend>/verify-email` | La aplicación **sigue exigiéndola para arrancar**, pero el correo de verificación ya lleva un código y no un enlace (#52): hoy no aparece en ningún correo. Sirve cualquier URL válida del frontend |
 
 Opcionales que **sí conviene definir** (sin ellas la aplicación usa un valor pensado para desarrollo; `deploy.sh` avisa):
 
@@ -131,8 +131,14 @@ etc.) están en `OPTIONAL_APP_VARS` de `deploy.sh`; se definen solo si hay que c
 
 **Por qué importa.** La API no envía correo ella misma: se lo entrega a Resend. Si el envío falla, **falla también el
 alta**: el registro de usuarios y la invitación de personal devuelven error (`RegistrationUnavailableException`), y con
-`IAM_EMAIL_PROVIDER` sin definir (en `prod` es `unavailable`) falla siempre. Lo único que se envía hoy son el correo de
-verificación de cuenta y la invitación de personal.
+`IAM_EMAIL_PROVIDER` sin definir (en `prod` es `unavailable`) falla siempre. Hoy se envían **tres** correos (desde la
+fusión de `develop` del 2026-11-07, #52):
+
+| Correo | Contenido | Si el envío falla |
+|---|---|---|
+| Verificación de cuenta (registro) | **Código de 6 dígitos** (antes era un enlace) | El registro devuelve error |
+| Invitación de personal | Enlace de activación (usa `IAM_ACCOUNT_ACTIVATION_LINK_BASE_URL`) | La invitación devuelve error |
+| Restablecer contraseña (`forgot-password`) | Código de 6 dígitos | **No avisa**: responde 202 igualmente y solo escribe `Password reset email delivery failed` en el registro. Se comprobó con la imagen real |
 
 **Reglas de Resend** (de su documentación, consultada el 2026-11-07):
 
@@ -166,8 +172,12 @@ vencimiento y ponla en un calendario**: si el dominio caduca, el DNS deja de res
    un remitente con nombre visible (`Alivia <...>`, que Resend rechazaría porque la aplicación ya añade el nombre) y avisa
    si el remitente es el predeterminado `alivia.com` o si la clave no empieza por `re_`. Con `smtp`, `log` o un valor
    desconocido no despliega.
-7. **Prueba de extremo a extremo** tras el primer despliegue: registra un usuario con tu propio correo, comprueba que llega
-   la verificación y que el enlace apunta al frontend (no a `localhost`: revisa `IAM_EMAIL_VERIFICATION_LINK_BASE_URL`).
+7. **Prueba de extremo a extremo** tras el primer despliegue, con tu propio correo:
+   - **Registro:** debe llegar un **código de 6 dígitos**; comprueba que se puede verificar la cuenta con él.
+   - **Olvidé mi contraseña** con esa cuenta: debe llegar otro código. Esta prueba es la importante, porque si el envío
+     falla la API responde 202 igualmente y **no hay ningún error visible**.
+   - **Invitación de personal:** el enlace debe apuntar al frontend y no a `localhost` (revisa
+     `IAM_ACCOUNT_ACTIVATION_LINK_BASE_URL`).
 
 **Mientras el dominio no esté verificado** (solo para probar el flujo de alta con **tu** correo, el de la cuenta de Resend):
 Resend ofrece un remitente de prueba de su propio dominio, normalmente `onboarding@resend.dev`; no se verificó su nombre
@@ -179,6 +189,7 @@ verificado antes de dar acceso a otras personas.
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
 | El registro responde con error y el registro de la aplicación dice `Verification email delivery failed for account id ...` | El envío falló. **La aplicación solo escribe la clase de la excepción**; el motivo (403, 429...) está en el panel de Resend | *Resend → Logs* (o *Emails*) y busca el intento; `az webapp log tail` para ver la hora |
+| El código de «olvidé mi contraseña» no llega, aunque la API respondió 202 | El envío falló y la API lo oculta a propósito (no revela si la cuenta existe) | Busca `Password reset email delivery failed` en `az webapp log tail`, y el motivo en *Resend → Logs* |
 | 403 `domain is not verified` en Resend | El remitente usa un dominio sin verificar, o es el predeterminado `alivia.com` | Verifica el dominio o corrige `IAM_EMAIL_FROM` |
 | 403 `only send testing emails to your own email address` | Se envía con el remitente de prueba o con un dominio sin verificar | Verifica el dominio |
 | 429 o error tras muchos envíos | Se alcanzó el límite diario del plan gratuito | Espera al día siguiente o pasa de plan |
