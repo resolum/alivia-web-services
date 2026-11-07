@@ -580,6 +580,7 @@ si los créditos se agotan, la primera palanca es **apagar staging** cuando no s
 | R-17 | Las acciones de terceros reciben un token de Azure y publican imágenes; `trivy-action` ya fue comprometida (marzo de 2026) | Ejecución de código ajeno con acceso a Azure | Fijadas por SHA de commit (§7.2); revisar las notas de cada release antes de cambiar un SHA |
 | R-19 | El dominio gratuito de GitHub Education es de **duración limitada** (en la página del paquete: Namecheap `.me` y `.TECH`, un año; Name.com sin duración indicada) y el correo depende de él (D-12) | Al caducar, Resend deja de poder enviar y **nadie se puede registrar**; también el frontend, si usa el mismo dominio | Anotar la fecha de vencimiento y la persona que administra el DNS; recordatorio en un calendario con semanas de margen |
 | R-20 | Resend: el plan gratuito permite 100 correos al día y 3.000 al mes; sin dominio verificado solo envía a la dirección de la propia cuenta (403) | Al agotar la cuota el alta falla; con un remitente no verificado, nadie recibe nada | Verificar el dominio antes de abrir el acceso; vigilar el uso; plan de pago si crece. La aplicación solo registra la clase de la excepción: el motivo se consulta en el panel de Resend. Desde #52 `forgot-password` es una ruta **pública** que envía correo: cualquiera puede consumir la cuota llamándola con cuentas existentes (cada cuenta tiene un enfriamiento de 60 s por defecto; no se buscó ningún límite global por IP ni por total), y si el envío falla la API responde 202 igualmente, sin error visible |
+| R-21 | La compuerta de Trivy (§7.2) bloquea el despliegue cuando aparece una vulnerabilidad CRITICAL o HIGH **con corrección**, y aparecen continuamente, tanto en las librerías (BOM de Spring Boot) como en la imagen base | Un despliegue que funcionaba deja de publicarse sin haber tocado el código. **Ocurrió** en la primera ejecución del workflow (2026-11-07): 16 hallazgos | Es el comportamiento previsto, no se desactiva ni se ignora. Reproducirlo en local (runbook, 5.5), actualizar el parche de Spring Boot o la imagen base y volver a lanzar. Valorar Dependabot para Maven y Docker |
 | R-18 | `workflow_dispatch` solo funciona con el workflow en la rama por defecto (`main`) **[Confirmado en la documentación de GitHub]**, y fusionar el workflow en `main` lanza un despliegue a `production` (el archivo coincide con el filtro de rutas) | No se puede probar con `workflow_dispatch` ni promover una imagen hasta fusionar a `main`; esa fusión pide aprobar un despliegue a `production` que quizá no esté listo | Probar primero fusionando en `develop` (el `push` usa el workflow del commit); fusionar a `main` solo con `production` aplicado y cargado, o rechazar esa ejecución (runbook, sección 4) |
 | R-14 | Atlas rechaza `backupEnabled` en un clúster M0, incluso con `false` (`TENANT_ATTRIBUTE_READ_ONLY`). **Ocurrió** en el paso 3 y está corregido: el módulo no envía el atributo en M0 | `apply` fallido a medias | `terraform test` usa proveedores simulados y **no detecta reglas de la API de Atlas ni de Azure**: solo un `apply` real lo comprueba. Al crear `production` hay que esperar los mismos tipos de fallo |
 | R-15 | La Web App tiene 31 IP de salida posibles; PostgreSQL y Atlas reciben una regla por cada una (§6.3) | Ruido y más superficie de acceso de la necesaria | Decisión deliberada frente a R-06; revisable si molesta |
@@ -674,6 +675,24 @@ y con envío de prueba, límites del plan gratuito) se tomaron de su documentaci
 verificación del dominio, los registros DNS exactos y el tiempo que tarda, las regiones disponibles, el nombre exacto del
 remitente de prueba, que la clave pueda limitarse a un dominio, y cualquier envío real. **Pendiente de la persona
 asignada:** qué dominio es, quién administra su DNS, su fecha de vencimiento y la cuenta de Resend.
+
+**La compuerta de Trivy falló en la primera ejecución del workflow y se corrigió el 2026-11-07 (R-21).** El paso *Scan image*
+bloqueó la publicación y el despliegue, como está previsto. El resumen automático que se consultó solo mencionaba
+`jackson-databind`; reproducido en local con Trivy v0.70.0 (el de la acción), los hallazgos eran **16**: 4 CRITICAL en
+`tomcat-embed-core` 11.0.24, 5 HIGH en Jackson 2 (2.21.5), 5 HIGH en Jackson 3 (3.1.5) y 1 HIGH en `apt`/`libapt-pkg7.0` 3.2.0 de
+la imagen base Ubuntu. **Corrección aplicada:** `pom.xml`, Spring Boot 4.1.1 → **4.1.2** (su BOM gestiona Tomcat 11.0.27,
+Jackson 3.1.7 y Jackson 2.21.7; las notas de la versión solo listan correcciones de errores) y `Dockerfile`, una línea `RUN`
+que actualiza solo `apt` y `libapt-pkg7.0` (la imagen base más reciente, con `--pull`, seguía teniendo el aviso de `apt`; cuando
+se actualice, esa línea no hace nada y puede quitarse). **Verificado:** Trivy con el mismo criterio del workflow da **0
+hallazgos y código de salida 0** (sistema y jar); la imagen corregida arranca en modo `prod` contra PostgreSQL 18 y MongoDB
+desechables (`UP` en unos 15 s, Tomcat 11.0.27, proceso como usuario `alivia`, 20 migraciones sin fallos, rutas de
+`deploy.sh` como siempre); las pruebas de Maven con 4.1.2 dan 1.755 ejecutadas, **0 fallos** y 35 errores, todos en las ocho
+clases de `integration`, causados por «Previous attempts to find a Docker environment failed» (esa ejecución no tenía acceso a
+Docker), por lo que **no cuentan como verificación de esas pruebas**. **Segunda pasada, con acceso a Docker y
+`-Dalivia.tests.require-docker=true` (que hace fallar la prueba en vez de omitirla si no hay Docker): 40 pruebas de
+integración, 0 fallos, 0 errores, 0 omitidas, `BUILD SUCCESS`** (incluidas las 6 de `FlywaySchemaOnPostgresTest`, que arrancan
+la aplicación sobre PostgreSQL 18 con las 20 migraciones). Con esto, las 1.755 pruebas de Maven pasan con Spring Boot 4.1.2.
+**Pendiente:** el análisis dentro del propio workflow, y que el CI del pull request lo confirme en su entorno.
 
 **Fusión de `develop` en esta rama analizada el 2026-11-07 (corrige el párrafo anterior en lo del correo).** La rama contiene
 ya todo `origin/develop` (fusión `a547891`), así que la entrega a `develop` no puede dar conflictos de texto; la fusión trajo
