@@ -31,6 +31,22 @@ public class CareActivityRepositoryImpl implements CareActivityRepository {
      * {@inheritDoc}
      */
     @Override
+    public CareActivity save(CareActivity careActivity) {
+        return persistenceRepository.save(careActivity);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Optional<CareActivity> findById(Long id) {
+        return persistenceRepository.findByIdWithAssignments(id);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     public List<CareActivity> findAllByAssistedPersonProfileIds(Collection<PersonProfileId> assistedPersonProfileIds) {
         if (assistedPersonProfileIds.isEmpty()) {
             return List.of();
@@ -45,5 +61,13 @@ public class CareActivityRepositoryImpl implements CareActivityRepository {
     @Override
     public Optional<CareActivity> findByAssignmentId(Long assignmentId) {
         return persistenceRepository.findByAssignmentId(assignmentId);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void delete(CareActivity careActivity) {
+        persistenceRepository.delete(careActivity);
     }
 }

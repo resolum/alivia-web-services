@@ -32,4 +32,14 @@ public interface CareActivityPersistenceRepository extends JpaRepository<CareAct
     @Query("select distinct a from CareActivity a left join fetch a.activityAssignments.activityAssignments "
             + "where exists (select 1 from ActivityAssignment x where x.careActivity = a and x.id = :assignmentId)")
     Optional<CareActivity> findByAssignmentId(Long assignmentId);
+
+    /**
+     * Finds the activity with its assignments loaded by its identifier.
+     *
+     * @param id the activity identifier
+     * @return the activity, or empty when not found
+     */
+    @Query("select distinct a from CareActivity a left join fetch a.activityAssignments.activityAssignments "
+            + "where a.id = :id")
+    Optional<CareActivity> findByIdWithAssignments(Long id);
 }
