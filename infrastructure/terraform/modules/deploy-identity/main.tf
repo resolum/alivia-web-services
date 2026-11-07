@@ -23,6 +23,27 @@ variable "github_repository" {
   }
 }
 
+variable "github_owner_id" {
+  description = <<-EOT
+    GitHub's numeric id of the repository owner. Set it together with github_repository_id when GitHub presents the
+    immutable form of the subject (owner@id/repo@id), which survives a rename or a transfer of the repository. Look
+    at the "subject claim" the sign-in step prints, or at https://api.github.com/repos/<owner>/<repository>.
+  EOT
+  type        = number
+  default     = null
+}
+
+variable "github_repository_id" {
+  description = "GitHub's numeric id of the repository (see github_owner_id). Null together with github_owner_id: the classic subject."
+  type        = number
+  default     = null
+
+  validation {
+    condition     = (var.github_owner_id == null) == (var.github_repository_id == null)
+    error_message = "github_owner_id and github_repository_id are set together or not at all."
+  }
+}
+
 variable "github_environment" {
   description = "GitHub environment (staging or production). Only jobs that run in it can sign in as this identity."
   type        = string
@@ -54,13 +75,24 @@ resource "azurerm_user_assigned_identity" "this" {
   tags                = var.tags
 }
 
+# GitHub presents the subject in one of two forms and Azure compares it literally: repo:owner/name:environment:<env> or,
+# with immutable ids, repo:owner@<owner id>/name@<repository id>:environment:<env>. A mismatch is rejected with
+# AADSTS700213 "No matching federated identity record".
+locals {
+  repository_parts = split("/", var.github_repository)
+  subject_repository = var.github_owner_id != null ? join("/", [
+    "${local.repository_parts[0]}@${var.github_owner_id}",
+    "${local.repository_parts[1]}@${var.github_repository_id}",
+  ]) : var.github_repository
+}
+
 # One credential, for one GitHub environment: a job of another environment (or of a pull request) is refused. Production
 # also requires the approval configured on its GitHub environment before the job starts.
 resource "azurerm_federated_identity_credential" "github" {
   name                      = "github-${var.github_environment}"
   user_assigned_identity_id = azurerm_user_assigned_identity.this.id
   issuer                    = "https://token.actions.githubusercontent.com"
-  subject                   = "repo:${var.github_repository}:environment:${var.github_environment}"
+  subject                   = "repo:${local.subject_repository}:environment:${var.github_environment}"
   audience                  = ["api://AzureADTokenExchange"]
 }
 

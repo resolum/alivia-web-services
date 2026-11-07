@@ -348,8 +348,8 @@ concreto, así que no hay secreto que guardar ni rotar.
 
 | Identidad | Roles | Quién puede iniciar sesión (sujeto de la credencial federada) |
 |---|---|---|
-| `id-alivia-staging-deploy` | `AcrPush` sobre el ACR; `Website Contributor` sobre la Web App de staging | `repo:resolum/alivia-web-services:environment:staging` |
-| `id-alivia-production-deploy` | `AcrPush` sobre el ACR; `Website Contributor` sobre la Web App de production | `repo:resolum/alivia-web-services:environment:production` |
+| `id-alivia-staging-deploy` | `AcrPush` sobre el ACR; `Website Contributor` sobre la Web App de staging | `repo:resolum@298395203/alivia-web-services@1411127236:environment:staging` |
+| `id-alivia-production-deploy` | `AcrPush` sobre el ACR; `Website Contributor` sobre la Web App de production | `repo:resolum@298395203/alivia-web-services@1411127236:environment:production` |
 
 - **Una identidad por entorno, no una compartida.** Con una sola identidad con roles sobre las dos Web Apps, un trabajo de
   `staging` podría iniciar sesión con ella y desplegar en `production`, saltándose la aprobación de ese entorno. Con una por
@@ -360,9 +360,18 @@ concreto, así que no hay secreto que guardar ni rotar.
 - **El workflow** necesita `permissions: id-token: write` y usa `azure/login` con `client-id`, `tenant-id` y
   `subscription-id`. Los tres son identificadores y van como **variables** del entorno de GitHub, no como secretos; salen de
   `terraform output` (§9.2). Ya no existe `AZURE_CLIENT_SECRET`.
-- **Repositorio:** la variable `github_repository` de Terraform vale `resolum/alivia-web-services` por defecto. Si el
-  repositorio cambia de dueño o de nombre, hay que cambiarla y volver a aplicar, porque Azure compara el sujeto
-  literalmente.
+- **El sujeto lleva identificadores numéricos [Confirmado, falló en la primera ejecución real].** GitHub presenta el sujeto
+  en la forma con identificadores inmutables, `repo:<dueño>@<id del dueño>/<repositorio>@<id del repositorio>:environment:<entorno>`,
+  y no en la clásica `repo:<dueño>/<repositorio>:environment:<entorno>` que se había configurado: Azure respondió
+  `AADSTS700213 No matching federated identity record` (el emisor y la audiencia coincidían; solo difería el sujeto). Los
+  identificadores son los de la API pública de GitHub (`https://api.github.com/repos/resolum/alivia-web-services`: repositorio
+  `1411127236`, organización `298395203`) y coinciden con los del mensaje de error. Se pasan a Terraform con las variables
+  `github_owner_id` y `github_repository_id` (por defecto, los de este repositorio); si ambas son `null`, el módulo usa la
+  forma clásica, y solo se admite poner las dos o ninguna. Ventaja: **un cambio de nombre o de dueño del repositorio ya no
+  rompe el acceso**, porque los identificadores no cambian; si el repositorio se **recrea** (otro id), hay que actualizar los
+  dos números y volver a aplicar. Azure compara el sujeto literalmente, así que **el valor correcto es el que imprime el
+  paso *Sign in to Azure* («subject claim»)**, no el que se deduce del nombre. Cambiar el sujeto es una actualización en el
+  sitio (el `plan` real sobre `staging` mostró 1 cambio, 0 altas y 0 bajas).
 - **[Pendiente]** El `apply` real de la identidad y de su credencial federada, el inicio de sesión desde GitHub y los
   permisos efectivos de estos dos roles sobre `az acr repository show` y `az webapp config set` no están verificados: se
   comprueban con el primer `apply` y con el primer despliegue desde el workflow (paso 5).
@@ -675,6 +684,22 @@ y con envío de prueba, límites del plan gratuito) se tomaron de su documentaci
 verificación del dominio, los registros DNS exactos y el tiempo que tarda, las regiones disponibles, el nombre exacto del
 remitente de prueba, que la clave pueda limitarse a un dominio, y cualquier envío real. **Pendiente de la persona
 asignada:** qué dominio es, quién administra su DNS, su fecha de vencimiento y la cuenta de Resend.
+
+**El inicio de sesión OIDC falló en la primera ejecución real y se corrigió el 2026-11-07 (§7.3).** Los pasos anteriores
+(variables, construcción y análisis de Trivy) ya habían pasado. `azure/login` respondió `AADSTS700213 No matching federated
+identity record found` porque GitHub presentó el sujeto con identificadores numéricos
+(`repo:resolum@298395203/alivia-web-services@1411127236:environment:staging`) y la credencial federada, creada por Terraform
+y comprobada en Azure, tenía la forma clásica (`repo:resolum/alivia-web-services:environment:staging`). Se había marcado
+como **no verificado** que el inicio de sesión desde GitHub funcionara (§7.3, paso 5); es el primer fallo real de esa
+parte y se debió a deducir el formato del sujeto en lugar de leerlo de un token real. **Corrección:** el módulo
+`deploy-identity` acepta `github_owner_id` y `github_repository_id` (por defecto, los de este repositorio, comprobados contra
+la API pública de GitHub) y los usa en el sujeto; `staging` y `production` los pasan y sus pruebas esperan el nuevo sujeto.
+**Verificado:** `fmt`, `validate` y `test` pasan en `shared`, `staging` y `production`; la aserción del sujeto falla si el id
+no coincide y la validación rechaza poner un solo id; el `plan` sobre el estado real de `staging` (solo lectura, con
+`-target=module.deploy_identity`) muestra **1 cambio en el sitio, 0 altas y 0 bajas**, solo el `subject`. **Pendiente de la
+persona asignada:** `terraform apply` en `staging` y volver a ejecutar el trabajo fallido. **No verificado:** que el inicio
+de sesión funcione tras el cambio, y los permisos efectivos de los roles `AcrPush` y `Website Contributor` en `az acr
+login`, `docker push` y `az webapp config set`, que son lo siguiente que ejercitará el workflow.
 
 **El workflow de pruebas falló con `AssetSynchronizationEventHandlerTest` y se corrigió el 2026-11-07.** La prueba
 `aFailureToNotifyNeverReachesTheCallerAndIsLogged` esperaba un evento de log y recibía cero (`expected: <1> but was: <0>`);
