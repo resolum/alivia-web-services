@@ -93,6 +93,27 @@ public class TokenServiceImpl implements BearerTokenService {
      * {@inheritDoc}
      */
     @Override
+    public GeneratedToken generateCode(String accountId) {
+        var code = String.format("%06d", secureRandom.nextInt(1_000_000));
+        var expiresAt = LocalDateTime.now(clock).plusHours(expirationHours);
+        return new GeneratedToken(code, new EmailVerificationToken(sha256(accountId + ":" + code), expiresAt));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean matchesCode(String accountId, String code, String expectedHash) {
+        if (accountId == null || code == null || !code.matches("\\d{6}")) {
+            return false;
+        }
+        return matches(accountId + ":" + code, expectedHash);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     public String buildVerificationLink(String rawToken) {
         if (rawToken == null || rawToken.isBlank()) {
             throw new IllegalArgumentException("Verification token is required.");

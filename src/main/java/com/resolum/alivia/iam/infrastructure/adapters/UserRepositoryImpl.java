@@ -65,6 +65,14 @@ public class UserRepositoryImpl implements UserRepository {
      * {@inheritDoc}
      */
     @Override
+    public Optional<User> findByEmailForUpdate(EmailAddress email) {
+        return persistenceRepository.findLockedByEmail(email.email());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     public Optional<User> findByRefreshTokenHash(String tokenHash) {
         return persistenceRepository.findByRefreshTokenHash(tokenHash);
     }

@@ -11,8 +11,11 @@ import com.resolum.alivia.iam.domain.exceptions.RegistrationUnavailableException
 import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationTokenExpiredException;
 import com.resolum.alivia.iam.domain.model.aggregates.User;
+import com.resolum.alivia.iam.domain.model.commands.ChangePasswordCommand;
+import com.resolum.alivia.iam.domain.model.commands.ForgotPasswordCommand;
 import com.resolum.alivia.iam.domain.model.commands.RefreshSessionCommand;
 import com.resolum.alivia.iam.domain.model.commands.ResendVerificationCommand;
+import com.resolum.alivia.iam.domain.model.commands.ResetPasswordCommand;
 import com.resolum.alivia.iam.domain.model.commands.SignInCommand;
 import com.resolum.alivia.iam.domain.model.commands.SignOutCommand;
 import com.resolum.alivia.iam.domain.model.commands.SignUpCommand;
@@ -22,12 +25,14 @@ import com.resolum.alivia.iam.domain.model.valueobjects.AuthSession;
 import com.resolum.alivia.iam.domain.model.valueobjects.UserStatus;
 import com.resolum.alivia.iam.domain.model.queries.GetUserByAccountIdQuery;
 import com.resolum.alivia.iam.domain.services.UserCommandService;
+import com.resolum.alivia.iam.domain.services.PasswordResetService;
 import com.resolum.alivia.iam.domain.services.UserQueryService;
 import com.resolum.alivia.iam.interfaces.rest.controllers.AuthenticationController;
 import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import com.resolum.alivia.shared.interfaces.rest.GlobalExceptionHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
@@ -46,6 +51,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -79,8 +85,9 @@ class AuthenticationControllerTest {
 
         private final UserCommandService commandService = mock(UserCommandService.class);
         private final UserQueryService queryService = mock(UserQueryService.class);
+        private final PasswordResetService passwordResetService = mock(PasswordResetService.class);
         private final MockMvc mvc = MockMvcBuilders
-                        .standaloneSetup(new AuthenticationController(commandService, queryService))
+                        .standaloneSetup(new AuthenticationController(commandService, queryService, passwordResetService))
                         .setControllerAdvice(new GlobalExceptionHandler())
                         .build();
 
@@ -195,7 +202,7 @@ class AuthenticationControllerTest {
 
                 mvc.perform(post(VERIFY_EMAIL_PATH)
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"token\":\"raw-token\"}"))
+                                .content("{\"email\":\"maria.lopez@example.com\",\"code\":\"482915\"}"))
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.accessToken").value("access-token"))
                                 .andExpect(jsonPath("$.refreshToken").value("refresh-token"))
@@ -211,7 +218,7 @@ class AuthenticationControllerTest {
 
                 mvc.perform(post(VERIFY_EMAIL_PATH)
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"token\":\"invented\"}"))
+                                .content("{\"email\":\"maria.lopez@example.com\",\"code\":\"000000\"}"))
                                 .andExpect(status().isBadRequest())
                                 .andExpect(jsonPath("$.code").value("verification_token_invalid"))
                                 .andExpect(jsonPath("$.errors").isEmpty());
@@ -224,7 +231,7 @@ class AuthenticationControllerTest {
 
                 mvc.perform(post(VERIFY_EMAIL_PATH)
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"token\":\"expired\"}"))
+                                .content("{\"email\":\"maria.lopez@example.com\",\"code\":\"482915\"}"))
                                 .andExpect(status().isBadRequest())
                                 .andExpect(jsonPath("$.code").value("verification_token_expired"))
                                 .andExpect(jsonPath("$.errors").isEmpty());
@@ -407,5 +414,31 @@ class AuthenticationControllerTest {
                 var request = multipart(SIGN_UP_PATH);
                 form.forEach(request::param);
                 return request;
+        }
+
+        @Test
+        void forgotAndResetPasswordDelegateToThePasswordResetService() throws Exception {
+                mvc.perform(post("/api/v1/auth/forgot-password").contentType(MediaType.APPLICATION_JSON).content(RESEND_BODY))
+                                .andExpect(status().isAccepted());
+                verify(passwordResetService).handle(new ForgotPasswordCommand("maria.lopez@example.com"));
+
+                mvc.perform(post("/api/v1/auth/reset-password").contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                                {"email": "maria.lopez@example.com", "code": "482915", "password": "Strong1!"}
+                                                """))
+                                .andExpect(status().isNoContent());
+                verify(passwordResetService).handle(new ResetPasswordCommand("maria.lopez@example.com", "482915", "Strong1!"));
+
+                mvc.perform(post("/api/v1/auth/reset-password").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                                .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        void changePasswordUsesTheAuthenticatedUser() throws Exception {
+                mvc.perform(patch("/api/v1/auth/change-password").principal(new UsernamePasswordAuthenticationToken("7", null))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"currentPassword\": \"Actual1!\", \"newPassword\": \"Strong1!\"}"))
+                                .andExpect(status().isNoContent());
+                verify(passwordResetService).handle(new ChangePasswordCommand(7L, "Actual1!", "Strong1!"));
         }
 }

@@ -51,6 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -65,9 +66,8 @@ class UserCommandServiceTest {
         private static final LocalDateTime NOW = LocalDateTime.now(CLOCK);
         private static final String EMAIL = "maria.lopez@example.com";
         private static final String PASSWORD = "Strong1!";
-        private static final String RAW_TOKEN = "raw-token";
+        private static final String CODE = "482915";
         private static final String TOKEN_HASH = "token-hash";
-        private static final String VERIFICATION_LINK = "http://localhost:5173/verify-email?token=" + RAW_TOKEN;
 
         private final UserRepository userRepository = mock(UserRepository.class);
         private final HashingService hashingService = mock(HashingService.class);
@@ -198,7 +198,7 @@ class UserCommandServiceTest {
                 assertEquals(NOW.plusHours(24), result.getPendingEmailVerificationToken().expiresAt());
                 verify(hashingService).encode(PASSWORD);
                 verify(profilesService).createProfile(42L, EMAIL, AccessRole.CAREGIVER, new ProfileData("Maria", "Lopez", "+51987654321"));
-                verify(emailService).sendVerificationEmail(EMAIL, VERIFICATION_LINK);
+                verify(emailService).sendVerificationEmail(EMAIL, CODE);
                 verify(userRepository).save(any(User.class));
         }
 
@@ -284,17 +284,16 @@ class UserCommandServiceTest {
         @Test
         void verifiesEmailAndConsumesToken() {
                 var user = pendingUser(NOW.plusHours(1));
-                when(tokenService.hash(RAW_TOKEN)).thenReturn(TOKEN_HASH);
-                when(userRepository.findByEmailVerificationTokenHash(TOKEN_HASH))
+                when(userRepository.findByEmailForUpdate(new EmailAddress(EMAIL)))
                                 .thenReturn(Optional.of(user));
-                when(tokenService.matches(RAW_TOKEN, TOKEN_HASH)).thenReturn(true);
+                when(tokenService.matchesCode(anyString(), eq(CODE), eq(TOKEN_HASH))).thenReturn(true);
                 when(userRepository.save(user)).thenAnswer(invocation -> {
                         assignId(invocation.getArgument(0), 42L);
                         return invocation.getArgument(0);
                 });
                 stubSessionTokens();
 
-                var result = service.handle(new VerifyEmailCommand(RAW_TOKEN));
+                var result = service.handle(new VerifyEmailCommand(EMAIL, CODE));
 
                 assertEquals(UserStatus.ACTIVE, result.user().getStatus());
                 assertTrue(result.user().getEmailVerified());
@@ -305,13 +304,30 @@ class UserCommandServiceTest {
         }
 
         @Test
-        void rejectsIncorrectToken() {
-                when(tokenService.hash("invented")).thenReturn("unknown-hash");
-                when(userRepository.findByEmailVerificationTokenHash("unknown-hash"))
-                                .thenReturn(Optional.empty());
+        void voidsTheCodeAfterFiveWrongAttempts() {
+                var user = pendingUser(NOW.plusHours(1));
+                when(userRepository.findByEmailForUpdate(new EmailAddress(EMAIL))).thenReturn(Optional.of(user));
+                when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+                when(tokenService.matchesCode(anyString(), eq("111111"), eq(TOKEN_HASH))).thenReturn(false);
+                when(tokenService.matchesCode(anyString(), eq(CODE), eq(TOKEN_HASH))).thenReturn(true);
+
+                for (int attempt = 0; attempt < User.MAX_CODE_ATTEMPTS; attempt++) {
+                        assertThrows(InvalidVerificationTokenException.class,
+                                        () -> service.handle(new VerifyEmailCommand(EMAIL, "111111")));
+                }
 
                 assertThrows(InvalidVerificationTokenException.class,
-                                () -> service.handle(new VerifyEmailCommand("invented")));
+                                () -> service.handle(new VerifyEmailCommand(EMAIL, CODE)));
+                assertEquals(UserStatus.PENDING_VERIFICATION, user.getStatus());
+                verify(userRepository, times(User.MAX_CODE_ATTEMPTS)).save(user);
+        }
+
+        @Test
+        void rejectsIncorrectToken() {
+                when(userRepository.findByEmailForUpdate(new EmailAddress(EMAIL))).thenReturn(Optional.empty());
+
+                assertThrows(InvalidVerificationTokenException.class,
+                                () -> service.handle(new VerifyEmailCommand(EMAIL, "000000")));
 
                 verify(userRepository, never()).save(any(User.class));
         }
@@ -319,7 +335,7 @@ class UserCommandServiceTest {
         @Test
         void rejectsBlankTokenWithoutQueryingPersistence() {
                 assertThrows(InvalidVerificationTokenException.class,
-                                () -> service.handle(new VerifyEmailCommand("   ")));
+                                () -> service.handle(new VerifyEmailCommand("   ", CODE)));
 
                 verifyNoInteractions(userRepository, tokenService);
         }
@@ -327,13 +343,12 @@ class UserCommandServiceTest {
         @Test
         void rejectsExpiredTokenAndKeepsAccountPending() {
                 var user = pendingUser(NOW.minusSeconds(1));
-                when(tokenService.hash(RAW_TOKEN)).thenReturn(TOKEN_HASH);
-                when(userRepository.findByEmailVerificationTokenHash(TOKEN_HASH))
+                when(userRepository.findByEmailForUpdate(new EmailAddress(EMAIL)))
                                 .thenReturn(Optional.of(user));
-                when(tokenService.matches(RAW_TOKEN, TOKEN_HASH)).thenReturn(true);
+                when(tokenService.matchesCode(anyString(), eq(CODE), eq(TOKEN_HASH))).thenReturn(true);
 
                 assertThrows(VerificationTokenExpiredException.class,
-                                () -> service.handle(new VerifyEmailCommand(RAW_TOKEN)));
+                                () -> service.handle(new VerifyEmailCommand(EMAIL, CODE)));
 
                 assertEquals(UserStatus.PENDING_VERIFICATION, user.getStatus());
                 assertNotNull(user.getPendingEmailVerificationToken());
@@ -343,17 +358,16 @@ class UserCommandServiceTest {
         @Test
         void rejectsReusedToken() {
                 var user = pendingUser(NOW.plusHours(1));
-                when(tokenService.hash(RAW_TOKEN)).thenReturn(TOKEN_HASH);
-                when(userRepository.findByEmailVerificationTokenHash(TOKEN_HASH))
+                when(userRepository.findByEmailForUpdate(new EmailAddress(EMAIL)))
                                 .thenReturn(Optional.of(user), Optional.empty());
-                when(tokenService.matches(RAW_TOKEN, TOKEN_HASH)).thenReturn(true);
+                when(tokenService.matchesCode(anyString(), eq(CODE), eq(TOKEN_HASH))).thenReturn(true);
                 when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
                 stubSessionTokens();
 
-                service.handle(new VerifyEmailCommand(RAW_TOKEN));
+                service.handle(new VerifyEmailCommand(EMAIL, CODE));
 
                 assertThrows(InvalidVerificationTokenException.class,
-                                () -> service.handle(new VerifyEmailCommand(RAW_TOKEN)));
+                                () -> service.handle(new VerifyEmailCommand(EMAIL, CODE)));
                 assertEquals(UserStatus.ACTIVE, user.getStatus());
                 verify(userRepository, times(2)).save(any(User.class));
         }
@@ -362,13 +376,12 @@ class UserCommandServiceTest {
         void rejectsVerificationForBlockedAccountWithPendingToken() {
                 var user = pendingUser(NOW.plusHours(1));
                 ReflectionTestUtils.setField(user, "status", UserStatus.BLOCKED);
-                when(tokenService.hash(RAW_TOKEN)).thenReturn(TOKEN_HASH);
-                when(userRepository.findByEmailVerificationTokenHash(TOKEN_HASH))
+                when(userRepository.findByEmailForUpdate(new EmailAddress(EMAIL)))
                                 .thenReturn(Optional.of(user));
-                when(tokenService.matches(RAW_TOKEN, TOKEN_HASH)).thenReturn(true);
+                when(tokenService.matchesCode(anyString(), eq(CODE), eq(TOKEN_HASH))).thenReturn(true);
 
                 assertThrows(AccountNotPendingVerificationException.class,
-                                () -> service.handle(new VerifyEmailCommand(RAW_TOKEN)));
+                                () -> service.handle(new VerifyEmailCommand(EMAIL, CODE)));
 
                 assertEquals(UserStatus.BLOCKED, user.getStatus());
                 assertNotNull(user.getPendingEmailVerificationToken());
@@ -448,7 +461,7 @@ class UserCommandServiceTest {
         void rejectsNullCommands() {
                 assertThrows(IllegalArgumentException.class, () -> service.handle((SignUpCommand) null));
                 assertThrows(InvalidVerificationTokenException.class, () -> service.handle((VerifyEmailCommand) null));
-                assertThrows(InvalidVerificationTokenException.class, () -> service.handle(new VerifyEmailCommand(null)));
+                assertThrows(InvalidVerificationTokenException.class, () -> service.handle(new VerifyEmailCommand(null, null)));
                 assertThrows(InvalidCredentialsException.class, () -> service.handle(new SignInCommand(EMAIL, null)));
                 assertThrows(InvalidRefreshTokenException.class, () -> service.handle((RefreshSessionCommand) null));
                 assertThrows(InvalidRefreshTokenException.class, () -> service.handle(new RefreshSessionCommand(null)));
@@ -474,16 +487,15 @@ class UserCommandServiceTest {
         @Test
         void rejectsVerificationWhenPendingTokenIsNullOrDoesNotMatch() {
                 var userWithoutToken = new User(new EmailAddress(EMAIL), new PasswordHash("bcrypt-hash"), AccessRole.CAREGIVER, NOW);
-                when(tokenService.hash(RAW_TOKEN)).thenReturn(TOKEN_HASH);
-                when(userRepository.findByEmailVerificationTokenHash(TOKEN_HASH)).thenReturn(Optional.of(userWithoutToken));
+                when(userRepository.findByEmailForUpdate(new EmailAddress(EMAIL))).thenReturn(Optional.of(userWithoutToken));
 
-                assertThrows(InvalidVerificationTokenException.class, () -> service.handle(new VerifyEmailCommand(RAW_TOKEN)));
+                assertThrows(InvalidVerificationTokenException.class, () -> service.handle(new VerifyEmailCommand(EMAIL, CODE)));
 
                 var userWithToken = pendingUser(NOW.plusHours(1));
-                when(userRepository.findByEmailVerificationTokenHash(TOKEN_HASH)).thenReturn(Optional.of(userWithToken));
-                when(tokenService.matches(RAW_TOKEN, TOKEN_HASH)).thenReturn(false);
+                when(userRepository.findByEmailForUpdate(new EmailAddress(EMAIL))).thenReturn(Optional.of(userWithToken));
+                when(tokenService.matchesCode(anyString(), eq(CODE), eq(TOKEN_HASH))).thenReturn(false);
 
-                assertThrows(InvalidVerificationTokenException.class, () -> service.handle(new VerifyEmailCommand(RAW_TOKEN)));
+                assertThrows(InvalidVerificationTokenException.class, () -> service.handle(new VerifyEmailCommand(EMAIL, CODE)));
         }
 
         @Test
@@ -497,7 +509,7 @@ class UserCommandServiceTest {
                 service.handle(new ResendVerificationCommand(EMAIL));
 
                 assertEquals(TOKEN_HASH, user.getPendingEmailVerificationToken().value());
-                verify(emailService).sendVerificationEmail(EMAIL, VERIFICATION_LINK);
+                verify(emailService).sendVerificationEmail(EMAIL, CODE);
                 assertEquals(60L, user.secondsUntilVerificationResend(NOW, java.time.Duration.ofSeconds(60)));
         }
 
@@ -543,9 +555,8 @@ class UserCommandServiceTest {
         private void stubSuccessfulRegistration() {
                 when(userRepository.existsByEmail(any(EmailAddress.class))).thenReturn(false);
                 when(hashingService.encode(PASSWORD)).thenReturn("bcrypt-hash");
-                when(tokenService.generate()).thenReturn(new EmailVerificationTokenService.GeneratedToken(
-                                RAW_TOKEN, new EmailVerificationToken(TOKEN_HASH, NOW.plusHours(24))));
-                when(tokenService.buildVerificationLink(RAW_TOKEN)).thenReturn(VERIFICATION_LINK);
+                when(tokenService.generateCode(anyString())).thenReturn(new EmailVerificationTokenService.GeneratedToken(
+                                CODE, new EmailVerificationToken(TOKEN_HASH, NOW.plusHours(24))));
                 when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
                         assignId(invocation.getArgument(0), 42L);
                         return invocation.getArgument(0);

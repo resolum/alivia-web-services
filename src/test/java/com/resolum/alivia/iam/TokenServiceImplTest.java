@@ -94,6 +94,18 @@ class TokenServiceImplTest {
     }
 
     @Test
+    void generatesSixDigitCodesBoundToTheAccount() {
+        var generated = service.generateCode("acc-1");
+
+        assertTrue(generated.rawToken().matches("\\d{6}"));
+        assertEquals(LocalDateTime.now(CLOCK).plusHours(24), generated.token().expiresAt());
+        assertTrue(service.matchesCode("acc-1", generated.rawToken(), generated.token().value()));
+        assertFalse(service.matchesCode("acc-2", generated.rawToken(), generated.token().value()));
+        assertFalse(service.matchesCode("acc-1", "12345", generated.token().value()));
+        assertFalse(service.matchesCode("acc-1", null, generated.token().value()));
+    }
+
+    @Test
     void buildsVerificationLink() {
         String link = service.buildVerificationLink("abc-123+xyz");
         assertEquals("https://alivia.app/verify?token=abc-123%2Bxyz", link);

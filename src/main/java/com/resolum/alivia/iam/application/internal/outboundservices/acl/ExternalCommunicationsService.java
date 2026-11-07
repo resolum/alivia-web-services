@@ -28,12 +28,17 @@ public class ExternalCommunicationsService {
     /**
      * Sends the account verification email.
      *
-     * @param email            the account email address
-     * @param verificationLink the link that contains the plain-text verification token
+     * @param email the account email address
+     * @param code  the plain-text 6-digit verification code
      * @throws IllegalStateException when the email cannot be delivered
      */
-    public void sendVerificationEmail(String email, String verificationLink) {
-        communicationsContextFacade.sendEmail(email, "verify-email", Map.of("link", verificationLink));
+    public void sendVerificationEmail(String email, String code) {
+        communicationsContextFacade.sendEmail(email, "verify-email", Map.of("code", code));
+    }
+
+    /** 6-digit code the owner of the account types to choose a new password. */
+    public void sendPasswordResetEmail(String email, String code) {
+        communicationsContextFacade.sendEmail(email, "reset-password", Map.of("code", code));
     }
 
     /** Invitation for new staff: the link opens the page where they create their password. */

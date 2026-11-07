@@ -114,10 +114,9 @@ class SignUpProfileIntegrationTest {
     @BeforeEach
     void stubCredentials() {
         when(hashingService.encode(anyString())).thenReturn("bcrypt-hash");
-        when(emailVerificationTokenService.generate()).thenAnswer(invocation -> new EmailVerificationTokenService.GeneratedToken(
+        when(emailVerificationTokenService.generateCode(anyString())).thenAnswer(invocation -> new EmailVerificationTokenService.GeneratedToken(
                 "raw-" + System.nanoTime(), new EmailVerificationToken("hash-" + System.nanoTime(),
                         LocalDateTime.now().plusHours(24))));
-        when(emailVerificationTokenService.buildVerificationLink(anyString())).thenReturn("http://localhost/verify");
         when(storageService.upload(JUAN_PHOTO, "juan.jpg")).thenReturn(Map.of(
                 "url", "https://res.cloudinary.com/demo/image/upload/v1/profiles/juan_1.jpg", "publicId", "profiles/juan_1"));
     }

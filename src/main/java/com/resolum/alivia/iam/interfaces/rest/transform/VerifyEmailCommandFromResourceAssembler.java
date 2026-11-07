@@ -18,6 +18,6 @@ public final class VerifyEmailCommandFromResourceAssembler {
      * @return the verify-email command
      */
     public static VerifyEmailCommand toCommandFromResource(VerifyEmailResource resource) {
-        return new VerifyEmailCommand(resource.token());
+        return new VerifyEmailCommand(resource.email(), resource.code());
     }
 }
