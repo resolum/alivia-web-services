@@ -89,6 +89,7 @@ public class WebSecurityConfiguration {
                         .requestMatchers(HttpMethod.POST, "/api/v1/appointments").permitAll()
                         .requestMatchers(HttpMethod.PUT, "/api/v1/appointments/holds/*").permitAll()
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/appointments/holds/*").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/households", "/api/v1/household").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/stripe").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
