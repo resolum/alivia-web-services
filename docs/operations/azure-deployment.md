@@ -676,6 +676,22 @@ verificación del dominio, los registros DNS exactos y el tiempo que tarda, las 
 remitente de prueba, que la clave pueda limitarse a un dominio, y cualquier envío real. **Pendiente de la persona
 asignada:** qué dominio es, quién administra su DNS, su fecha de vencimiento y la cuenta de Resend.
 
+**El workflow de pruebas falló con `AssetSynchronizationEventHandlerTest` y se corrigió el 2026-11-07.** La prueba
+`aFailureToNotifyNeverReachesTheCallerAndIsLogged` esperaba un evento de log y recibía cero (`expected: <1> but was: <0>`);
+era la única de 1.755. **Causa [Confirmado, reproducido]:** dependía del orden de ejecución. `AssetSynchronizationIntegrationTest`
+arranca un contexto de Spring con `logging.level.com.resolum.alivia.assets.application.internal.eventhandlers=OFF`, y el
+contexto de Logback es compartido por toda la JVM de Maven: si esa clase corre antes, el *logger* del manejador sigue en
+`OFF` y el `ListAppender` de la prueba no recibe nada. Maven ordena por defecto según el sistema de archivos, de ahí que pasara
+en local y no en el CI; los archivos de prueba que entraron con `develop` pudieron cambiar ese orden. Con
+`-Dsurefire.runOrder=reversealphabetical` falla igual con Spring Boot **4.1.1** y con **4.1.2**: **la subida de versión no es la
+causa**, y no cambió el comportamiento del código de producción. **Corrección:** solo en la prueba, que fija el nivel `ALL` del
+*logger* antes de capturar y lo restaura después (sin tocar aserciones ni código de producción). **Verificado:** en el orden
+que fallaba, 8 de 8; y la suite completa en orden inverso con Docker, 1.755 ejecutadas, 0 fallos, 0 errores, 8 omitidas, sin
+ninguna clase con problemas. `HouseholdAccessServiceTest` usa la misma técnica de captura pero registra en `WARN` y ningún
+otro test silencia su *logger*, por lo que hoy no tiene este riesgo. El trabajo de análisis estático (Sonar) falló solo
+porque ejecuta `mvnw verify` antes de analizar. **No verificado:** el orden que usa el CI de GitHub (no se puede reproducir
+exactamente), que confirmará su próxima ejecución.
+
 **La compuerta de Trivy falló en la primera ejecución del workflow y se corrigió el 2026-11-07 (R-21).** El paso *Scan image*
 bloqueó la publicación y el despliegue, como está previsto. El resumen automático que se consultó solo mencionaba
 `jackson-databind`; reproducido en local con Trivy v0.70.0 (el de la acción), los hallazgos eran **16**: 4 CRITICAL en
