@@ -7,6 +7,12 @@ RUN mvn clean package -DskipTests
 
 FROM eclipse-temurin:25-jre
 
+# The base image can lag behind the distribution's security updates (Trivy gates the deployment on them): upgrade only
+# the packages that have a fix, without installing anything new, and leave no package lists behind.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade apt libapt-pkg7.0 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set by the deployment workflow: which commit this image was built from, and when.
 ARG VCS_REF=unknown
 ARG BUILD_DATE=unknown
