@@ -66,8 +66,9 @@ resource "mongodbatlas_advanced_cluster" "this" {
   name         = var.cluster_name
   cluster_type = "REPLICASET"
 
-  # M0 has no backups and no termination protection; a paid cluster gets backups from Atlas.
-  backup_enabled = !local.free
+  # M0 has no backups and no termination protection. Atlas treats backupEnabled as read-only on a free (tenant)
+  # cluster and rejects any value sent for it, even false, so it is left unset there and a paid cluster gets backups.
+  backup_enabled = local.free ? null : true
   tags           = var.tags
 
   replication_specs = [
