@@ -388,11 +388,37 @@ Para medir la latencia real desde Lima, cronometra `GET /actuator/health` desde 
 | `faltan variables obligatorias: ...` (de `deploy.sh`) | Falta un secreto o una variable de la aplicación | Sección 3.2, 3.3 y 3.4 |
 | `AADSTS70025` o `No matching federated identity record found` en `azure/login` | El sujeto no coincide: nombre del entorno, mayúsculas del repositorio, o `AZURE_CLIENT_ID` de otro entorno | Compara el sujeto del error con `terraform output` y la variable `github_repository` |
 | `AuthorizationFailed` al publicar la imagen o al desplegar | Los roles de la identidad aún no se han propagado, o el `apply` de la identidad no se hizo | Espera unos minutos y reintenta; comprueba los dos roles en el portal |
-| Falla el paso *Scan image* | Vulnerabilidad CRITICAL o HIGH **con corrección** | Actualiza la dependencia o la imagen base; no se desactiva el análisis |
+| Falla el paso *Scan image* | Vulnerabilidad CRITICAL o HIGH **con corrección** (R-21) | Sección 5.5. No se desactiva el análisis ni se ignoran los hallazgos |
 | `la imagen alivia-api:<tag> no existe en el registro` | Se dio un `image_tag` que no existe | Lista las etiquetas: `az acr repository show-tags -n <acr> --repository alivia-api` |
 | `la aplicacion no llego a UP` | La app no arranca: configuración, PostgreSQL inaccesible (R-06) o una migración fallida | `az webapp log tail`; el script ya restauró la imagen anterior si la había |
 | `la imagen anterior ... no esta en el registro (primer despliegue?)` | Es el primer despliegue: la Web App nace con `alivia-api:initial`, que no existe | Normal; no hay nada que restaurar |
 | El despliegue a `production` no pide aprobación | El entorno no tiene revisores | Detén la ejecución y corrige la sección 1 (R-16) |
+
+### 5.5 Si falla el análisis de Trivy
+
+La compuerta cumple su función: el paso *Scan image* falla **antes** de publicar la imagen, así que no se publica ni se
+despliega nada. Aparecerá de vez en cuando, porque se descubren vulnerabilidades continuamente. **No hay que fiarse solo del
+resumen del registro de la ejecución** (el de la primera vez nombraba solo Jackson y había además cuatro CRITICAL de Tomcat):
+conviene verlo completo, reproduciéndolo en local con el mismo criterio del workflow (Git Bash):
+
+```bash
+docker build --pull -t alivia-api:scan .
+docker save alivia-api:scan -o /tmp/alivia-scan.tar
+MSYS_NO_PATHCONV=1 docker run --rm -v "$(cygpath -w /tmp):/work" -v trivy-cache:/root/.cache aquasec/trivy:0.70.0 \
+  image --input /work/alivia-scan.tar --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --timeout 20m --exit-code 1
+```
+
+Con `--timeout 20m` porque el límite por defecto (5 minutos) se agota al leer una imagen desde Windows. La versión de Trivy
+es la que lleva por defecto la acción fijada en `cd-deploy.yml`; si se actualiza la acción, hay que ajustarla aquí. Cada
+hallazgo indica el paquete y la versión corregida:
+
+| Dónde está el paquete | Qué hacer |
+|---|---|
+| Un jar (Tomcat, Jackson, ...) | Subir el **parche de Spring Boot** en `pom.xml` (su BOM gestiona esas versiones). Se comprueba qué versiones trae con el `spring-boot-dependencies` de cada versión en Maven Central |
+| `ubuntu` (por ejemplo `apt`) | Esperar a que se actualice la imagen base, o actualizar ese paquete en el `Dockerfile` con `apt-get install --only-upgrade` (hoy ya se hace con `apt` y `libapt-pkg7.0`) |
+
+Después de cambiarlo: repetir el análisis en local hasta que dé código de salida 0, comprobar que la aplicación arranca en
+modo `prod` y lanzar el workflow. **No** se añade `.trivyignore` ni se baja la gravedad: ocultaría vulnerabilidades reales.
 
 ## 6. `production`
 

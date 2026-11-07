@@ -33,6 +33,7 @@ class AssetSynchronizationEventHandlerTest {
     private Logger handlerLogger;
     private ListAppender<ILoggingEvent> logs;
     private boolean loggerWasAdditive;
+    private Level loggerLevelBeforeTest;
 
     @BeforeEach
     void setUp() {
@@ -43,6 +44,11 @@ class AssetSynchronizationEventHandlerTest {
         handlerLogger.addAppender(logs);
         loggerWasAdditive = handlerLogger.isAdditive();
         handlerLogger.setAdditive(false);
+        // Logback's context is shared by the whole JVM: a Spring test started with
+        // logging.level.<this package>=OFF leaves the logger silenced for every class that runs after it, so the
+        // level is set here instead of relying on the order in which the classes run.
+        loggerLevelBeforeTest = handlerLogger.getLevel();
+        handlerLogger.setLevel(Level.ALL);
         sync = mock(EdgeSynchronizationService.class);
         handler = new AssetSynchronizationEventHandler(sync);
     }
@@ -51,6 +57,7 @@ class AssetSynchronizationEventHandlerTest {
     void restoreLogging() {
         handlerLogger.detachAppender(logs);
         handlerLogger.setAdditive(loggerWasAdditive);
+        handlerLogger.setLevel(loggerLevelBeforeTest);
     }
 
     @Test
