@@ -1,10 +1,10 @@
 # Despliegue de la API en Microsoft Azure (CI/CD)
 
 > **Estado: en ejecución** (TS-41, rama `cd/workflow-for-deployment`; última revisión 2026-11-06). Los pasos 1 y 2 del
-> §13 están hechos, el 3 está aplicado en Azure a falta de su cierre y el 4 está implementado pero sin ejecutar contra
-> Azure (ver *Avance*): el Terraform, el Dockerfile y `deploy.sh` existen y `shared` y `staging` están creados.
-> **Todavía no existe** el workflow de CD (paso 5), la identidad de despliegue (D-6 revisada) está definida en Terraform
-> pero sin aplicar, y `production` no se ha aplicado. Cada afirmación lleva una marca:
+> §13 están hechos, el 3 está aplicado en Azure a falta de su cierre y el 4 y el 5 están implementados pero sin ejecutar
+> contra Azure ni GitHub (ver *Avance*): el Terraform, el Dockerfile, `deploy.sh` y `cd-deploy.yml` existen y `shared` y
+> `staging` están creados. La identidad de despliegue (D-6 revisada) está definida en Terraform pero sin aplicar, los
+> entornos de GitHub no están configurados y `production` no se ha aplicado. Cada afirmación lleva una marca:
 > **[Confirmado]** respaldado por el repositorio o por una decisión del equipo, **[Derivado]** deducido de lo anterior,
 > **[Pendiente]** requiere verificarse en la cuenta de Azure antes de implementarlo.
 
@@ -311,19 +311,33 @@ El CD **no repite las pruebas**: ya corren en el pull request. Para que eso sea 
 
 ### 7.2 Trabajos
 
-1. **resolve**: decide entorno y etiqueta, y los escribe en el resumen de la ejecución.
-2. **build** (solo si no se dio `image_tag`): construye la imagen en el runner (`docker buildx build`, sin publicarla),
-   la **analiza con Trivy** y, solo si el análisis pasa, la publica en el ACR con la etiqueta `<sha>`. El análisis falla ante
-   vulnerabilidades CRITICAL o HIGH **que tengan corrección disponible** (`severity: CRITICAL,HIGH`, `ignore-unfixed: true`,
-   `exit-code: 1`), igual que la referencia; las que aún no tienen corrección no bloquean. Trivy descarga su base de
-   vulnerabilidades de un registro público: no hay cuenta, pero sí un posible límite de descargas (R-13).
-3. **deploy**: usa el entorno de GitHub (`staging` o `production`), inicia sesión en Azure y ejecuta
-   `infrastructure/scripts/deploy.sh <entorno> <etiqueta>`. Un `concurrency` por entorno evita dos despliegues a la vez
-   y no cancela uno en curso.
+**Dos trabajos, no tres.** El diseño original separaba `build` y `deploy`. Con D-6 revisada (§7.3), Azure solo acepta el
+inicio de sesión de un trabajo que corra **dentro del entorno de GitHub** de la identidad, y publicar en el ACR exige ese
+inicio de sesión. Un trabajo `build` separado tendría que correr también en el entorno, y en `production` pediría la
+aprobación **dos veces**. Por eso construir, analizar, publicar y desplegar ocurren en un mismo trabajo.
 
-Acciones previstas: `actions/checkout@v4`, `docker/setup-buildx-action@v3`, `docker/login-action@v3`,
-`docker/build-push-action@v6`, `aquasecurity/trivy-action` (la referencia usa la 0.36.0) y `azure/login@v2` (publicada por
-Microsoft). Se fijan versiones concretas al implementar.
+1. **resolve** (sin entorno): decide entorno y etiqueta, valida que la etiqueta sea una etiqueta de commit (no `latest`) y
+   que `production` solo se despliegue desde `main`, y escribe el plan en el resumen de la ejecución.
+2. **deploy** (dentro del entorno `staging` o `production`; `concurrency` por entorno, sin cancelar uno en curso; 45 min de
+   límite):
+   1. Comprueba que el entorno tenga sus variables de Azure y lista los **nombres** que falten.
+   2. Solo si no se dio `image_tag`: construye la imagen en el runner (`docker/build-push-action`, cargada en el Docker local,
+      **sin publicar**), la **analiza con Trivy** y, solo si el análisis pasa, la publica en el ACR con la etiqueta `<sha>`
+      completa del commit. El análisis falla ante vulnerabilidades CRITICAL o HIGH **que tengan corrección disponible**
+      (`severity: CRITICAL,HIGH`, `ignore-unfixed: true`, `exit-code: 1`, `scanners: vuln`); las que aún no tienen
+      corrección no bloquean. Trivy descarga su base de vulnerabilidades de un registro público: no hay cuenta, pero sí un
+      posible límite de descargas (R-13).
+   3. Inicia sesión en Azure con OIDC (`azure/login`) y, para publicar, `az acr login`.
+   4. Ejecuta `infrastructure/scripts/deploy.sh <entorno> <etiqueta>` con las variables y los secretos del entorno (§9.1).
+
+**Acciones, fijadas por SHA de commit** (el comentario de cada una lleva la versión): `actions/checkout` v7.0.1,
+`docker/setup-buildx-action` v4.4.1, `docker/build-push-action` v7.4.0, `azure/login` v3.1.0 y
+`aquasecurity/trivy-action` v0.36.0. Todas son de Node 24. Se fijan por SHA y no por etiqueta porque este trabajo tiene un
+token de Azure y publica imágenes, y `trivy-action` fue **comprometida en marzo de 2026 a través de sus etiquetas**; no se
+usan sus etiquetas anteriores a la `v0.35.0` ni las que carecen de `v`. Para actualizar una, se busca el release nuevo, se
+leen sus notas y se cambian el SHA y la versión. Se descartó `docker/login-action`: con OIDC no hay usuario ni contraseña,
+y `az acr login` usa el token de la identidad. **No verificado:** que `az acr login` funcione con esta identidad en un
+ejecutor de GitHub.
 
 ### 7.3 Autenticación contra Azure (D-6)
 
@@ -395,6 +409,18 @@ solo es seguro si las migraciones nuevas son compatibles hacia atrás; ver §11.
 | Nombres de los recursos | GitHub Variables **del entorno** | `AZURE_RESOURCE_GROUP`, `AZURE_WEBAPP_NAME`, `ACR_NAME` (los nombres llevan un sufijo aleatorio, así que `deploy.sh` no puede deducirlos: los recibe) |
 | Valores fijos del despliegue | El propio `deploy.sh` | `SPRING_PROFILES_ACTIVE=prod`, `PORT`, `WEBSITES_PORT`, `SERVER_FORWARD_HEADERS_STRATEGY`, `MANAGEMENT_HEALTH_MONGODB_ENABLED=false` (P-7) |
 
+**Cómo los conecta `cd-deploy.yml`** (todos son del **entorno** de GitHub, no del repositorio; un valor vacío cuenta como no
+definido):
+
+| Origen | Variables |
+|---|---|
+| `secrets.*` | `DB_PASSWORD`, `MONGODB_URI`, `IAM_JWT_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `IAM_SUPER_ADMIN_PASSWORD`, `RESEND_API_KEY` (opcional) |
+| `vars.*` obligatorias | `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_RESOURCE_GROUP`, `AZURE_WEBAPP_NAME`, `ACR_NAME`, `DB_URL`, `DB_USERNAME`, `MONGODB_DATABASE`, `CORS_ALLOWED_ORIGINS`, `IAM_EMAIL_VERIFICATION_LINK_BASE_URL`, `STRIPE_PUBLISHABLE_KEY`, `CLOUDINARY_CLOUD_NAME`, `IAM_SUPER_ADMIN_EMAIL` |
+| `vars.*` opcionales | las 17 restantes de `OPTIONAL_APP_VARS` de `deploy.sh` (la 18.ª es `RESEND_API_KEY`, un secreto) (`IAM_EMAIL_PROVIDER`, `IAM_ACCOUNT_ACTIVATION_LINK_BASE_URL`, `JAVA_TOOL_OPTIONS`, ...) |
+
+Se comprobó con un script que las 37 variables que `deploy.sh` espera están conectadas en el workflow, que no sobra
+ninguna y que todo valor que `deploy.sh` trata como secreto viene de `secrets.*`.
+
 El script los recibe como variables de entorno del paso del workflow y los copia a la configuración de App Service
 (P-4). App Service cifra esa configuración en reposo y la entrega al contenedor como variables de entorno. Los secretos
 de GitHub se enmascaran en los registros; el script además no imprime valores.
@@ -439,8 +465,10 @@ Obligatorias (no tienen valor por defecto en `prod`) **[Confirmado]**:
 | `IAM_JWT_SECRET` | secreto | al menos 32 bytes |
 | `CORS_ALLOWED_ORIGINS` | variable | origen(es) del frontend |
 | `IAM_EMAIL_VERIFICATION_LINK_BASE_URL` | variable | URL del frontend para verificar correo |
-| `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` | secretos | usar claves de prueba en staging |
-| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | secretos | |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | secretos | usar claves de prueba en staging |
+| `STRIPE_PUBLISHABLE_KEY` | variable | clave pública por diseño; de prueba en staging |
+| `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | secretos | |
+| `CLOUDINARY_CLOUD_NAME` | variable | |
 
 Con valor por defecto, pero **que no conviene dejar así en `prod`** **[Confirmado]**:
 
@@ -492,7 +520,10 @@ del plan. Alertas, paneles y retención larga quedan fuera de este alcance.
    dos roles (§7.3).
 2. Leer `deploy_identity_client_id`, `azure_tenant_id` y `azure_subscription_id` de `terraform output` y cargarlos como
    variables del entorno de GitHub (§9.2). No hay ningún secreto de Azure que crear.
-3. Crear los entornos `staging` y `production` en GitHub; en `production`, añadir revisores obligatorios.
+3. Crear los entornos `staging` y `production` en GitHub **antes de la primera ejecución del workflow**; en `production`,
+   añadir revisores obligatorios y limitar las ramas de despliegue a `main`. Si el entorno no existe, GitHub lo crea solo
+   en la primera ejecución y **sin revisores**: el primer despliegue a `production` saldría sin aprobación (R-16). Los
+   nombres deben ser exactamente `staging` y `production`, porque forman parte del sujeto OIDC (§7.3).
 4. Cargar secretos y variables del entorno (§9.2, §9.3).
 5. Ejecutar `workflow_dispatch` hacia `staging`; revisar el resumen y la verificación.
 6. Promover a `production` con el mismo `image_tag` y aprobar el entorno.
@@ -535,7 +566,9 @@ si los créditos se agotan, la primera palanca es **apagar staging** cuando no s
 | R-10 | El estado de Terraform es un archivo local con contraseñas y sin copia ni bloqueo | Si se pierde, Terraform no conoce los recursos; si se filtra, se exponen las bases de datos | No versionarlo (`.gitignore`), copiarlo tras cada `apply` fuera del repositorio, un solo operador; ver §6.1 |
 | R-11 | Terraform manual: nada impide que `staging` y `production` se desvíen | Entornos distintos | `terraform plan` sin cambios como parte de cada revisión de infraestructura |
 | R-12 | Atlas M0 no existe en la región de la API (resuelto en §4.4: Atlas queda en East US) | Cada consulta a MongoDB cruza regiones y suma latencia | Hoy ningún código usa MongoDB; volver a evaluarlo cuando una funcionalidad lo use (D-11) |
-| R-13 | Trivy descarga su base de vulnerabilidades de un registro público, que puede limitar las descargas | El trabajo `build` falla sin que haya un problema real | Reintentar el trabajo; la caché de la acción reduce las descargas; un `workflow_dispatch` con `image_tag` reutiliza una imagen ya analizada y no construye ni analiza |
+| R-13 | Trivy descarga su base de vulnerabilidades de un registro público, que puede limitar las descargas | El paso de análisis falla sin que haya un problema real | Reintentar el trabajo; la caché de la acción reduce las descargas; un `workflow_dispatch` con `image_tag` reutiliza una imagen ya analizada y no construye ni analiza |
+| R-16 | Un entorno de GitHub que no existe se crea solo en la primera ejecución, **sin revisores** | El primer despliegue a `production` sale sin aprobación | Crear `production` con revisores y rama `main` antes de ejecutar nada (§11.1, paso 3). El workflow no puede comprobarlo por sí mismo |
+| R-17 | Las acciones de terceros reciben un token de Azure y publican imágenes; `trivy-action` ya fue comprometida (marzo de 2026) | Ejecución de código ajeno con acceso a Azure | Fijadas por SHA de commit (§7.2); revisar las notas de cada release antes de cambiar un SHA |
 | R-14 | Atlas rechaza `backupEnabled` en un clúster M0, incluso con `false` (`TENANT_ATTRIBUTE_READ_ONLY`). **Ocurrió** en el paso 3 y está corregido: el módulo no envía el atributo en M0 | `apply` fallido a medias | `terraform test` usa proveedores simulados y **no detecta reglas de la API de Atlas ni de Azure**: solo un `apply` real lo comprueba. Al crear `production` hay que esperar los mismos tipos de fallo |
 | R-15 | La Web App tiene 31 IP de salida posibles; PostgreSQL y Atlas reciben una regla por cada una (§6.3) | Ruido y más superficie de acceso de la necesaria | Decisión deliberada frente a R-06; revisable si molesta |
 
@@ -592,6 +625,16 @@ Git entregaría el script con CRLF en Windows y Bash no lo ejecutaría. **No ver
 argumentos de `az`, los permisos de `az acr repository show` y de `az webapp config set` para la identidad de despliegue, y
 cómo reinicia una Web App real). El criterio de §13 (llega a `UP` en `staging` y un fallo provocado restaura la imagen) lo
 cierra la persona asignada ejecutándolo a mano.
+
+**Paso 5 implementado el 2026-11-06, sin commit y sin ejecutar en GitHub.** Se generó `.github/workflows/cd-deploy.yml`
+(§7): `resolve` más un único trabajo `deploy` dentro del entorno de GitHub, con OIDC, construcción, análisis con Trivy,
+publicación y `deploy.sh`. Verificado: `actionlint` 1.7.7 sin hallazgos; ShellCheck 0.10.0 sin hallazgos sobre `deploy.sh`
+y sus pruebas (que siguen pasando, 32 de 32); las 37 variables de `deploy.sh` coinciden con las del workflow; los SHA de las
+acciones se resolvieron contra la API de GitHub y se leyeron las notas de sus releases. **No verificado:** ninguna ejecución
+real del workflow en GitHub, el inicio de sesión OIDC, `az acr login` con la identidad, ni el comportamiento de
+`build-push-action` v7 con `load: true` y la caché `gha`. Dos desviaciones respecto del plan original: dos trabajos en vez
+de tres (§7.2) y versiones mayores más recientes que las de la referencia (checkout v7, buildx v4, build-push v7,
+azure/login v3).
 
 **D-6 revisada y definida en Terraform el 2026-11-06, sin aplicar.** La persona asignada aprobó OIDC con identidades
 administradas gestionadas por Terraform. Se creó el módulo `deploy-identity` y se conectó a `staging` y a `production`

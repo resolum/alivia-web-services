@@ -92,6 +92,8 @@ new_case() { # new_case <image-now> <tags-in-registry...>
 }
 
 run_deploy() { # run_deploy <args...>; output in $FAKE_DIR/out, status in $STATUS
+  # SC2086 on purpose: ${EXTRA_ENV:-} must vanish when empty, not become an empty argument for env.
+  # shellcheck disable=SC2086
   env -i HOME="$HOME" PATH="$WORK/bin:$PATH" TMPDIR="$FAKE_DIR/tmp" FAKE_DIR="$FAKE_DIR" \
     DEPLOY_WARMUP_SECONDS=0 DEPLOY_HEALTH_TIMEOUT_SECONDS=2 DEPLOY_HEALTH_INTERVAL_SECONDS=1 \
     AZURE_RESOURCE_GROUP=rg-alivia AZURE_WEBAPP_NAME="${WEBAPP:-app-alivia-staging-abc12}" ACR_NAME=acrtest \
