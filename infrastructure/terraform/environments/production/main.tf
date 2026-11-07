@@ -97,6 +97,18 @@ variable "github_repository" {
   default     = "resolum/alivia-web-services"
 }
 
+variable "github_owner_id" {
+  description = "GitHub's numeric id of the owner of the repository (the subject GitHub presents carries it)."
+  type        = number
+  default     = 298395203
+}
+
+variable "github_repository_id" {
+  description = "GitHub's numeric id of the repository."
+  type        = number
+  default     = 1411127236
+}
+
 variable "tags" {
   description = "Tags for every resource."
   type        = map(string)
@@ -168,14 +180,16 @@ module "mongodb_atlas" {
 module "deploy_identity" {
   source = "../../modules/deploy-identity"
 
-  name                = "id-alivia-${local.environment}-deploy"
-  resource_group_name = data.azurerm_resource_group.this.name
-  location            = data.azurerm_resource_group.this.location
-  github_repository   = var.github_repository
-  github_environment  = local.environment
-  acr_id              = data.azurerm_container_registry.this.id
-  webapp_id           = module.platform.app_id
-  tags                = local.tags
+  name                 = "id-alivia-${local.environment}-deploy"
+  resource_group_name  = data.azurerm_resource_group.this.name
+  location             = data.azurerm_resource_group.this.location
+  github_repository    = var.github_repository
+  github_owner_id      = var.github_owner_id
+  github_repository_id = var.github_repository_id
+  github_environment   = local.environment
+  acr_id               = data.azurerm_container_registry.this.id
+  webapp_id            = module.platform.app_id
+  tags                 = local.tags
 }
 
 # What deploy.sh and the GitHub environment need. The sensitive ones are read once with `terraform output -raw` and

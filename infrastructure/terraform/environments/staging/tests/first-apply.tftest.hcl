@@ -118,7 +118,7 @@ run "second_apply_creates_the_databases_with_one_rule_per_distinct_address" {
   }
 
   assert {
-    condition     = module.deploy_identity.subject == "repo:resolum/alivia-web-services:environment:staging"
+    condition     = module.deploy_identity.subject == "repo:resolum@298395203/alivia-web-services@1411127236:environment:staging"
     error_message = "Only jobs of the staging GitHub environment of this repository can sign in as the identity (got ${module.deploy_identity.subject})."
   }
 

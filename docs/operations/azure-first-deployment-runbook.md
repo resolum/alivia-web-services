@@ -37,7 +37,8 @@ export TF_DIR=infrastructure/terraform/environments/$ENV
 ## 1. Los entornos de GitHub
 
 Un **entorno** de GitHub agrupa variables, secretos y reglas de protección, y es lo que Azure comprueba al validar el
-inicio de sesión (el nombre forma parte del sujeto OIDC `repo:resolum/alivia-web-services:environment:<nombre>`). Por eso:
+inicio de sesión (el nombre forma parte del sujeto OIDC `repo:resolum@298395203/alivia-web-services@1411127236:environment:<nombre>`, con los
+identificadores numéricos de GitHub). Por eso:
 
 - Los nombres tienen que ser **exactamente** `staging` y `production`, en minúsculas.
 - **Hay que crearlos antes de la primera ejecución del workflow.** Si no existen, GitHub los crea solo y **sin ninguna
@@ -386,7 +387,7 @@ Para medir la latencia real desde Lima, cronometra `GET /actuator/health` desde 
 |---|---|---|
 | `The GitHub environment 'staging' lacks these variables: ...` | Falta una variable de Azure en el entorno | Sección 3.1 y 3.4 |
 | `faltan variables obligatorias: ...` (de `deploy.sh`) | Falta un secreto o una variable de la aplicación | Sección 3.2, 3.3 y 3.4 |
-| `AADSTS70025` o `No matching federated identity record found` en `azure/login` | El sujeto no coincide: nombre del entorno, mayúsculas del repositorio, o `AZURE_CLIENT_ID` de otro entorno | Compara el sujeto del error con `terraform output` y la variable `github_repository` |
+| `AADSTS700213` o `No matching federated identity record found` en `azure/login` | El sujeto que presenta GitHub no coincide con el de la credencial: nombre del entorno, mayúsculas, la forma del sujeto (con o sin identificadores numéricos: **ocurrió**) o el `AZURE_CLIENT_ID` de otro entorno | Compara la línea `subject claim` del paso *Sign in to Azure* con `terraform output -json` (`module.deploy_identity` → `subject`) o con `az identity federated-credential list`. Si difieren, corrige `github_owner_id` / `github_repository_id` y aplica |
 | `AuthorizationFailed` al publicar la imagen o al desplegar | Los roles de la identidad aún no se han propagado, o el `apply` de la identidad no se hizo | Espera unos minutos y reintenta; comprueba los dos roles en el portal |
 | Falla el paso *Scan image* | Vulnerabilidad CRITICAL o HIGH **con corrección** (R-21) | Sección 5.5. No se desactiva el análisis ni se ignoran los hallazgos |
 | `la imagen alivia-api:<tag> no existe en el registro` | Se dio un `image_tag` que no existe | Lista las etiquetas: `az acr repository show-tags -n <acr> --repository alivia-api` |
@@ -479,5 +480,5 @@ despliega. Hay que aprobar el entorno `production`.
 | Rotar la contraseña del usuario de Atlas | Periódicamente o ante sospecha | `terraform apply -replace=module.mongodb_atlas.random_password.application`, cargar `MONGODB_URI` (lleva la contraseña) y redesplegar |
 | Rotar `IAM_JWT_SECRET` | Ante sospecha | Cierra todas las sesiones: hazlo fuera de horario |
 | La identidad de despliegue | — | No tiene secreto ni vencimiento |
-| Cambió el repositorio de dueño o de nombre | — | Variable `github_repository` de Terraform y `terraform apply` en los dos entornos |
+| Cambió el repositorio de dueño o de nombre | — | Con los identificadores numéricos en el sujeto no hace falta nada, salvo mantener `github_repository` al día. Si el repositorio se **recrea** (otro id), actualiza `github_owner_id` y `github_repository_id` y `terraform apply` en los dos entornos |
 | Apagar `staging` para ahorrar créditos | Fuera de uso | `az webapp stop` y `az postgres flexible-server stop` (Azure reinicia el servidor a los 7 días) |
