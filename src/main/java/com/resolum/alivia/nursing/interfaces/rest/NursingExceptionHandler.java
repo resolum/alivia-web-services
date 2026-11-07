@@ -10,6 +10,7 @@ import com.resolum.alivia.nursing.domain.exceptions.CaregiverHouseholdMembership
 import com.resolum.alivia.nursing.domain.exceptions.MedicationAdministrationAccessDeniedException;
 import com.resolum.alivia.nursing.domain.exceptions.MedicationAdministrationNotFoundException;
 import com.resolum.alivia.nursing.domain.exceptions.MedicationOutcomeAlreadyRecordedException;
+import com.resolum.alivia.nursing.domain.exceptions.MedicationScheduleNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -60,6 +61,18 @@ public class NursingExceptionHandler {
     public ProblemDetail handleMedicationAdministrationNotFound(MedicationAdministrationNotFoundException exception) {
         return problem(HttpStatus.NOT_FOUND, "medication_administration_not_found",
                 "The medication administration does not exist.");
+    }
+
+    /**
+     * Answers 404 when the medication schedule does not exist.
+     *
+     * @param exception the not found exception
+     * @return the problem detail
+     */
+    @ExceptionHandler(MedicationScheduleNotFoundException.class)
+    public ProblemDetail handleMedicationScheduleNotFound(MedicationScheduleNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, "medication_schedule_not_found",
+                exception.getMessage());
     }
 
     /**
