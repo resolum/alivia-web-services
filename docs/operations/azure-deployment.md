@@ -1,9 +1,9 @@
 # Despliegue de la API en Microsoft Azure (CI/CD)
 
-> **Estado: propuesta aprobada en lo esencial, pendiente de la verificación de región** (TS-41, rama `cd/workflow-for-deployment`;
-> última revisión 2026-11-06). Este documento describe cómo se va a
-> desplegar la API y qué se va a construir. **Todavía no existen** los scripts, el Terraform ni el workflow de CD: se
-> generan en una fase posterior, cuando se autorice. Cada afirmación lleva una marca:
+> **Estado: en ejecución** (TS-41, rama `cd/workflow-for-deployment`; última revisión 2026-11-06). Los pasos 1 y 2 del
+> §13 están hechos y el 3 está aplicado en Azure a falta de su cierre (ver *Avance*): el Terraform y el Dockerfile existen
+> y `shared` y `staging` están creados. **Todavía no existen** el script de despliegue ni el workflow de CD (pasos 4 y 5),
+> y `production` no se ha aplicado. Cada afirmación lleva una marca:
 > **[Confirmado]** respaldado por el repositorio o por una decisión del equipo, **[Derivado]** deducido de lo anterior,
 > **[Pendiente]** requiere verificarse en la cuenta de Azure antes de implementarlo.
 
@@ -152,7 +152,7 @@ y el clúster gratuito M0 de Atlas en Azure solo se ofrece, de las regiones cerc
 | Qué | Dónde | Motivo |
 |---|---|---|
 | App Service, ACR y PostgreSQL | **Brazil South** (`location = "brazilsouth"`) | Es lo que usa la API en cada petición; la más cercana a Perú |
-| MongoDB Atlas M0 | **East US** (nombre de Atlas: `US_EAST`; confirmar en la interfaz al crear el clúster) | Es la única región cercana con M0 |
+| MongoDB Atlas M0 | **East US** (nombre de Atlas: `US_EAST`, aceptado por Atlas al crear el clúster de `staging`, 2026-11-06) | Es la única región cercana con M0 |
 
 **Por qué esta separación no tiene costo hoy:** el código de producción **no usa MongoDB**. No hay documentos ni
 repositorios Mongo: solo existe la clase base abstracta `AuditableMongoAggregateRoot`, que únicamente usa una prueba. Lo
@@ -201,6 +201,7 @@ infrastructure/
       production/              # plataforma + datos de production
   scripts/
     deploy.sh                  # despliegue y verificación (lo invoca el workflow)
+    tests/deploy_test.sh       # pruebas de deploy.sh con az y curl simulados
 .github/workflows/
   cd-deploy.yml                # construir, publicar y desplegar
   terraform-validate.yml       # fmt y validate en cada PR que toque infrastructure/terraform
@@ -243,6 +244,14 @@ Resource Group (D-8), la raíz `shared` crea `rg-alivia` y `staging`/`production
 - Se usa acceso público con reglas por IP (P-6). Las IP de salida de la Web App salen de
   `possible_outbound_ip_addresses`; **pueden cambiar** si se cambia el SKU del plan, y entonces hay que volver a aplicar
   Terraform para actualizar PostgreSQL y Atlas. Es la causa más probable de «la API no conecta tras un cambio de plan».
+- **Cuántas reglas salen:** el módulo `platform` expone `possible_outbound_ip_address_list`, no solo las direcciones
+  que la Web App usa ahora. En `staging` son **31 reglas** de PostgreSQL (y otras tantas entradas en Atlas), frente a 13
+  direcciones actuales **[Confirmado]**. Es deliberado: Azure puede mover la aplicación a otra unidad de escala (por
+  ejemplo al cambiar de SKU) y entonces usaría una de las 18 restantes; con solo las 13 actuales la API perdería el acceso
+  a las bases sin aviso (R-06). El costo es una superficie algo mayor, siempre dentro de direcciones de Azure y no
+  `0.0.0.0/0`. Usar `outbound_ip_address_list` (solo las actuales) es un cambio de una línea, a cambio de volver a
+  aplicar Terraform cada vez que Azure cambie las IP. No se verificaron los límites de reglas de PostgreSQL ni de la
+  lista de acceso de Atlas; 31 queda muy por debajo de los que se conocen.
 - JDBC con SSL: `jdbc:postgresql://<fqdn>:5432/<base>?sslmode=require`.
 - Una red virtual con endpoint privado sería lo ideal para production; no se plantea ahora por costo y por las
   restricciones de la cuenta (R-03). Atlas M0 no admite red privada de todos modos.
@@ -271,6 +280,13 @@ terraform plan -out tfplan && terraform apply tfplan
 
 Es la única vez que se usa `-target`. Después, cada cambio es un `plan` y un `apply` normales; si las IP de salida cambian
 (R-06), un `apply` normal actualiza las reglas de las dos bases de datos.
+
+**Valores de ejemplo y `operator_ips`.** Todo `terraform.tfvars` se copia de su `.example`, que trae marcadores
+(`acralivia00000`, `000000000000000000000000`, `203.0.113.10`). Hay que sustituirlos: el primero por la salida `acr_name`
+de `shared`, el segundo por el identificador de la organización de Atlas y el tercero, solo mientras se prueba la conexión,
+por **la propia IPv4 pública** de quien prueba. Con un marcador sin cambiar, Terraform falla (`Registry Name ... was not
+found`) o, peor, crea una regla de firewall para una dirección que no es la de quien prueba y la conexión se rechaza.
+Después de la prueba se borra `operator_ips` y se vuelve a aplicar, de modo que la IP desaparezca de PostgreSQL y de Atlas.
 
 `terraform-validate.yml` ejecuta `terraform fmt -check`, `init -lockfile=readonly`, `validate` y, en `staging` y
 `production`, `terraform test` (proveedores simulados: comprueba el flujo de dos pasos y las salidas, no Azure) en cada pull
@@ -326,13 +342,24 @@ sesión con `az`; el script **no** maneja credenciales de Azure.
 | 2 | Comprueba que la imagen `alivia-api:<etiqueta>` exista en el ACR | no existe |
 | 3 | Guarda la imagen que corre ahora (para el rollback) | — |
 | 4 | Aplica la configuración con `az webapp config appsettings set` desde un archivo temporal con permisos `0600` que se borra al terminar (no se pasa en la línea de comandos) | `az` falla |
-| 5 | `az webapp config container set` con la imagen nueva y reinicia | `az` falla |
+| 5 | `az webapp config set --linux-fx-version "DOCKER\|<imagen>"` con la imagen nueva y reinicia. Cambia solo la imagen y no toca la configuración de credenciales del registro (la Web App usa su identidad administrada); `config container set` no se probó **[Pendiente]** | `az` falla |
 | 6 | Espera hasta 10 min a que `GET /actuator/health` responda `UP` (exige que PostgreSQL responda; MongoDB queda fuera por P-7; ver §10) | no llega a `UP` |
-| 7 | Comprueba `GET /actuator/info` y una ruta pública que usa la base de datos (`GET /api/v1/plans`) | respuesta distinta de 200 |
+| 7 | Comprueba que la Web App ejecuta la imagen pedida, `GET /actuator/info` y una ruta pública que usa la base de datos (`GET /api/v1/plans`), ambas con 200, y que `GET /v3/api-docs` y `GET /api/v1/devices` sin credencial **no** respondan 2xx (§10) | respuesta distinta de 200, o 2xx en una ruta que debe estar cerrada |
 | 8 | Imprime `Desplegado <etiqueta> en <entorno>: <URL>` | — |
 
+Detalles de la implementación: la configuración se escribe en un archivo JSON temporal (no hay `jq` garantizado; el
+escapado se prueba con contraseñas con comillas, barras y tabuladores) y `az` se invoca con `-o none`, porque por defecto
+imprimiría todos los valores de la aplicación. Tras el reinicio espera `DEPLOY_WARMUP_SECONDS` (30 por defecto), porque el
+contenedor antiguo sigue respondiendo unos segundos y la primera comprobación podría ser suya. Se niega a desplegar si
+`AZURE_WEBAPP_NAME` no empieza por `app-alivia-<entorno>-` (evita aplicar la configuración de un entorno a la Web App del
+otro), si la etiqueta es `latest`, si `IAM_JWT_SECRET` tiene menos de 32 bytes o si el super administrador conserva los
+marcadores `EMAIL`/`PASSWORD`. Sus pruebas están en `infrastructure/scripts/tests/deploy_test.sh`, con `az` y `curl`
+simulados: **no demuestran** que el `az` real acepte esos argumentos ni que los roles de la identidad alcancen.
+
 **Rollback automático:** si falla el paso 6 o 7, el script restaura la imagen guardada en el paso 3, reinicia y sale con
-código 1. Importante: las migraciones de Flyway se aplican **al arrancar** y no se deshacen. Volver a una imagen anterior
+código 1. Si la imagen anterior no está en el registro (primer despliegue: la Web App nace con `alivia-api:initial`, que no
+existe), avisa de que no hay nada que restaurar y sale igualmente con 1. La configuración de la aplicación **no** se restaura:
+solo la imagen. Importante: las migraciones de Flyway se aplican **al arrancar** y no se deshacen. Volver a una imagen anterior
 solo es seguro si las migraciones nuevas son compatibles hacia atrás; ver §11.2.
 
 ## 9. Secretos y configuración (AP-466)
@@ -397,6 +424,7 @@ Con valor por defecto, pero **que no conviene dejar así en `prod`** **[Confirma
 |---|---|
 | `IAM_SUPER_ADMIN_EMAIL`, `IAM_SUPER_ADMIN_PASSWORD` | Los valores por defecto son `EMAIL` y `PASSWORD` (marcadores): definir siempre |
 | `IAM_EMAIL_PROVIDER` | Por defecto `unavailable`: no se envía correo. Elegir `smtp` o `resend` (y `RESEND_API_KEY`) |
+| `IAM_ACCOUNT_ACTIVATION_LINK_BASE_URL` | **Faltaba en este inventario.** Lo usa `AccountActivationServiceImpl` y su valor por defecto es `http://localhost:4200/activate-account`; el perfil `prod` no lo redefine. Sin definirla, los enlaces de activación de cuenta apuntan a `localhost`. `deploy.sh` la copia si está definida y avisa si no |
 | `IAM_DEFAULT_PHOTO_URL` | Hay un valor por defecto; confirmar que sirve en production |
 | `HCM_DEFAULT_BUSINESS_ID` | Por defecto `1`; ese negocio debe existir en la base (ver §11.3) |
 
@@ -421,7 +449,7 @@ Opcionales de ajuste: `IAM_JWT_ACCESS_TOKEN_EXPIRATION_MINUTES`, `IAM_JWT_REFRES
 | Información | `GET /actuator/info` → 200 | La aplicación sirve rutas públicas |
 | Base de datos | `GET /api/v1/plans` → 200 | Una consulta real a PostgreSQL |
 | Seguridad | `GET /v3/api-docs` → 404/401 y `GET /api/v1/devices` sin credencial → 401 | Swagger apagado y rutas protegidas |
-| Versión | La etiqueta de la imagen desplegada coincide con la pedida (`az webapp config container show`) | Se desplegó lo que se quería |
+| Versión | La etiqueta de la imagen desplegada coincide con la pedida (`az webapp config show --query linuxFxVersion`) | Se desplegó lo que se quería |
 
 Observabilidad mínima, solo con App Service (D-9): registros de aplicación y HTTP en el sistema de archivos (se leen con
 *Log stream* o `az webapp log tail`) y la comprobación de salud de App Service (`/actuator/health`) para reemplazar
@@ -470,7 +498,7 @@ si los créditos se agotan, la primera palanca es **apagar staging** cuando no s
 | ID | Riesgo | Impacto | Cómo se verifica o mitiga |
 |---|---|---|---|
 | R-01 | Cuenta universitaria con la directiva *Allowed resource deployment regions* y límites de SKU y cuota; la lista de regiones cambia de una cuenta a otra | No se puede crear algún recurso, o la región ideal no está permitida | Procedimiento de §4.4 antes de fijar región y tamaños |
-| R-02 | El inquilino de Entra ID de la universidad puede **no permitir crear el service principal** (ni registros de aplicación) | Se cae D-6 | `az ad sp create-for-rbac` en una prueba. Plan B: publicar con las credenciales de administrador del ACR y el perfil de publicación de la Web App como secretos de GitHub; el script cambia, el resto no |
+| R-02 | El inquilino de Entra ID de la universidad puede **no permitir crear el service principal** (ni registros de aplicación) | Se cae D-6 | **Materializado el 2026-11-06:** `az ad sp create-for-rbac` falló en la suscripción de la persona asignada (se registró que falló, no el texto del error). **Alternativa viable [Confirmado en parte]:** una identidad administrada asignada por el usuario con credencial federada para GitHub (OIDC), que no necesita permiso de Entra para registrar aplicaciones: `az identity create` funcionó en `rg-alivia`, la persona asignada es *Owner* de la suscripción y Terraform ya creó un rol (`AcrPull`). **No verificado:** la creación de la credencial federada y el inicio de sesión desde GitHub. **[Pendiente]** decidir D-6 antes del paso 5 (cambia solo `azure/login` y los secretos de Azure: `AZURE_CLIENT_SECRET` desaparece). Último recurso: credenciales de administrador del ACR y perfil de publicación de la Web App como secretos de GitHub; `deploy.sh` cambiaría bastante |
 | R-03 | La versión de PostgreSQL de las pruebas es la 18; Azure puede ofrecer menos versiones en la región, o no ofrecer el nivel Burstable ahí (se han reportado regiones sin él) | Diferencia entre pruebas y producción, o servidor no creable | Elegir la versión más alta disponible (mínimo 17: las migraciones se verificaron en 17 y 18) y comprobar `list-skus` por región |
 | R-04 | El nivel gratuito (F1) no admite contenedores propios **[Derivado]** | Hace falta B1 | Verificar al crear el plan |
 | R-05 | ACR Tasks puede estar bloqueado en suscripciones gratuitas | `az acr build` fallaría | Por eso P-3: construir en el runner |
@@ -482,6 +510,8 @@ si los créditos se agotan, la primera palanca es **apagar staging** cuando no s
 | R-11 | Terraform manual: nada impide que `staging` y `production` se desvíen | Entornos distintos | `terraform plan` sin cambios como parte de cada revisión de infraestructura |
 | R-12 | Atlas M0 no existe en la región de la API (resuelto en §4.4: Atlas queda en East US) | Cada consulta a MongoDB cruza regiones y suma latencia | Hoy ningún código usa MongoDB; volver a evaluarlo cuando una funcionalidad lo use (D-11) |
 | R-13 | Trivy descarga su base de vulnerabilidades de un registro público, que puede limitar las descargas | El trabajo `build` falla sin que haya un problema real | Reintentar el trabajo; la caché de la acción reduce las descargas; un `workflow_dispatch` con `image_tag` reutiliza una imagen ya analizada y no construye ni analiza |
+| R-14 | Atlas rechaza `backupEnabled` en un clúster M0, incluso con `false` (`TENANT_ATTRIBUTE_READ_ONLY`). **Ocurrió** en el paso 3 y está corregido: el módulo no envía el atributo en M0 | `apply` fallido a medias | `terraform test` usa proveedores simulados y **no detecta reglas de la API de Atlas ni de Azure**: solo un `apply` real lo comprueba. Al crear `production` hay que esperar los mismos tipos de fallo |
+| R-15 | La Web App tiene 31 IP de salida posibles; PostgreSQL y Atlas reciben una regla por cada una (§6.3) | Ruido y más superficie de acceso de la necesaria | Decisión deliberada frente a R-06; revisable si molesta |
 
 ## 13. Plan de trabajo y criterios de finalización
 
@@ -508,6 +538,34 @@ azurerm 5.13, mongodbatlas 2.21); la imagen se construye (contexto de 2,6 MB), c
 18 migraciones, responde 200 en una ruta pública, 404 en Swagger y 401 en una ruta protegida, y con MongoDB detenido y P-7
 aplicada sigue en `UP`. **No verificado:** nada contra Azure ni Atlas reales (sin credenciales): los `apply`, la capacidad de
 Brazil South, los nombres de región de Atlas y la ejecución del workflow en GitHub quedan para el paso 3 y siguientes.
+
+**Paso 3 aplicado el 2026-11-06 (`shared` y `staging`), a falta de su cierre.** `shared` creó `rg-alivia` (Brazil South) y el
+ACR; `staging` creó el plan B1, la Web App con su identidad y el rol `AcrPull`, el servidor flexible de PostgreSQL (versión
+18, Burstable `B1ms`) y el proyecto y el clúster M0 de Atlas. La persona asignada comprobó a mano la conexión a PostgreSQL
+(`psql` de la imagen `postgres:18`) y a Atlas (`mongosh`) con las cadenas de `terraform output`, y la identidad
+administrada `id-alivia-deploy` se pudo crear. Antes se borró el grupo `alivia`, que la persona había creado a mano en
+Canada Central con un ACR y un PostgreSQL de prueba (sin imágenes ni bases que conservar). Hallazgos del paso:
+
+- **Proveedor `Microsoft.Web` sin registrar** al empezar: hay que registrarlo antes del primer `apply` (§11.1, paso 0).
+- **Marcadores sin sustituir** en `terraform.tfvars` (§6.5): fallo `Registry Name ... was not found` y regla de firewall con
+  una IP que no era la de quien probaba.
+- **R-14:** defecto del módulo `mongodb-atlas` en M0, corregido (`backup_enabled = local.free ? null : true`).
+- **R-15:** 31 reglas de firewall por IP de salida posibles (§6.3).
+- **R-02:** la prueba del service principal falló; la identidad administrada con OIDC es la alternativa (decisión D-6 pendiente).
+
+**Pendiente de confirmar por la persona asignada para cerrar el paso 3:** `terraform plan` sin cambios en `staging` con
+`operator_ips` ya borrado, y la copia de los `terraform.tfstate` de `shared` y `staging` fuera del repositorio (§6.1).
+`production` no se ha aplicado.
+
+**Paso 4 implementado el 2026-11-06, sin commit y sin ejecutarlo todavía contra Azure.** Se generó
+`infrastructure/scripts/deploy.sh` y sus pruebas (`tests/deploy_test.sh`, 32 comprobaciones con `az` y `curl` simulados:
+argumentos, variables, imagen ausente, despliegue correcto, rollback, primer despliegue sin imagen anterior, Swagger expuesto,
+escapado de la configuración y ausencia de secretos en la salida). Se comprobó además que las pruebas **fallan** si se rompe
+a propósito el rollback, el `-o none` o el escapado. Se añadió `*.sh text eol=lf` a `.gitattributes`: con `core.autocrlf=true`
+Git entregaría el script con CRLF en Windows y Bash no lo ejecutaría. **No verificado:** el script contra Azure real (los
+argumentos de `az`, los permisos de `az acr repository show` y de `az webapp config set` para la identidad de despliegue, y
+cómo reinicia una Web App real). El criterio de §13 (llega a `UP` en `staging` y un fallo provocado restaura la imagen) lo
+cierra la persona asignada ejecutándolo a mano.
 
 ## 14. Referencias
 
