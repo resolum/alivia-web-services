@@ -37,9 +37,13 @@ import java.util.UUID;
         @UniqueConstraint(
                 name = "uk_users_email_verification_token_hash",
                 columnNames = "email_verification_token_hash"),
-        @UniqueConstraint(name = "uk_users_refresh_token_hash", columnNames = "refresh_token_hash")
+        @UniqueConstraint(name = "uk_users_refresh_token_hash", columnNames = "refresh_token_hash"),
+        @UniqueConstraint(name = "uk_users_password_reset_token_hash", columnNames = "password_reset_token_hash")
 })
 public class User extends AuditableAbstractAggregateRoot<User> {
+
+    /** Wrong 6-digit codes allowed per issued code before a new one must be requested. */
+    public static final int MAX_CODE_ATTEMPTS = 5;
 
     // Public identifier exposed by the API; the numeric id stays internal for foreign keys.
     @Column(name = "account_id", length = 36, updatable = false)
@@ -84,6 +88,19 @@ public class User extends AuditableAbstractAggregateRoot<User> {
     @Column(name = "refresh_token_expires_at")
     private LocalDateTime refreshTokenExpiresAt;
 
+    @Column(name = "password_reset_token_hash", length = 64)
+    private String passwordResetTokenHash;
+
+    @Column(name = "password_reset_expires_at")
+    private LocalDateTime passwordResetExpiresAt;
+
+    @Column(name = "password_reset_requested_at")
+    private LocalDateTime passwordResetRequestedAt;
+
+    // Wrong 6-digit codes typed for the pending verification or reset code; a new code starts again at zero.
+    @Column(name = "code_failed_attempts", nullable = false)
+    private Integer codeFailedAttempts;
+
     // Profile in the Profiles context; null for roles without a profile and for accounts created before the link.
     @Column(name = "profile_id")
     private Long profileId;
@@ -117,6 +134,7 @@ public class User extends AuditableAbstractAggregateRoot<User> {
         this.status = UserStatus.PENDING_VERIFICATION;
         this.emailVerified = Boolean.FALSE;
         this.failedAccessAttempts = 0;
+        this.codeFailedAttempts = 0;
     }
 
     /**
@@ -133,6 +151,7 @@ public class User extends AuditableAbstractAggregateRoot<User> {
         this.emailVerificationTokenHash = token.value();
         this.emailVerificationExpiresAt = token.expiresAt();
         this.emailVerificationRequestedAt = requestedAt;
+        this.codeFailedAttempts = 0;
     }
 
     /**
@@ -183,6 +202,90 @@ public class User extends AuditableAbstractAggregateRoot<User> {
         this.password = password.value();
         this.termsAcceptedAt = activatedAt;
         this.failedAccessAttempts = 0;
+    }
+
+    /**
+     * Replaces the pending password reset token.
+     *
+     * @param token       the new pending token
+     * @param requestedAt the moment the token was issued
+     * @throws IllegalArgumentException if any argument is null
+     */
+    public void requestPasswordReset(EmailVerificationToken token, LocalDateTime requestedAt) {
+        if (token == null || requestedAt == null) {
+            throw new IllegalArgumentException("Password reset token and request time are required.");
+        }
+        this.passwordResetTokenHash = token.value();
+        this.passwordResetExpiresAt = token.expiresAt();
+        this.passwordResetRequestedAt = requestedAt;
+        this.codeFailedAttempts = 0;
+    }
+
+    /**
+     * Indicates whether the pending 6-digit code may still be tried.
+     *
+     * @return {@code true} while fewer than {@link #MAX_CODE_ATTEMPTS} wrong codes were typed
+     */
+    public boolean hasCodeAttemptsLeft() {
+        return codeFailedAttempts < MAX_CODE_ATTEMPTS;
+    }
+
+    /**
+     * Counts a wrong 6-digit code.
+     */
+    public void registerFailedCodeAttempt() {
+        this.codeFailedAttempts++;
+    }
+
+    /**
+     * Indicates whether a new password reset link may be sent.
+     *
+     * @param now      the moment to compare against
+     * @param cooldown the minimum time between two requests
+     * @return {@code true} when no link was sent within the cooldown
+     */
+    public boolean canRequestPasswordResetAt(LocalDateTime now, Duration cooldown) {
+        return passwordResetRequestedAt == null || !now.isBefore(passwordResetRequestedAt.plus(cooldown));
+    }
+
+    /**
+     * Replaces the password and voids any pending reset code, which was issued for the old one.
+     *
+     * @param password the hash of the new password
+     * @throws IllegalArgumentException if the password is null
+     */
+    public void changePassword(PasswordHash password) {
+        if (password == null) {
+            throw new IllegalArgumentException("Password is required.");
+        }
+        this.password = password.value();
+        this.passwordResetTokenHash = null;
+        this.passwordResetExpiresAt = null;
+        this.failedAccessAttempts = 0;
+    }
+
+    /**
+     * Sets the password chosen with a reset code and ends the open session, which may belong to
+     * whoever no longer should have access.
+     *
+     * @param password the hash of the new password
+     * @throws IllegalArgumentException if the password is null
+     */
+    public void resetPassword(PasswordHash password) {
+        changePassword(password);
+        endSession();
+    }
+
+    /**
+     * Returns the pending password reset token.
+     *
+     * @return the pending token, or {@code null} when none exists
+     */
+    public EmailVerificationToken getPendingPasswordResetToken() {
+        if (passwordResetTokenHash == null) {
+            return null;
+        }
+        return new EmailVerificationToken(passwordResetTokenHash, passwordResetExpiresAt);
     }
 
     /**
