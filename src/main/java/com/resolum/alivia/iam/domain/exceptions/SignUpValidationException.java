@@ -21,6 +21,9 @@ public class SignUpValidationException extends RuntimeException {
     /** The value exceeds the maximum allowed length. */
     public static final String TOO_LONG = "too_long";
 
+    /** The current password typed to confirm a change does not match. */
+    public static final String INCORRECT = "incorrect";
+
     private final List<FieldViolation> violations;
 
     /**

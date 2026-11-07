@@ -19,6 +19,25 @@ public interface EmailVerificationTokenService {
     GeneratedToken generate();
 
     /**
+     * Generates a random 6-digit code for an account. The stored hash includes the account
+     * identifier, so two accounts with the same code never share a hash.
+     *
+     * @param accountId the public account identifier
+     * @return the plain-text code and its hashed domain representation
+     */
+    GeneratedToken generateCode(String accountId);
+
+    /**
+     * Compares a code typed by the user with the hash stored for that account, in constant time.
+     *
+     * @param accountId    the public account identifier
+     * @param code         the plain-text code
+     * @param expectedHash the stored hash
+     * @return {@code true} when the code belongs to that account
+     */
+    boolean matchesCode(String accountId, String code, String expectedHash);
+
+    /**
      * Builds the verification link that is sent to the user.
      *
      * @param rawToken the plain-text token

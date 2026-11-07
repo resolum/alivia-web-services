@@ -74,6 +74,8 @@ public class WebSecurityConfiguration {
                 .sessionManagement(sessions -> sessions.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        // Changing the password needs the session; the rest of /auth is used before having one.
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/auth/change-password").authenticated()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/plans", "/api/v1/plans/*", "/api/v1/plans/*/pricing").permitAll()
                         // The guided contracting flow builds the draft and its payment before the account
