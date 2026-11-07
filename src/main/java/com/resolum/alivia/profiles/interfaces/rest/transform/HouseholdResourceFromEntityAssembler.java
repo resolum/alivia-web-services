@@ -1,7 +1,10 @@
 package com.resolum.alivia.profiles.interfaces.rest.transform;
 
 import com.resolum.alivia.profiles.domain.model.aggregates.Household;
+import com.resolum.alivia.profiles.domain.model.entities.HouseholdMember;
+import com.resolum.alivia.profiles.domain.model.valueobjects.HouseholdResponsibility;
 import com.resolum.alivia.profiles.interfaces.rest.resources.HouseholdResource;
+import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
 
 /**
  * Builds the household resource with its members.
@@ -19,6 +22,13 @@ public final class HouseholdResourceFromEntityAssembler {
      */
     public static HouseholdResource toResourceFromEntity(Household entity) {
         var address = entity.getAddress();
+        Long responsibleAccountId = entity.getMembers().stream()
+                .filter(m -> m.getResponsibility() == HouseholdResponsibility.PRINCIPAL)
+                .map(HouseholdMember::getUserId)
+                .map(UserId::userId)
+                .findFirst()
+                .orElse(null);
+
         return new HouseholdResource(
                 entity.getId(),
                 entity.getAlias(),
@@ -32,6 +42,7 @@ public final class HouseholdResourceFromEntityAssembler {
                         .map(HouseholdMemberResourceFromEntityAssembler::toResourceFromEntity)
                         .toList(),
                 entity.getCreatedAt(),
-                entity.getUpdatedAt());
+                entity.getUpdatedAt(),
+                responsibleAccountId);
     }
 }

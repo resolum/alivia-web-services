@@ -2,6 +2,7 @@ package com.resolum.alivia.profiles;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -9,10 +10,13 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import com.resolum.alivia.profiles.domain.exceptions.HouseholdAccessDeniedException;
 import com.resolum.alivia.profiles.domain.exceptions.HouseholdNotFoundException;
 import com.resolum.alivia.profiles.domain.model.aggregates.Household;
+import com.resolum.alivia.profiles.domain.model.commands.CreateHouseholdCommand;
+import com.resolum.alivia.profiles.domain.model.commands.UpdateHouseholdCommand;
 import com.resolum.alivia.profiles.domain.model.queries.GetHouseholdMembersQuery;
 import com.resolum.alivia.profiles.domain.model.queries.GetHouseholdQuery;
 import com.resolum.alivia.profiles.domain.model.valueobjects.HouseholdResponsibility;
 import com.resolum.alivia.profiles.domain.services.HouseholdAccessService;
+import com.resolum.alivia.profiles.domain.services.HouseholdCommandService;
 import com.resolum.alivia.profiles.domain.services.HouseholdQueryService;
 import com.resolum.alivia.profiles.interfaces.rest.controllers.HouseholdsController;
 import com.resolum.alivia.shared.domain.model.valueobjects.Address;
@@ -28,6 +32,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -40,13 +46,15 @@ class HouseholdsControllerTest {
 
     private HouseholdQueryService queryService;
     private HouseholdAccessService accessService;
+    private HouseholdCommandService commandService;
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
         queryService = mock(HouseholdQueryService.class);
         accessService = mock(HouseholdAccessService.class);
-        mvc = MockMvcBuilders.standaloneSetup(new HouseholdsController(queryService, accessService))
+        commandService = mock(HouseholdCommandService.class);
+        mvc = MockMvcBuilders.standaloneSetup(new HouseholdsController(queryService, accessService, commandService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -65,9 +73,90 @@ class HouseholdsControllerTest {
                 .andExpect(jsonPath("$.contactEmail").value("hogar@alivia.com"))
                 .andExpect(jsonPath("$.members[0].userId").value(10))
                 .andExpect(jsonPath("$.members[0].responsibility").value("PRINCIPAL"))
-                .andExpect(jsonPath("$.members[0].status").value("ACTIVE"));
+                .andExpect(jsonPath("$.members[0].status").value("ACTIVE"))
+                .andExpect(jsonPath("$.responsibleAccountId").value(10));
 
         verify(accessService).assertCanRead(1L, 10L);
+    }
+
+    @Test
+    void createHouseholdCreatesAndReturnsCreatedHousehold() throws Exception {
+        var household = household();
+        when(commandService.handle(any(CreateHouseholdCommand.class))).thenReturn(1L);
+        when(queryService.handle(new GetHouseholdQuery(1L))).thenReturn(household);
+
+        var body = """
+                {
+                    "alias": "Casa",
+                    "phoneNumber": "51987654321",
+                    "contactEmail": "hogar@alivia.com",
+                    "formattedAddress": "Av. El Derby 250, Santiago de Surco, Lima",
+                    "latitude": -12.109722,
+                    "longitude": -76.974444,
+                    "placeId": "place-1",
+                    "responsibleAccountId": 10
+                }
+                """;
+
+        mvc.perform(post("/api/v1/households")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body)
+                        .principal(() -> "10"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.alias").value("Casa"))
+                .andExpect(jsonPath("$.responsibleAccountId").value(10));
+
+        verify(commandService).handle(any(CreateHouseholdCommand.class));
+    }
+
+    @Test
+    void updateHouseholdAuthorizesPrincipalAndReturnsUpdatedHousehold() throws Exception {
+        var household = household();
+        when(commandService.handle(any(UpdateHouseholdCommand.class))).thenReturn(1L);
+        when(queryService.handle(new GetHouseholdQuery(1L))).thenReturn(household);
+
+        var body = """
+                {
+                    "alias": "Casa Actualizada",
+                    "phoneNumber": "51987654321",
+                    "contactEmail": "hogar@alivia.com"
+                }
+                """;
+
+        mvc.perform(put("/api/v1/households/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body)
+                        .principal(() -> "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.alias").value("Casa"));
+
+        verify(accessService).assertCanManage(1L, 10L);
+        verify(commandService).handle(any(UpdateHouseholdCommand.class));
+    }
+
+    @Test
+    void updateHouseholdReturns403WhenUserCannotManage() throws Exception {
+        doThrow(new HouseholdAccessDeniedException(1L, 10L))
+                .when(accessService).assertCanManage(1L, 10L);
+
+        var body = """
+                {
+                    "alias": "Casa Actualizada",
+                    "phoneNumber": "51987654321",
+                    "contactEmail": "hogar@alivia.com"
+                }
+                """;
+
+        mvc.perform(put("/api/v1/households/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body)
+                        .principal(() -> "10"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("household_access_denied"));
+
+        verify(commandService, never()).handle(any(UpdateHouseholdCommand.class));
     }
 
     @Test
