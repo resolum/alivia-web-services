@@ -114,4 +114,12 @@ public class ActivityAssignment extends AuditableModel {
     public boolean isRecurring() {
         return scheduleType == ScheduleType.WEEKLY;
     }
+
+    public void reassignCaregiver(Long caregiverId) {
+        this.caregiverId = caregiverId;
+    }
+
+    public void deactivate() {
+        this.status = ActivityStatus.INACTIVE;
+    }
 }

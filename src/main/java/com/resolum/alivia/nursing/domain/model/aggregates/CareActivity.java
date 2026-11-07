@@ -123,4 +123,52 @@ public class CareActivity extends AuditableAbstractAggregateRoot<CareActivity> {
     public boolean isActive() {
         return status == ActivityStatus.ACTIVE;
     }
+
+    /**
+     * Updates the activity title and description.
+     *
+     * @param title       the title
+     * @param description the description
+     */
+    public void update(String title, String description) {
+        if (title != null && !title.isBlank()) {
+            this.title = title.strip();
+        }
+        this.description = description == null || description.isBlank() ? null : description.strip();
+    }
+
+    /**
+     * Reassigns all active assignments to another caregiver.
+     *
+     * @param newCaregiverId the new caregiver membership id, or null for relative
+     */
+    public void reassignCaregiver(Long newCaregiverId) {
+        for (ActivityAssignment assignment : activityAssignments.getActivityAssignments()) {
+            assignment.reassignCaregiver(newCaregiverId);
+        }
+    }
+
+    /**
+     * Deactivates the activity and its assignments.
+     */
+    public void deactivate() {
+        this.status = ActivityStatus.INACTIVE;
+        for (ActivityAssignment assignment : activityAssignments.getActivityAssignments()) {
+            assignment.deactivate();
+        }
+    }
+
+    /**
+     * Replaces the assignments of the activity with new schedules.
+     *
+     * @param caregiverId the caregiver membership id
+     * @param schedules   the new schedules
+     * @param today       the current date
+     */
+    public void replaceAssignments(Long caregiverId, List<Schedule> schedules, LocalDate today) {
+        this.activityAssignments.clearAssignments();
+        for (Schedule schedule : schedules) {
+            this.assign(caregiverId, schedule, today);
+        }
+    }
 }

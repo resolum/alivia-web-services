@@ -68,6 +68,13 @@ public class ActivityAssignments {
     }
 
     /**
+     * Clears all assignments.
+     */
+    public void clearAssignments() {
+        this.activityAssignments.clear();
+    }
+
+    /**
      * Returns the active assignments with an occurrence starting on the given date.
      *
      * @param date the date
