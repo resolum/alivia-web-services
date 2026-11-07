@@ -207,6 +207,61 @@ EXTRA_ENV="FAKE_API_DOCS_STATUS=200" run_deploy staging new
 check "a public /v3/api-docs fails the deployment" status_is 1
 check "and rolls back" image_is acrtest.azurecr.io/alivia-api:old
 
+echo "email: resend"
+RESEND_OK="IAM_EMAIL_PROVIDER=resend RESEND_API_KEY=re_test_key_value IAM_EMAIL_FROM=no-reply@mail.example.net"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="$RESEND_OK" run_deploy staging new
+check "resend with key and sender: status 0" status_is 0
+check "the provider, the key and the sender reach the settings" bash -c "grep -qF '\"name\":\"IAM_EMAIL_PROVIDER\",\"value\":\"resend\"' '$FAKE_DIR/settings.json' && grep -qF '\"name\":\"RESEND_API_KEY\"' '$FAKE_DIR/settings.json' && grep -qF '\"value\":\"no-reply@mail.example.net\"' '$FAKE_DIR/settings.json'"
+check "the key is never printed" lacks_text "re_test_key_value"
+check "no warning about the default sender domain" lacks_text "alivia.com"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="IAM_EMAIL_PROVIDER=resend IAM_EMAIL_FROM=no-reply@mail.example.net" run_deploy staging new
+check "resend without the key is refused" status_is 1
+check "the message names RESEND_API_KEY" contains_text "IAM_EMAIL_PROVIDER=resend exige estas variables: RESEND_API_KEY"
+check "nothing was changed" no_az_call "webapp config"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="IAM_EMAIL_PROVIDER=resend RESEND_API_KEY=re_test_key_value" run_deploy staging new
+check "resend without a sender is refused (the default one is not verified anywhere)" status_is 1
+check "the message names IAM_EMAIL_FROM" contains_text "estas variables: IAM_EMAIL_FROM"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="IAM_EMAIL_PROVIDER=resend RESEND_API_KEY=re_test_key_value IAM_EMAIL_FROM=Alivia<no-reply@mail.example.net>" run_deploy staging new
+check "a sender that carries a display name is refused" status_is 1
+check "the message points to IAM_EMAIL_FROM_NAME" contains_text "IAM_EMAIL_FROM_NAME"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="IAM_EMAIL_PROVIDER=resend RESEND_API_KEY=re_test_key_value IAM_EMAIL_FROM=not-an-address" run_deploy staging new
+check "a sender that is not an address is refused" status_is 1
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="IAM_EMAIL_PROVIDER=resend RESEND_API_KEY=re_test_key_value IAM_EMAIL_FROM=no-reply@alivia.com" run_deploy staging new
+check "the default sender domain is allowed but warned about" status_is 0
+check "the warning mentions alivia.com" contains_text "usa alivia.com"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="IAM_EMAIL_PROVIDER=resend RESEND_API_KEY=not_a_resend_key IAM_EMAIL_FROM=no-reply@mail.example.net" run_deploy staging new
+check "a key without the re_ prefix is allowed but warned about" status_is 0
+check "the warning mentions the prefix" contains_text "no empieza por 're_'"
+
+echo "email: other providers"
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="IAM_EMAIL_PROVIDER=smtp" run_deploy staging new
+check "smtp is refused (spring.mail.* is not copied)" status_is 1
+check "the message says so" contains_text "no esta soportado"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="IAM_EMAIL_PROVIDER=log" run_deploy staging new
+check "log is refused (the prod profile would not start)" status_is 1
+check "the message says it is not valid" contains_text "no es valido en prod"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+run_deploy staging new
+check "no provider: deploys, but warns that sign-up will fail" bash -c "[ '$STATUS' = 0 ] && grep -qF 'el registro y las invitaciones de usuarios fallaran' '$FAKE_DIR/out'"
+
 echo
 echo "passed: $PASSED, failed: $FAILED"
 [[ "$FAILED" -eq 0 ]]

@@ -59,6 +59,7 @@ entorno. Sí hay que definirlas todas (§9).
 | D-9 | **Solo se usan GitHub, Docker, Terraform y los servicios nombrados**: Azure Container Registry, App Service, Azure Database for PostgreSQL (servidor flexible) y MongoDB Atlas. Ningún otro servicio ni herramienta de terceros (por eso no hay Key Vault, cuenta de almacenamiento ni Log Analytics). **Única excepción: Trivy**, que es de código abierto, corre dentro del propio runner de GitHub Actions y **no necesita cuenta ni token** | todo el documento |
 | D-10 | El **estado de Terraform es local**, en la máquina de quien aplica; no se usa ningún servicio para guardarlo | §6.1 |
 | D-11 | **Región:** App Service, ACR y PostgreSQL en **Brazil South**; el clúster M0 de Atlas en **East US**, la región más cercana con M0 (§4.4). Se reevalúa cuando alguna funcionalidad use MongoDB | §4.4 |
+| D-12 | **Correo con Resend** (2026-11-07). La API no envía correo ella misma: entrega cada mensaje a Resend, un servicio externo que la aplicación ya integra. **Es una excepción a D-9**, que prohibía cualquier otro servicio: Terraform no lo gestiona y se configura a mano (cuenta, dominio y clave). Se usa un **dominio del equipo** (gratuito, de GitHub Education) y un subdominio de envío. El proveedor `smtp` queda fuera: `deploy.sh` no copia `spring.mail.*` | §9.3, runbook 2.1 |
 
 ### 3.2 Propuestas aprobadas el 2026-11-06
 
@@ -388,7 +389,7 @@ imprimiría todos los valores de la aplicación. Tras el reinicio espera `DEPLOY
 contenedor antiguo sigue respondiendo unos segundos y la primera comprobación podría ser suya. Se niega a desplegar si
 `AZURE_WEBAPP_NAME` no empieza por `app-alivia-<entorno>-` (evita aplicar la configuración de un entorno a la Web App del
 otro), si la etiqueta es `latest`, si `IAM_JWT_SECRET` tiene menos de 32 bytes o si el super administrador conserva los
-marcadores `EMAIL`/`PASSWORD`. Sus pruebas están en `infrastructure/scripts/tests/deploy_test.sh`, con `az` y `curl`
+marcadores `EMAIL`/`PASSWORD`, o si la configuración de correo no puede funcionar (§9.3). Sus pruebas están en `infrastructure/scripts/tests/deploy_test.sh`, con `az` y `curl`
 simulados: **no demuestran** que el `az` real acepte esos argumentos ni que los roles de la identidad alcancen.
 
 **Rollback automático:** si falla el paso 6 o 7, el script restaura la imagen guardada en el paso 3, reinicia y sale con
@@ -475,7 +476,8 @@ Con valor por defecto, pero **que no conviene dejar así en `prod`** **[Confirma
 | Variable | Por qué |
 |---|---|
 | `IAM_SUPER_ADMIN_EMAIL`, `IAM_SUPER_ADMIN_PASSWORD` | Los valores por defecto son `EMAIL` y `PASSWORD` (marcadores): definir siempre |
-| `IAM_EMAIL_PROVIDER` | Por defecto `unavailable`: no se envía correo. Elegir `smtp` o `resend` (y `RESEND_API_KEY`) |
+| `IAM_EMAIL_PROVIDER` | Por defecto `unavailable` en `prod`: no sale ningún correo y **el registro y las invitaciones de usuarios fallan** (D-12). Se usa `resend`. `deploy.sh` rechaza `smtp` (no copia las propiedades `spring.mail.*`) y `log` (en `prod` no hay `emailSender` y la aplicación no arranca) |
+| `RESEND_API_KEY`, `IAM_EMAIL_FROM` | Con `resend`, la aplicación **no arranca** sin `RESEND_API_KEY` (lo comprueba el constructor de `ResendEmailSender`). `IAM_EMAIL_FROM` tiene por defecto `no-reply@alivia.com`: la aplicación arranca, pero ese dominio no es del equipo y Resend rechaza el envío (403) hasta que se use una dirección de un dominio verificado, es decir, el fallo aparece al registrar el primer usuario. Por eso `deploy.sh` exige las dos. Solo la dirección, sin nombre visible (el nombre va en `IAM_EMAIL_FROM_NAME`) |
 | `IAM_ACCOUNT_ACTIVATION_LINK_BASE_URL` | **Faltaba en este inventario.** Lo usa `AccountActivationServiceImpl` y su valor por defecto es `http://localhost:4200/activate-account`; el perfil `prod` no lo redefine. Sin definirla, los enlaces de activación de cuenta apuntan a `localhost`. `deploy.sh` la copia si está definida y avisa si no |
 | `IAM_DEFAULT_PHOTO_URL` | Hay un valor por defecto; confirmar que sirve en production |
 | `HCM_DEFAULT_BUSINESS_ID` | Por defecto `1`; ese negocio debe existir en la base (ver §11.3) |
@@ -525,8 +527,15 @@ del plan. Alertas, paneles y retención larga quedan fuera de este alcance.
    en la primera ejecución y **sin revisores**: el primer despliegue a `production` saldría sin aprobación (R-16). Los
    nombres deben ser exactamente `staging` y `production`, porque forman parte del sujeto OIDC (§7.3).
 4. Cargar secretos y variables del entorno (§9.2, §9.3).
-5. Ejecutar `workflow_dispatch` hacia `staging`; revisar el resumen y la verificación.
-6. Promover a `production` con el mismo `image_tag` y aprobar el entorno.
+5. **Primer despliegue a `staging`: fusionar la rama de CD en `develop`.** El `push` dispara el workflow aunque este aún no
+   esté en `main`. No se puede lanzar con `workflow_dispatch` todavía: GitHub exige que el workflow esté en la rama por
+   defecto (R-18). Revisar el resumen y la verificación.
+6. Con `staging` verificado y `production` aplicado, configurado y cargado, fusionar `develop` en `main`: el `push` lanza un
+   despliegue a `production` que **espera la aprobación** del entorno. Una vez el workflow está en `main`, `workflow_dispatch`
+   con `image_tag` promueve a `production` **la misma imagen** que se probó en `staging`.
+
+El paso a paso con todos los comandos, la tabla de cada variable y los fallos más probables está en
+[`azure-first-deployment-runbook.md`](azure-first-deployment-runbook.md).
 
 ### 11.2 Rollback y migraciones
 
@@ -569,6 +578,9 @@ si los créditos se agotan, la primera palanca es **apagar staging** cuando no s
 | R-13 | Trivy descarga su base de vulnerabilidades de un registro público, que puede limitar las descargas | El paso de análisis falla sin que haya un problema real | Reintentar el trabajo; la caché de la acción reduce las descargas; un `workflow_dispatch` con `image_tag` reutiliza una imagen ya analizada y no construye ni analiza |
 | R-16 | Un entorno de GitHub que no existe se crea solo en la primera ejecución, **sin revisores** | El primer despliegue a `production` sale sin aprobación | Crear `production` con revisores y rama `main` antes de ejecutar nada (§11.1, paso 3). El workflow no puede comprobarlo por sí mismo |
 | R-17 | Las acciones de terceros reciben un token de Azure y publican imágenes; `trivy-action` ya fue comprometida (marzo de 2026) | Ejecución de código ajeno con acceso a Azure | Fijadas por SHA de commit (§7.2); revisar las notas de cada release antes de cambiar un SHA |
+| R-19 | El dominio gratuito de GitHub Education es de **duración limitada** (en la página del paquete: Namecheap `.me` y `.TECH`, un año; Name.com sin duración indicada) y el correo depende de él (D-12) | Al caducar, Resend deja de poder enviar y **nadie se puede registrar**; también el frontend, si usa el mismo dominio | Anotar la fecha de vencimiento y la persona que administra el DNS; recordatorio en un calendario con semanas de margen |
+| R-20 | Resend: el plan gratuito permite 100 correos al día y 3.000 al mes; sin dominio verificado solo envía a la dirección de la propia cuenta (403) | Al agotar la cuota el alta falla; con un remitente no verificado, nadie recibe nada | Verificar el dominio antes de abrir el acceso; vigilar el uso; plan de pago si crece. La aplicación solo registra la clase de la excepción: el motivo se consulta en el panel de Resend |
+| R-18 | `workflow_dispatch` solo funciona con el workflow en la rama por defecto (`main`) **[Confirmado en la documentación de GitHub]**, y fusionar el workflow en `main` lanza un despliegue a `production` (el archivo coincide con el filtro de rutas) | No se puede probar con `workflow_dispatch` ni promover una imagen hasta fusionar a `main`; esa fusión pide aprobar un despliegue a `production` que quizá no esté listo | Probar primero fusionando en `develop` (el `push` usa el workflow del commit); fusionar a `main` solo con `production` aplicado y cargado, o rechazar esa ejecución (runbook, sección 4) |
 | R-14 | Atlas rechaza `backupEnabled` en un clúster M0, incluso con `false` (`TENANT_ATTRIBUTE_READ_ONLY`). **Ocurrió** en el paso 3 y está corregido: el módulo no envía el atributo en M0 | `apply` fallido a medias | `terraform test` usa proveedores simulados y **no detecta reglas de la API de Atlas ni de Azure**: solo un `apply` real lo comprueba. Al crear `production` hay que esperar los mismos tipos de fallo |
 | R-15 | La Web App tiene 31 IP de salida posibles; PostgreSQL y Atlas reciben una regla por cada una (§6.3) | Ruido y más superficie de acceso de la necesaria | Decisión deliberada frente a R-06; revisable si molesta |
 
@@ -646,6 +658,34 @@ esquema de `azurerm` 5.13 exige `user_assigned_identity_id` en la credencial fed
 memoria) ni el inicio de sesión desde GitHub. Antes del `apply` hay que registrar `Microsoft.ManagedIdentity` y borrar a mano
 la identidad de prueba `id-alivia-deploy` (y su credencial `gh-staging`, si se creó), que no está en el estado de Terraform.
 
+**Correo con Resend resuelto en `deploy.sh` y documentado el 2026-11-07, sin probar contra Resend.** A petición de la
+persona asignada se revisó el envío de correo antes de seguir. Hallazgos del código **[Confirmado]**: solo se envían el
+correo de verificación y la invitación de personal; si el envío falla, **falla el alta** (`RegistrationUnavailableException`);
+con el perfil `prod`, `IAM_EMAIL_PROVIDER` por defecto es `unavailable` (el alta falla siempre), `log` deja a la
+aplicación sin `emailSender` (no arranca) y `smtp` necesita `spring.mail.*`, que `deploy.sh` no copia; con `resend`, la
+aplicación no arranca sin `RESEND_API_KEY`, y `IAM_EMAIL_FROM` tiene por defecto `no-reply@alivia.com`, un dominio que no es
+del equipo. Cambios: `deploy.sh` valida la configuración de correo (exige `RESEND_API_KEY` e `IAM_EMAIL_FROM` con
+`resend`, rechaza una dirección con nombre visible, rechaza `smtp`, `log` y los valores desconocidos, y avisa si el
+proveedor falta, si el remitente es `alivia.com` o si la clave no empieza por `re_`); 21 pruebas nuevas, que suman 53
+(todas pasan) y se comprobó que fallan al desactivar la validación o su expresión regular; ShellCheck sin hallazgos. Se
+documentó el procedimiento (cuenta, subdominio, DNS, clave por entorno, prueba de extremo a extremo y tabla de fallos) en
+la sección 2.1 del runbook, la decisión D-12 y los riesgos R-19 y R-20. Las reglas de Resend (403 con dominio sin verificar
+y con envío de prueba, límites del plan gratuito) se tomaron de su documentación el 2026-11-07. **No verificado:** la
+verificación del dominio, los registros DNS exactos y el tiempo que tarda, las regiones disponibles, el nombre exacto del
+remitente de prueba, que la clave pueda limitarse a un dominio, y cualquier envío real. **Pendiente de la persona
+asignada:** qué dominio es, quién administra su DNS, su fecha de vencimiento y la cuenta de Resend.
+
+**Paso 6 redactado el 2026-11-06, sin ejecutar.** Se escribió `docs/operations/azure-first-deployment-runbook.md`: crear los
+entornos de GitHub y sus protecciones (interfaz y `gh`), la tabla de cada variable (22 obligatorias, 8 secretos y 14
+variables, y las opcionales que conviene definir), los bloques de carga (los secretos se canalizan, nunca se escriben), una
+comprobación de nombres, el orden de la primera prueba, la tabla de fallos y la operación de `production`. Lo que se
+verificó: el repositorio es **público**, así que revisores obligatorios y restricción de ramas están disponibles en
+cualquier plan; los valores que acepta el proveedor de correo (`smtp`, `resend`, `unavailable`, `log`), y que `smtp`
+necesitaría propiedades que `deploy.sh` no copia; el nombre de los recursos de contraseña que se rotan con `-replace`; y la
+regla de GitHub de `workflow_dispatch` (R-18), que obliga a probar primero fusionando en `develop`. **No verificado:**
+todos los comandos de `gh` (no está instalado en la máquina donde se redactó; van marcados **[Sin probar]**) y el criterio
+de §13 (desplegar `staging` y `production` siguiendo solo el runbook), que cierra la persona asignada al ejecutarlo.
+
 ## 14. Referencias
 
 - Repositorio de referencia (AWS EKS): `Resolum-MineSense-Safety/minesense-safety`, `.github/workflows/cd-deploy.yml`,
@@ -653,6 +693,7 @@ la identidad de prueba `id-alivia-deploy` (y su credencial `gh-staging`, si se c
   `environments`), la separación staging/production, el `concurrency` por entorno y el script que también puede ejecutarse a
   mano, y el análisis con Trivy. **No se copia** su despliegue (Helm y Kubernetes), su autenticación OIDC con AWS ni su
   estado remoto (D-10).
+- Runbook del primer despliegue: `docs/operations/azure-first-deployment-runbook.md`.
 - Documentos de este repositorio: `docs/database-migrations.md`, `docs/operations/backup-restore.md`,
   `docs/local-environment.md`.
 - Jira: TS-41 (AP-99), AP-465, AP-466, AP-468.

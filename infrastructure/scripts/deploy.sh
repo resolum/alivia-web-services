@@ -5,7 +5,8 @@
 #   infrastructure/scripts/deploy.sh <staging|production> <image-tag>
 #
 # What it does (docs/operations/azure-deployment.md, section 8):
-#   1. validates the arguments and that every required variable is set (it lists NAMES, never values);
+#   1. validates the arguments, that every required variable is set (it lists NAMES, never values) and that the email
+#      configuration can work;
 #   2. checks that the image exists in the registry and remembers the one that runs now;
 #   3. applies the application settings and the new image, and restarts the Web App;
 #   4. waits for /actuator/health to report UP, then checks the public routes;
@@ -59,8 +60,9 @@ readonly OPTIONAL_APP_VARS=(
   DOCUMENTATION_APPLICATION_DESCRIPTION DOCUMENTATION_APPLICATION_VERSION
 )
 
-# Defaults in the application that are wrong for a deployed environment: worth a warning when not set.
-readonly WARN_IF_UNSET=(IAM_EMAIL_PROVIDER IAM_ACCOUNT_ACTIVATION_LINK_BASE_URL)
+# Defaults in the application that are wrong for a deployed environment: worth a warning when not set. The email
+# provider has its own checks (check_email_configuration).
+readonly WARN_IF_UNSET=(IAM_ACCOUNT_ACTIVATION_LINK_BASE_URL)
 
 # Never printed; masked in GitHub Actions logs.
 readonly SECRET_VARS=(
@@ -157,6 +159,43 @@ check_tools() {
   done
 }
 
+# Email decides whether people can register: sign-up and invitations fail when the message cannot be sent
+# (RegistrationUnavailableException). The prod profile accepts resend, smtp and unavailable. "log" is development only
+# and leaves the application without an email sender, so it would not start, and smtp needs spring.mail.* properties that
+# this script does not copy. Every combination that cannot work is refused here, before anything is changed.
+check_email_configuration() {
+  local provider="${IAM_EMAIL_PROVIDER:-}" name
+  local missing=()
+  local address_pattern='^[^@[:space:]<>]+@[^@[:space:]<>]+\.[^@[:space:]<>]+$'
+
+  case "$provider" in
+    resend)
+      for name in RESEND_API_KEY IAM_EMAIL_FROM; do
+        is_set "$name" || missing+=("$name")
+      done
+      ((${#missing[@]} == 0)) || die "IAM_EMAIL_PROVIDER=resend exige estas variables: ${missing[*]}"
+      # The application writes "<name> <address>" itself: an address that already carries a name is rejected by Resend.
+      [[ "$IAM_EMAIL_FROM" =~ $address_pattern ]] \
+        || die "IAM_EMAIL_FROM debe ser solo una direccion (nombre@dominio); el nombre visible va en IAM_EMAIL_FROM_NAME"
+      [[ "$RESEND_API_KEY" == re_* ]] || warn "RESEND_API_KEY no empieza por 're_', como las claves de Resend"
+      [[ "${IAM_EMAIL_FROM##*@}" != "alivia.com" ]] \
+        || warn "IAM_EMAIL_FROM usa alivia.com, el valor por defecto de la aplicacion: Resend rechaza el envio si ese dominio no esta verificado en la cuenta"
+      ;;
+    "")
+      warn "IAM_EMAIL_PROVIDER no esta definida: el perfil prod usa 'unavailable' y el registro y las invitaciones de usuarios fallaran"
+      ;;
+    unavailable)
+      warn "IAM_EMAIL_PROVIDER=unavailable: ningun correo sale, y el registro y las invitaciones de usuarios fallaran"
+      ;;
+    smtp)
+      die "IAM_EMAIL_PROVIDER=smtp no esta soportado por este script: no copia las propiedades spring.mail.*. Usa resend"
+      ;;
+    *)
+      die "IAM_EMAIL_PROVIDER='$provider' no es valido en prod (usa resend)"
+      ;;
+  esac
+}
+
 check_variables() {
   local missing=() name
   for name in "${RESOURCE_VARS[@]}" "${REQUIRED_APP_VARS[@]}"; do
@@ -177,6 +216,8 @@ check_variables() {
   for name in "${WARN_IF_UNSET[@]}"; do
     is_set "$name" || warn "$name no esta definida: se usara el valor por defecto de la aplicacion, pensado para desarrollo"
   done
+
+  check_email_configuration
 }
 
 # In GitHub Actions the values of secrets are already masked, but a variable that holds a derived value (for example a
