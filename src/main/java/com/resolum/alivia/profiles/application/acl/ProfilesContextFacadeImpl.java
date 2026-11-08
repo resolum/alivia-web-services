@@ -22,6 +22,7 @@ import com.resolum.alivia.profiles.domain.model.commands.CreateBusinessProfileCo
 import com.resolum.alivia.profiles.domain.model.commands.CreatePersonProfileCommand;
 import com.resolum.alivia.profiles.domain.model.commands.CreateStaffProfileCommand;
 import com.resolum.alivia.profiles.domain.model.commands.UpdateBusinessProfileCommand;
+import com.resolum.alivia.profiles.domain.model.commands.UpdatePersonProfileCommand;
 import com.resolum.alivia.profiles.domain.model.commands.UpdateStaffProfileCommand;
 import com.resolum.alivia.profiles.domain.model.queries.ExistsBusinessProfileByEmailAddressQuery;
 import com.resolum.alivia.profiles.domain.model.queries.ExistsPersonProfileByDniQuery;
@@ -175,6 +176,20 @@ public class ProfilesContextFacadeImpl implements ProfilesContextFacade {
         log.info("Person profile created via ACL with id: {}", profileId);
         return profileId;
     }
+
+    @Override
+    @Transactional
+    public Long updatePersonProfileWithPhoto(Long profileId, byte[] photoData, String photoFileName,
+                                            String phoneNumber, String firstName, String lastName,
+                                            LocalDate birthDate) {
+        log.info("Updating person profile via ACL with photo data for profile ID: {}", profileId);
+        var command = new UpdatePersonProfileCommand(
+                profileId, firstName, lastName, birthDate, phoneNumber, photoData, photoFileName);
+        Long updatedProfileId = personProfileCommandService.handle(command);
+        log.info("Person profile updated via ACL with id: {}", updatedProfileId);
+        return updatedProfileId;
+    }
+
 
     /**
      * {@inheritDoc}
