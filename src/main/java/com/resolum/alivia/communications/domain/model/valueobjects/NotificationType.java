@@ -1,0 +1,15 @@
+package com.resolum.alivia.communications.domain.model.valueobjects;
+
+public enum NotificationType {
+    LOW_BATTERY,
+    ACTUATOR_FAILURE,
+    CAREGIVER_INVITATION,
+    PAYMENT_FAILED,
+    SUBSCRIPTION_REFUNDED,
+    INSTALLATION_REJECTED,
+    INSTALLATION_CANCELED,
+    HELP_REQUEST_DELAYED,
+    EDGE_DISCONNECTED,
+    EDGE_RECONNECTED,
+    ASSIGNMENT_CREATED
+}
