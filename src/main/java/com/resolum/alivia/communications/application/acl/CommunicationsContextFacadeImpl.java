@@ -23,7 +23,8 @@ public class CommunicationsContextFacadeImpl implements CommunicationsContextFac
             "reset-password", "Restablece tu contraseña de Alivia",
             "set-password", "Crea tu contraseña de Alivia",
             "welcome", "Te damos la bienvenida a Alivia",
-            "account-invitation", "Bienvenido al equipo de Alivia · Activa tu cuenta");
+            "account-invitation", "Bienvenido al equipo de Alivia · Activa tu cuenta",
+            "caregiver-invitation", "Te invitaron a una red de cuidado en Alivia");
 
     private final EmailTemplateRenderer templateRenderer;
     private final EmailSender emailSender;
