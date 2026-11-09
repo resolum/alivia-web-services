@@ -8,6 +8,8 @@
 #   1. validates the arguments, that every required variable is set (it lists NAMES, never values) and that the email
 #      configuration can work;
 #   2. checks that the image exists in the registry and remembers the one that runs now;
+#   2b. starts the PostgreSQL server when it is stopped and waits until it is Ready (only when AZURE_POSTGRES_SERVER_NAME
+#      is set): a stopped server makes the application fail to start and the health check wait for the whole timeout;
 #   3. applies the application settings and the new image, and restarts the Web App;
 #   4. waits for /actuator/health to report UP, then checks the public routes;
 #   5. if step 4 fails, puts the previous image back and exits with status 1.
@@ -20,9 +22,12 @@
 # Required environment (names of the resources, from `terraform output`):
 #   AZURE_RESOURCE_GROUP, AZURE_WEBAPP_NAME, ACR_NAME
 # plus every variable in REQUIRED_APP_VARS below. Optional tuning variables in OPTIONAL_APP_VARS are copied when set.
+# Optional: AZURE_POSTGRES_SERVER_NAME (`terraform output -raw postgres_server_name`). Without it the server is not
+# checked and a warning is printed.
 #
 # Tuning for tests and slow environments (all in seconds):
-#   DEPLOY_WARMUP_SECONDS (30), DEPLOY_HEALTH_TIMEOUT_SECONDS (600), DEPLOY_HEALTH_INTERVAL_SECONDS (10)
+#   DEPLOY_WARMUP_SECONDS (30), DEPLOY_HEALTH_TIMEOUT_SECONDS (600), DEPLOY_HEALTH_INTERVAL_SECONDS (10),
+#   DEPLOY_DATABASE_TIMEOUT_SECONDS (900), DEPLOY_DATABASE_INTERVAL_SECONDS (15)
 
 set -euo pipefail
 
@@ -33,6 +38,8 @@ readonly IMAGE_REPOSITORY="alivia-api"
 readonly WARMUP_SECONDS="${DEPLOY_WARMUP_SECONDS:-30}"
 readonly HEALTH_TIMEOUT_SECONDS="${DEPLOY_HEALTH_TIMEOUT_SECONDS:-600}"
 readonly HEALTH_INTERVAL_SECONDS="${DEPLOY_HEALTH_INTERVAL_SECONDS:-10}"
+readonly DATABASE_TIMEOUT_SECONDS="${DEPLOY_DATABASE_TIMEOUT_SECONDS:-900}"
+readonly DATABASE_INTERVAL_SECONDS="${DEPLOY_DATABASE_INTERVAL_SECONDS:-15}"
 
 readonly RESOURCE_VARS=(AZURE_RESOURCE_GROUP AZURE_WEBAPP_NAME ACR_NAME)
 
@@ -208,6 +215,11 @@ check_variables() {
   # Guard against pointing a deployment at the other environment's Web App (names are app-alivia-<env>-<suffix>).
   [[ "$AZURE_WEBAPP_NAME" == "app-alivia-${ENVIRONMENT}-"* ]] \
     || die "AZURE_WEBAPP_NAME no pertenece al entorno '$ENVIRONMENT'"
+  # Same guard for the database server (names are psql-alivia-<env>-<suffix>).
+  if is_set AZURE_POSTGRES_SERVER_NAME; then
+    [[ "$AZURE_POSTGRES_SERVER_NAME" == "psql-alivia-${ENVIRONMENT}-"* ]] \
+      || die "AZURE_POSTGRES_SERVER_NAME no pertenece al entorno '$ENVIRONMENT'"
+  fi
 
   [[ "${#IAM_JWT_SECRET}" -ge 32 ]] || die "IAM_JWT_SECRET debe tener al menos 32 bytes"
   [[ "$IAM_SUPER_ADMIN_EMAIL" != "EMAIL" && "$IAM_SUPER_ADMIN_PASSWORD" != "PASSWORD" ]] \
@@ -338,6 +350,42 @@ apply_settings() {
   SETTINGS_FILE=""
 }
 
+# Starts the PostgreSQL server if it is stopped and waits until it is Ready. It runs before anything is changed, so a
+# server that cannot be started leaves the Web App as it was. The state names are those of the flexible server API.
+ensure_database_running() {
+  if ! is_set AZURE_POSTGRES_SERVER_NAME; then
+    warn "AZURE_POSTGRES_SERVER_NAME no esta definida: no se comprueba que PostgreSQL este encendido"
+    return 0
+  fi
+
+  local deadline=$((SECONDS + DATABASE_TIMEOUT_SECONDS)) state started=0
+  log "Comprobando que PostgreSQL (${AZURE_POSTGRES_SERVER_NAME}) este encendido"
+  while ((SECONDS < deadline)); do
+    state="$(az postgres flexible-server show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_POSTGRES_SERVER_NAME" \
+      --query state -o tsv 2>/dev/null)" || die "no se pudo leer el estado de PostgreSQL '${AZURE_POSTGRES_SERVER_NAME}'"
+    case "$state" in
+      Ready)
+        log "  OK  PostgreSQL en estado Ready"
+        return 0
+        ;;
+      Stopped)
+        # A second Stopped after start means the start did not take effect: do not loop starting forever.
+        ((started == 0)) || die "PostgreSQL sigue detenido despues de iniciarlo"
+        log "  PostgreSQL esta detenido: iniciandolo (puede tardar unos minutos)"
+        az postgres flexible-server start -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_POSTGRES_SERVER_NAME" -o none \
+          || die "no se pudo iniciar PostgreSQL '${AZURE_POSTGRES_SERVER_NAME}'"
+        started=1
+        ;;
+      Starting | Stopping | Updating)
+        log "  PostgreSQL en estado ${state}: esperando"
+        sleep "$DATABASE_INTERVAL_SECONDS"
+        ;;
+      *) die "PostgreSQL esta en un estado inesperado: '${state}'" ;;
+    esac
+  done
+  die "PostgreSQL no llego a Ready en ${DATABASE_TIMEOUT_SECONDS} s"
+}
+
 # ---------------------------------------------------------------------------------------------------------------------
 # Verification
 # ---------------------------------------------------------------------------------------------------------------------
@@ -435,6 +483,8 @@ main() {
   log "Desplegando $TARGET_IMAGE en '$ENVIRONMENT' (${AZURE_WEBAPP_NAME})"
 
   image_in_registry "$IMAGE_TAG" || die "la imagen ${IMAGE_REPOSITORY}:${IMAGE_TAG} no existe en el registro $ACR_NAME"
+
+  ensure_database_running
 
   PREVIOUS_IMAGE="$(current_image)"
   log "Imagen en ejecucion: ${PREVIOUS_IMAGE:-ninguna}"

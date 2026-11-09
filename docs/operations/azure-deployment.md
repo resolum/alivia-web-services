@@ -236,7 +236,7 @@ Los `*.tfvars`, `*.tfstate` y `.terraform/` entran en `.gitignore`; se versionan
 | `platform` | App Service Plan Linux, Web App con identidad administrada y rol `AcrPull` sobre el ACR, `https_only`, `ftps_state = Disabled`, `health_check_path = /actuator/health`, `always_on`, registros de aplicación y HTTP en el sistema de archivos de App Service | `webapp_name`, `default_hostname`, `outbound_ips` |
 | `postgres` | Servidor flexible, base de datos, `require_secure_transport = on`, una regla de firewall por IP de salida de la Web App, contraseña con `random_password` | `fqdn`, `database`, `admin_user`, `admin_password` (sensible) |
 | `mongodb-atlas` | Proyecto, clúster (M0 o M10), usuario de base de datos con contraseña aleatoria, lista de acceso con las IP de salida de la Web App | `connection_string_srv` (sensible), `database` |
-| `deploy-identity` | Identidad administrada `id-alivia-<entorno>-deploy`, una credencial federada para el entorno de GitHub del mismo nombre y dos roles: `AcrPush` sobre el ACR y `Website Contributor` sobre la Web App de ese entorno | `client_id`, `subject`, `role_assignments` |
+| `deploy-identity` | Identidad administrada `id-alivia-<entorno>-deploy`, una credencial federada para el entorno de GitHub del mismo nombre y tres roles: `AcrPush` sobre el ACR, `Website Contributor` sobre la Web App de ese entorno y un rol personalizado `id-alivia-<entorno>-deploy-postgres-power` (leer y encender, nada más) sobre el servidor PostgreSQL de ese entorno | `client_id`, `subject`, `role_assignments` |
 
 Los dos entornos usan los mismos módulos y difieren solo en tamaño y redundancia (variables de cada `environments/*`).
 Los recursos llevan las etiquetas `project=alivia`, `environment`, `ticket=TS-41` y `managed_by=terraform`. Con un solo
@@ -348,8 +348,8 @@ concreto, así que no hay secreto que guardar ni rotar.
 
 | Identidad | Roles | Quién puede iniciar sesión (sujeto de la credencial federada) |
 |---|---|---|
-| `id-alivia-staging-deploy` | `AcrPush` sobre el ACR; `Website Contributor` sobre la Web App de staging | `repo:resolum@298395203/alivia-web-services@1411127236:environment:staging` |
-| `id-alivia-production-deploy` | `AcrPush` sobre el ACR; `Website Contributor` sobre la Web App de production | `repo:resolum@298395203/alivia-web-services@1411127236:environment:production` |
+| `id-alivia-staging-deploy` | `AcrPush` sobre el ACR; `Website Contributor` sobre la Web App de staging; `postgres-power` (leer y encender) sobre el PostgreSQL de staging | `repo:resolum@298395203/alivia-web-services@1411127236:environment:staging` |
+| `id-alivia-production-deploy` | `AcrPush` sobre el ACR; `Website Contributor` sobre la Web App de production; `postgres-power` (leer y encender) sobre el PostgreSQL de production | `repo:resolum@298395203/alivia-web-services@1411127236:environment:production` |
 
 - **Una identidad por entorno, no una compartida.** Con una sola identidad con roles sobre las dos Web Apps, un trabajo de
   `staging` podría iniciar sesión con ella y desplegar en `production`, saltándose la aprobación de ese entorno. Con una por

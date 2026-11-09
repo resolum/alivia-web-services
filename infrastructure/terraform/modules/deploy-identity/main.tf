@@ -59,6 +59,11 @@ variable "webapp_id" {
   type        = string
 }
 
+variable "postgres_id" {
+  description = "Resource id of the PostgreSQL server of this environment: the only server the identity can start."
+  type        = string
+}
+
 variable "tags" {
   description = "Tags for the identity."
   type        = map(string)
@@ -112,6 +117,32 @@ resource "azurerm_role_assignment" "webapp_contributor" {
   principal_type       = "ServicePrincipal"
 }
 
+# The staging server is stopped between sessions to save cost, and a stopped server makes the application fail to start.
+# No built-in role grants only this, and Contributor would also allow deleting the server or resetting its password, so
+# the role is custom: read the server and start it, on this one server.
+resource "azurerm_role_definition" "postgres_power" {
+  name        = "${var.name}-postgres-power"
+  scope       = var.postgres_id
+  description = "Read and start the PostgreSQL server of one environment (used by its deployment identity)."
+
+  permissions {
+    actions = [
+      "Microsoft.DBforPostgreSQL/flexibleServers/read",
+      "Microsoft.DBforPostgreSQL/flexibleServers/start/action",
+    ]
+    not_actions = []
+  }
+
+  assignable_scopes = [var.postgres_id]
+}
+
+resource "azurerm_role_assignment" "postgres_power" {
+  scope              = var.postgres_id
+  role_definition_id = azurerm_role_definition.postgres_power.role_definition_resource_id
+  principal_id       = azurerm_user_assigned_identity.this.principal_id
+  principal_type     = "ServicePrincipal"
+}
+
 output "name" {
   description = "Name of the identity."
   value       = azurerm_user_assigned_identity.this.name
@@ -132,5 +163,6 @@ output "role_assignments" {
   value = {
     (azurerm_role_assignment.acr_push.role_definition_name)           = azurerm_role_assignment.acr_push.scope
     (azurerm_role_assignment.webapp_contributor.role_definition_name) = azurerm_role_assignment.webapp_contributor.scope
+    (azurerm_role_definition.postgres_power.name)                     = azurerm_role_assignment.postgres_power.scope
   }
 }

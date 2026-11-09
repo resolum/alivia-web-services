@@ -189,6 +189,7 @@ module "deploy_identity" {
   github_environment   = local.environment
   acr_id               = data.azurerm_container_registry.this.id
   webapp_id            = module.platform.app_id
+  postgres_id          = module.postgres.id
   tags                 = local.tags
 }
 
@@ -233,6 +234,11 @@ output "azure_subscription_id" {
 output "default_hostname" {
   description = "Host name of the API. Its URL is https://<default_hostname>."
   value       = module.platform.default_hostname
+}
+
+output "postgres_server_name" {
+  description = "AZURE_POSTGRES_SERVER_NAME (GitHub variable of the environment): deploy.sh starts the server when it is stopped."
+  value       = module.postgres.name
 }
 
 output "postgres_fqdn" {

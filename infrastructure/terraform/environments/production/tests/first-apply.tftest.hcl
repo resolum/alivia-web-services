@@ -50,6 +50,12 @@ mock_provider "azurerm" {
     }
   }
 
+  mock_resource "azurerm_role_definition" {
+    defaults = {
+      role_definition_resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleDefinitions/44444444-4444-4444-4444-444444444444"
+    }
+  }
+
   mock_resource "azurerm_user_assigned_identity" {
     defaults = {
       id           = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-alivia/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alivia-production-deploy"
@@ -122,14 +128,15 @@ run "second_apply_creates_the_databases_with_one_rule_per_distinct_address" {
     error_message = "Only jobs of the production GitHub environment of this repository can sign in as the identity (got ${module.deploy_identity.subject})."
   }
 
-  # Least privilege: exactly these two roles, on these two resources and not on the resource group.
+  # Least privilege: exactly these three roles, on these three resources and not on the resource group.
   assert {
     condition = (
-      length(module.deploy_identity.role_assignments) == 2
+      length(module.deploy_identity.role_assignments) == 3
       && endswith(module.deploy_identity.role_assignments["AcrPush"], "/registries/acralivia12345")
       && endswith(module.deploy_identity.role_assignments["Website Contributor"], "/sites/app-alivia-production")
+      && endswith(module.deploy_identity.role_assignments["id-alivia-production-deploy-postgres-power"], "/flexibleServers/psql-alivia-production")
     )
-    error_message = "The identity holds AcrPush on the registry and Website Contributor on its own Web App, nothing else (got ${jsonencode(module.deploy_identity.role_assignments)})."
+    error_message = "The identity holds AcrPush on the registry, Website Contributor on its own Web App and the custom postgres-power role on its own PostgreSQL server, nothing else (got ${jsonencode(module.deploy_identity.role_assignments)})."
   }
 
   assert {
