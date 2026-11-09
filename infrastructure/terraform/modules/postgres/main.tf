@@ -120,6 +120,16 @@ output "firewall_rule_names" {
   value       = sort([for rule in azurerm_postgresql_flexible_server_firewall_rule.allowed : rule.name])
 }
 
+output "id" {
+  description = "Resource id of the server (scope of the role that lets the deployment identity start it)."
+  value       = azurerm_postgresql_flexible_server.this.id
+}
+
+output "name" {
+  description = "Name of the server (AZURE_POSTGRES_SERVER_NAME, GitHub variable of the environment)."
+  value       = azurerm_postgresql_flexible_server.this.name
+}
+
 output "fqdn" {
   description = "Host name of the server."
   value       = azurerm_postgresql_flexible_server.this.fqdn
