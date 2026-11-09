@@ -48,6 +48,7 @@ public class Subscription {
     @Column(nullable = false) private boolean refunded;
     /** Configuration draft the family contracted with; Operations keeps its technical orders by this id. */
     @Column(name = "draft_id", length = 36) private String draftId;
+    @Column(name = "pending_plan_code", length = 10) private String pendingPlanCode;
     protected Subscription() { }
     public Subscription(UserId userId, HouseholdId householdId, Plan plan, ActuatorSelection selection,
                         Money monthlyAmount, String stripeCustomerId, String idempotencyKey) {
@@ -93,4 +94,15 @@ public class Subscription {
     }
     public boolean isActive() { return status == SubscriptionStatus.ACTIVE; }
     public boolean isCurrent() { return isActive() && currentPeriodEnd != null && currentPeriodEnd.isAfter(LocalDateTime.now()); }
+
+    public String getPendingPlanCode() { return pendingPlanCode; }
+    public void requestPlanChange(String planCode) { this.pendingPlanCode = planCode; }
+    public void updateStatus(SubscriptionStatus newStatus) {
+        if (newStatus == null) throw new IllegalArgumentException("El nuevo estado es requerido.");
+        this.status = newStatus;
+        if (newStatus == SubscriptionStatus.CANCELED) {
+            this.activeHouseholdId = null;
+        }
+    }
+
 }
