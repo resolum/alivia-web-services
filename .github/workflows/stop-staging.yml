@@ -1,0 +1,76 @@
+name: Staging - Stop at noon and midnight (Peru)
+
+# Stops the Web App and the PostgreSQL server of staging twice a day, to save cost. The next deployment (cd-deploy.yml)
+# starts both again: nothing has to be turned on by hand.
+#
+#   schedule           -> 12:00 and 00:00 in Peru (UTC-5, no daylight saving time) = 17:00 and 05:00 UTC
+#   workflow_dispatch  -> the same, on demand
+#
+# Limits worth knowing:
+#   - GitHub runs scheduled workflows only from the default branch, and may start them several minutes late (or skip one
+#     when its queue is overloaded). The time is "about", not exact.
+#   - It signs in with the same identity as cd-deploy.yml (OIDC, GitHub environment "staging"): if that environment is
+#     given required reviewers, every scheduled run will wait for an approval. Staging should not have them.
+#   - Production is deliberately not touched.
+#
+# Third-party actions are pinned to a full commit SHA, as in cd-deploy.yml (see the note there).
+
+on:
+  schedule:
+    - cron: '0 5,17 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stop:
+    name: Stop - staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    # Shares the group of the staging deployments: a stop never overlaps a deployment in progress, it waits for it.
+    concurrency:
+      group: cd-deploy-staging
+      cancel-in-progress: false
+
+    steps:
+      - name: Check the variables of the environment
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+          AZURE_POSTGRES_SERVER_NAME: ${{ vars.AZURE_POSTGRES_SERVER_NAME }}
+        run: |
+          missing=()
+          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_RESOURCE_GROUP AZURE_WEBAPP_NAME AZURE_POSTGRES_SERVER_NAME; do
+            [ -n "${!name:-}" ] || missing+=("$name")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::The GitHub environment 'staging' lacks these variables: ${missing[*]} (see section 9.2 of the deployment document)."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Sign in to Azure (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Stop the Web App and PostgreSQL
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+          AZURE_POSTGRES_SERVER_NAME: ${{ vars.AZURE_POSTGRES_SERVER_NAME }}
+        run: bash infrastructure/scripts/stop-environment.sh staging

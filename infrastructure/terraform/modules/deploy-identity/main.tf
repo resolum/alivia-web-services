@@ -117,18 +117,19 @@ resource "azurerm_role_assignment" "webapp_contributor" {
   principal_type       = "ServicePrincipal"
 }
 
-# The staging server is stopped between sessions to save cost, and a stopped server makes the application fail to start.
-# No built-in role grants only this, and Contributor would also allow deleting the server or resetting its password, so
-# the role is custom: read the server and start it, on this one server.
+# The server is stopped between sessions to save cost (workflow stop-staging), and a stopped server makes the application
+# fail to start (deploy.sh starts it). No built-in role grants only this, and Contributor would also allow deleting the
+# server or resetting its password, so the role is custom: read, start and stop this one server.
 resource "azurerm_role_definition" "postgres_power" {
   name        = "${var.name}-postgres-power"
   scope       = var.postgres_id
-  description = "Read and start the PostgreSQL server of one environment (used by its deployment identity)."
+  description = "Read, start and stop the PostgreSQL server of one environment (used by its deployment identity)."
 
   permissions {
     actions = [
       "Microsoft.DBforPostgreSQL/flexibleServers/read",
       "Microsoft.DBforPostgreSQL/flexibleServers/start/action",
+      "Microsoft.DBforPostgreSQL/flexibleServers/stop/action",
     ]
     not_actions = []
   }
