@@ -9,4 +9,5 @@ import com.resolum.alivia.subscriptions.domain.model.valueobjects.PaymentStatus;
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
     Optional<Payment> findFirstBySubscription_IdAndStripeInvoiceIdIsNullOrderByIdDesc(Long subscriptionId);
     List<Payment> findByStatus(PaymentStatus status);
+    Optional<Payment> findFirstBySubscription_IdOrderByIdDesc(Long subscriptionId);
 }
