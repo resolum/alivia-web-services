@@ -10,7 +10,7 @@
 #   2. checks that the image exists in the registry and remembers the one that runs now;
 #   2b. starts the PostgreSQL server when it is stopped and waits until it is Ready (only when AZURE_POSTGRES_SERVER_NAME
 #      is set): a stopped server makes the application fail to start and the health check wait for the whole timeout;
-#   3. applies the application settings and the new image, and restarts the Web App;
+#   3. applies the application settings and the new image, and restarts the Web App (starts it if it is stopped);
 #   4. waits for /actuator/health to report UP, then checks the public routes;
 #   5. if step 4 fails, puts the previous image back and exits with status 1.
 #
@@ -330,8 +330,19 @@ set_image() {
     --linux-fx-version "DOCKER|$1" -o none
 }
 
+# `az webapp restart` does not start a Web App that is stopped (checked against Azure: it stays Stopped and answers 403),
+# and the nightly stop of staging leaves it that way. A stopped app is started instead; the image and the settings were
+# already applied, so it comes up with them.
 restart_app() {
-  az webapp restart -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEBAPP_NAME" -o none
+  local state
+  state="$(az webapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEBAPP_NAME" --query state -o tsv)" \
+    || die "no se pudo leer el estado de la Web App '${AZURE_WEBAPP_NAME}'"
+  if [[ "$state" == "Stopped" ]]; then
+    log "La Web App esta detenida: iniciandola"
+    az webapp start -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEBAPP_NAME" -o none
+  else
+    az webapp restart -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEBAPP_NAME" -o none
+  fi
 }
 
 apply_settings() {

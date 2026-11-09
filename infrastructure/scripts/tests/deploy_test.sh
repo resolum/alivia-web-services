@@ -36,7 +36,11 @@ case "$args" in
   "webapp config appsettings set"*)
     file="${args##*--settings @}"
     cp "${file%% *}" "$FAKE_DIR/settings.json" ;;
+  # The Web App state is in $FAKE_DIR/app_state (default Running). Like the real one, `restart` does not start a stopped
+  # app; only `start` does.
+  "webapp show"*"--query state"*) cat "$FAKE_DIR/app_state" 2>/dev/null || echo Running ;;
   "webapp show"*) echo "fake-app.example.net" ;;
+  "webapp start"*) echo Running >"$FAKE_DIR/app_state" ;;
   "webapp restart"*) exit 0 ;;
   # The server state is in $FAKE_DIR/db_state (default Ready). `start` moves Stopped to Starting; the next `show` says
   # Ready, as a real server does once it has finished starting. FAKE_DB_STUCK=1 makes the start have no effect.
@@ -61,6 +65,8 @@ running="$(cat "$FAKE_DIR/image")"
 tag="${running##*:}"
 broken=0
 grep -qx "$tag" "$FAKE_DIR/broken" 2>/dev/null && broken=1
+# A stopped Web App answers nothing useful (Azure shows a 403 page).
+[[ "$(cat "$FAKE_DIR/app_state" 2>/dev/null)" == "Stopped" ]] && broken=1
 if [[ "$*" == *"-w"* ]]; then
   case "$path" in
     /actuator/info | /api/v1/plans) code=200 ;;
@@ -330,6 +336,20 @@ EXTRA_ENV="AZURE_POSTGRES_SERVER_NAME=psql-alivia-production-abc12" run_deploy s
 check "a server of another environment is refused" status_is 1
 check "the message says so" contains_text "AZURE_POSTGRES_SERVER_NAME no pertenece al entorno 'staging'"
 check "nothing was changed" no_az_call "webapp config"
+
+echo "web app stopped"
+new_case acrtest.azurecr.io/alivia-api:old old new
+run_deploy staging new
+check "a running Web App is restarted, not started" bash -c "[ '$STATUS' = 0 ] && grep -q 'webapp restart' '$FAKE_DIR/calls' && ! grep -q 'webapp start' '$FAKE_DIR/calls'"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+echo Stopped >"$FAKE_DIR/app_state"
+run_deploy staging new
+check "a stopped Web App: the deployment succeeds" status_is 0
+check "the Web App was started" grep -q "webapp start -g rg-alivia -n app-alivia-staging-abc12" "$FAKE_DIR/calls"
+check "and not restarted" no_az_call "webapp restart"
+check "the new image runs" image_is acrtest.azurecr.io/alivia-api:new
+check "the settings were applied before it was started" called_before "appsettings set" "webapp start"
 
 echo
 echo "passed: $PASSED, failed: $FAILED"
