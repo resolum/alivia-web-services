@@ -19,6 +19,13 @@ public interface ProfilesContextFacade {
                             LocalDate birthDate) {
     }
 
+    record PersonProfileData(Long id, String emailAddress, String photoUrl, String photoPublicId,
+                             String phoneNumber, String firstName, String lastName, String dni,
+                             LocalDate birthDate) {
+    }
+
+    Optional<PersonProfileData> fetchPersonProfileById(Long profileId);
+
     /**
      * Creates a new person profile linked to an IAM user.
      *

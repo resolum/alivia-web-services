@@ -258,6 +258,23 @@ public class ProfilesContextFacadeImpl implements ProfilesContextFacade {
 
     @Override
     @Transactional(readOnly = true)
+    public Optional<ProfilesContextFacade.PersonProfileData> fetchPersonProfileById(Long profileId) {
+        if (profileId == null || profileId <= 0) return Optional.empty();
+        return personProfileQueryService.handle(new GetPersonProfileByIdQuery(profileId))
+                .map(profile -> new ProfilesContextFacade.PersonProfileData(
+                        profile.getId(),
+                        profile.getEmailAddress() != null ? profile.getEmailAddress().email() : null,
+                        profile.getPhoto() != null ? profile.getPhoto().photoUrl() : null,
+                        profile.getPhoto() != null ? profile.getPhoto().photoPublicId() : null,
+                        profile.getPhoneNumber() != null ? profile.getPhoneNumber().phoneNumber() : null,
+                        profile.getPersonName() != null ? profile.getPersonName().firstName() : null,
+                        profile.getPersonName() != null ? profile.getPersonName().lastName() : null,
+                        profile.getDni() != null ? profile.getDni().dni() : null,
+                        profile.getBirthDate() != null ? profile.getBirthDate().date() : null));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Optional<ProfilesContextFacade.StaffProfileData> fetchStaffProfileById(Long profileId) {
         if (profileId == null || profileId <= 0) return Optional.empty();
         return staffProfileQueryService.handle(new GetStaffProfileByIdQuery(profileId))
