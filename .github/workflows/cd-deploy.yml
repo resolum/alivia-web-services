@@ -219,6 +219,8 @@ jobs:
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
           AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+          # Optional: when set, deploy.sh starts the PostgreSQL server if it is stopped
+          AZURE_POSTGRES_SERVER_NAME: ${{ vars.AZURE_POSTGRES_SERVER_NAME }}
           # Secrets of the environment
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           MONGODB_URI: ${{ secrets.MONGODB_URI }}

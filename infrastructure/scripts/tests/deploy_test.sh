@@ -36,8 +36,21 @@ case "$args" in
   "webapp config appsettings set"*)
     file="${args##*--settings @}"
     cp "${file%% *}" "$FAKE_DIR/settings.json" ;;
+  # The Web App state is in $FAKE_DIR/app_state (default Running). Like the real one, `restart` does not start a stopped
+  # app; only `start` does.
+  "webapp show"*"--query state"*) cat "$FAKE_DIR/app_state" 2>/dev/null || echo Running ;;
   "webapp show"*) echo "fake-app.example.net" ;;
+  "webapp start"*) echo Running >"$FAKE_DIR/app_state" ;;
   "webapp restart"*) exit 0 ;;
+  # The server state is in $FAKE_DIR/db_state (default Ready). `start` moves Stopped to Starting; the next `show` says
+  # Ready, as a real server does once it has finished starting. FAKE_DB_STUCK=1 makes the start have no effect.
+  "postgres flexible-server show"*)
+    state="$(cat "$FAKE_DIR/db_state" 2>/dev/null || echo Ready)"
+    [[ "$state" == "Starting" ]] && echo Ready >"$FAKE_DIR/db_state"
+    echo "$state" ;;
+  "postgres flexible-server start"*)
+    [[ -n "${FAKE_DB_START_FAILS:-}" ]] && exit 1
+    if [[ -n "${FAKE_DB_STUCK:-}" ]]; then echo Stopped >"$FAKE_DIR/db_state"; else echo Starting >"$FAKE_DIR/db_state"; fi ;;
   *) echo "fake az: unexpected call: $args" >&2; exit 99 ;;
 esac
 FAKE_AZ
@@ -52,6 +65,8 @@ running="$(cat "$FAKE_DIR/image")"
 tag="${running##*:}"
 broken=0
 grep -qx "$tag" "$FAKE_DIR/broken" 2>/dev/null && broken=1
+# A stopped Web App answers nothing useful (Azure shows a 403 page).
+[[ "$(cat "$FAKE_DIR/app_state" 2>/dev/null)" == "Stopped" ]] && broken=1
 if [[ "$*" == *"-w"* ]]; then
   case "$path" in
     /actuator/info | /api/v1/plans) code=200 ;;
@@ -96,6 +111,7 @@ run_deploy() { # run_deploy <args...>; output in $FAKE_DIR/out, status in $STATU
   # shellcheck disable=SC2086
   env -i HOME="$HOME" PATH="$WORK/bin:$PATH" TMPDIR="$FAKE_DIR/tmp" FAKE_DIR="$FAKE_DIR" \
     DEPLOY_WARMUP_SECONDS=0 DEPLOY_HEALTH_TIMEOUT_SECONDS=2 DEPLOY_HEALTH_INTERVAL_SECONDS=1 \
+    DEPLOY_DATABASE_TIMEOUT_SECONDS=5 DEPLOY_DATABASE_INTERVAL_SECONDS=1 \
     AZURE_RESOURCE_GROUP=rg-alivia AZURE_WEBAPP_NAME="${WEBAPP:-app-alivia-staging-abc12}" ACR_NAME=acrtest \
     DB_URL='jdbc:postgresql://db:5432/alivia?sslmode=require' DB_USERNAME=alivia_admin DB_PASSWORD="$SECRET_PASSWORD" \
     MONGODB_URI='mongodb+srv://u:mongo-secret-value@cluster.example.net/db' MONGODB_DATABASE=alivia_db \
@@ -115,6 +131,13 @@ image_is() { [[ "$(cat "$FAKE_DIR/image")" == "DOCKER|$1" ]]; }
 status_is() { [[ "$STATUS" == "$1" ]]; }
 no_az_call() { ! grep -q -- "$1" "$FAKE_DIR/calls"; }
 no_temp_files() { [[ -z "$(ls -A "$FAKE_DIR/tmp")" ]]; }
+# called_before <first> <second>: both az calls happened and the first came earlier.
+called_before() {
+  local a b
+  a="$(grep -n -m1 -- "$1" "$FAKE_DIR/calls" | cut -d: -f1)"
+  b="$(grep -n -m1 -- "$2" "$FAKE_DIR/calls" | cut -d: -f1)"
+  [[ -n "$a" && -n "$b" && "$a" -lt "$b" ]]
+}
 
 # --- cases ------------------------------------------------------------------------------------------------------------
 echo "arguments"
@@ -261,6 +284,72 @@ check "the message says it is not valid" contains_text "no es valido en prod"
 new_case acrtest.azurecr.io/alivia-api:old old new
 run_deploy staging new
 check "no provider: deploys, but warns that sign-up will fail" bash -c "[ '$STATUS' = 0 ] && grep -qF 'el registro y las invitaciones de usuarios fallaran' '$FAKE_DIR/out'"
+
+echo "postgres server"
+DB="AZURE_POSTGRES_SERVER_NAME=psql-alivia-staging-abc12"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+run_deploy staging new
+check "without the server name: deploys, with a warning" bash -c "[ '$STATUS' = 0 ] && grep -qF 'AZURE_POSTGRES_SERVER_NAME no esta definida' '$FAKE_DIR/out'"
+check "and the server is not queried" no_az_call "postgres"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="$DB" run_deploy staging new
+check "server already Ready: status 0" status_is 0
+check "it is not started again" no_az_call "flexible-server start"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+echo Stopped >"$FAKE_DIR/db_state"
+EXTRA_ENV="$DB" run_deploy staging new
+check "server Stopped: the deployment succeeds" status_is 0
+check "the server was started" grep -q "flexible-server start.*-n psql-alivia-staging-abc12" "$FAKE_DIR/calls"
+check "and it was started before anything of the Web App was changed" called_before "flexible-server start" "appsettings set"
+check "the new image runs" image_is acrtest.azurecr.io/alivia-api:new
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+echo Starting >"$FAKE_DIR/db_state"
+EXTRA_ENV="$DB" run_deploy staging new
+check "server already Starting: waits for it without starting it again" bash -c "[ '$STATUS' = 0 ] && ! grep -q 'flexible-server start' '$FAKE_DIR/calls'"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+echo Stopped >"$FAKE_DIR/db_state"
+EXTRA_ENV="$DB FAKE_DB_START_FAILS=1" run_deploy staging new
+check "a start that fails stops the deployment" status_is 1
+check "the message says so" contains_text "no se pudo iniciar PostgreSQL"
+check "the Web App was not touched" no_az_call "webapp config"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+echo Stopped >"$FAKE_DIR/db_state"
+EXTRA_ENV="$DB FAKE_DB_STUCK=1" run_deploy staging new
+check "a server that stays Stopped fails instead of looping" status_is 1
+check "the message says so" contains_text "sigue detenido"
+check "the Web App was not touched" no_az_call "webapp config"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+echo Disabled >"$FAKE_DIR/db_state"
+EXTRA_ENV="$DB" run_deploy staging new
+check "an unexpected state fails" status_is 1
+check "the message names the state" contains_text "estado inesperado: 'Disabled'"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="AZURE_POSTGRES_SERVER_NAME=psql-alivia-production-abc12" run_deploy staging new
+check "a server of another environment is refused" status_is 1
+check "the message says so" contains_text "AZURE_POSTGRES_SERVER_NAME no pertenece al entorno 'staging'"
+check "nothing was changed" no_az_call "webapp config"
+
+echo "web app stopped"
+new_case acrtest.azurecr.io/alivia-api:old old new
+run_deploy staging new
+check "a running Web App is restarted, not started" bash -c "[ '$STATUS' = 0 ] && grep -q 'webapp restart' '$FAKE_DIR/calls' && ! grep -q 'webapp start' '$FAKE_DIR/calls'"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+echo Stopped >"$FAKE_DIR/app_state"
+run_deploy staging new
+check "a stopped Web App: the deployment succeeds" status_is 0
+check "the Web App was started" grep -q "webapp start -g rg-alivia -n app-alivia-staging-abc12" "$FAKE_DIR/calls"
+check "and not restarted" no_az_call "webapp restart"
+check "the new image runs" image_is acrtest.azurecr.io/alivia-api:new
+check "the settings were applied before it was started" called_before "appsettings set" "webapp start"
 
 echo
 echo "passed: $PASSED, failed: $FAILED"

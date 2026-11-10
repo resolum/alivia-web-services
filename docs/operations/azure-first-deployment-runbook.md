@@ -98,6 +98,7 @@ definido: `deploy.sh` se detiene y lista los **nombres** que faltan, nunca los v
 | `AZURE_SUBSCRIPTION_ID` | variable | `terraform output -raw azure_subscription_id` | |
 | `AZURE_RESOURCE_GROUP` | variable | `terraform output -raw resource_group_name` | |
 | `AZURE_WEBAPP_NAME` | variable | `terraform output -raw webapp_name` | Debe empezar por `app-alivia-<entorno>-`; `deploy.sh` lo comprueba |
+| `AZURE_POSTGRES_SERVER_NAME` | variable (opcional) | `terraform output -raw postgres_server_name` | Debe empezar por `psql-alivia-<entorno>-`. Si está definida, `deploy.sh` enciende el servidor PostgreSQL cuando está detenido y espera a que esté `Ready`; sin ella no lo comprueba y avisa. Requiere haber aplicado Terraform (rol `postgres-power` de la identidad de despliegue) |
 | `ACR_NAME` | variable | `terraform output -raw acr_name` | El mismo ACR para los dos entornos |
 | `DB_URL` | variable | `terraform output -raw postgres_jdbc_url` | Ya trae `sslmode=require` |
 | `DB_USERNAME` | variable | `terraform output -raw postgres_administrator_login` | |
@@ -254,6 +255,7 @@ v AZURE_TENANT_ID        "$(terraform output -raw azure_tenant_id)"
 v AZURE_SUBSCRIPTION_ID  "$(terraform output -raw azure_subscription_id)"
 v AZURE_RESOURCE_GROUP   "$(terraform output -raw resource_group_name)"
 v AZURE_WEBAPP_NAME      "$(terraform output -raw webapp_name)"
+v AZURE_POSTGRES_SERVER_NAME "$(terraform output -raw postgres_server_name)"
 v ACR_NAME               "$(terraform output -raw acr_name)"
 v DB_URL                 "$(terraform output -raw postgres_jdbc_url)"
 v DB_USERNAME            "$(terraform output -raw postgres_administrator_login)"
