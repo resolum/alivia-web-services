@@ -9,6 +9,18 @@ import com.resolum.alivia.assistance.interfaces.rest.controllers.CaregiversContr
 import com.resolum.alivia.assistance.interfaces.rest.controllers.HandoversController;
 import com.resolum.alivia.assistance.interfaces.rest.controllers.InvitationsController;
 import com.resolum.alivia.assistance.interfaces.rest.controllers.RelativesController;
+import com.resolum.alivia.assistance.domain.model.aggregates.AssistedPerson;
+import com.resolum.alivia.assistance.domain.model.aggregates.CareActivity;
+import com.resolum.alivia.assistance.domain.model.aggregates.CareShift;
+import com.resolum.alivia.assistance.domain.model.aggregates.Caregiver;
+import com.resolum.alivia.assistance.domain.model.aggregates.Handover;
+import com.resolum.alivia.assistance.domain.model.aggregates.Invitation;
+import com.resolum.alivia.assistance.domain.model.aggregates.Relative;
+import com.resolum.alivia.assistance.domain.model.valueobjects.CareActivityType;
+import com.resolum.alivia.shared.domain.model.valueobjects.BusinessId;
+import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
+import com.resolum.alivia.shared.domain.model.valueobjects.PersonProfileId;
+import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 import org.springframework.http.ResponseEntity;
@@ -17,8 +29,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Proxy;
 import java.lang.reflect.RecordComponent;
+import java.lang.reflect.Type;
 import java.security.Principal;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -140,8 +154,44 @@ class AssistanceControllersCoverageTest {
                     default -> null;
                 };
             }
-            return defaultValue(method.getReturnType());
+            return populatedValue(method.getGenericReturnType(), method.getReturnType());
         });
+    }
+
+    private Object populatedValue(Type genericType, Class<?> rawType) {
+        if (genericType instanceof ParameterizedType parameterizedType) {
+            Type elementType = parameterizedType.getActualTypeArguments()[0];
+            Object element = elementType instanceof Class<?> elementClass ? domainSample(elementClass) : null;
+            if (Optional.class.isAssignableFrom(rawType)) return Optional.ofNullable(element);
+            if (Set.class.isAssignableFrom(rawType)) return element == null ? Set.of() : Set.of(element);
+            if (Collection.class.isAssignableFrom(rawType)) return element == null ? List.of() : List.of(element);
+        }
+        Object sample = domainSample(rawType);
+        return sample != null ? sample : defaultValue(rawType);
+    }
+
+    private Object domainSample(Class<?> type) {
+        Relative relative = new Relative(new UserId(1L), new PersonProfileId(1L), new BusinessId(1L));
+        AssistedPerson assistedPerson = new AssistedPerson(new PersonProfileId(2L), relative);
+        Caregiver caregiver = new Caregiver(new UserId(2L), assistedPerson);
+        LocalDateTime startsAt = LocalDateTime.now().plusDays(1);
+        CareShift fromShift = new CareShift(assistedPerson, 2L, "Caregiver", startsAt,
+                startsAt.plusHours(2), "notes");
+        CareShift toShift = new CareShift(assistedPerson, 3L, "Replacement",
+                startsAt.plusHours(2), startsAt.plusHours(4), "notes");
+        if (type == Relative.class) return relative;
+        if (type == AssistedPerson.class) return assistedPerson;
+        if (type == Caregiver.class) return caregiver;
+        if (type == CareActivity.class) {
+            return new CareActivity(assistedPerson, CareActivityType.MEDICATION, "Medication", "Daily");
+        }
+        if (type == Invitation.class) {
+            return new Invitation(assistedPerson, relative, new EmailAddress("caregiver@alivia.test"),
+                    LocalDateTime.now().plusDays(7));
+        }
+        if (type == CareShift.class) return fromShift;
+        if (type == Handover.class) return new Handover(fromShift, toShift, "[]", "[]");
+        return null;
     }
 
     private Object defaultValue(Class<?> type) {
