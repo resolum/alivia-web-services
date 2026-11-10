@@ -1,6 +1,7 @@
 package com.resolum.alivia.profiles.application.internal.queryservices;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -8,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.resolum.alivia.profiles.domain.exceptions.HouseholdNotFoundException;
 import com.resolum.alivia.profiles.domain.model.aggregates.Household;
 import com.resolum.alivia.profiles.domain.model.entities.HouseholdMember;
+import com.resolum.alivia.profiles.domain.model.queries.GetActiveHouseholdByUserIdQuery;
 import com.resolum.alivia.profiles.domain.model.queries.GetHouseholdMembersQuery;
 import com.resolum.alivia.profiles.domain.model.queries.GetHouseholdQuery;
 import com.resolum.alivia.profiles.domain.repositories.HouseholdRepository;
@@ -46,5 +48,15 @@ public class HouseholdQueryServiceImpl implements HouseholdQueryService {
     @Override
     public List<HouseholdMember> handle(GetHouseholdMembersQuery query) {
         return handle(new GetHouseholdQuery(query.householdId())).getMembers();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Transactional(readOnly = true)
+    @Override
+    public Optional<Household> handle(GetActiveHouseholdByUserIdQuery query) {
+        List<Household> active = householdRepository.findActiveByMemberUserId(query.userId());
+        return active.isEmpty() ? Optional.empty() : Optional.of(active.get(0));
     }
 }

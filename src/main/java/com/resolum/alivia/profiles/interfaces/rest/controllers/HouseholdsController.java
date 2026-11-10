@@ -14,9 +14,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.resolum.alivia.profiles.domain.model.queries.GetActiveHouseholdByUserIdQuery;
 import com.resolum.alivia.profiles.domain.model.queries.GetHouseholdMembersQuery;
 import com.resolum.alivia.profiles.domain.model.queries.GetHouseholdQuery;
-import com.resolum.alivia.profiles.domain.repositories.HouseholdRepository;
 import com.resolum.alivia.profiles.domain.services.HouseholdAccessService;
 import com.resolum.alivia.profiles.domain.services.HouseholdCommandService;
 import com.resolum.alivia.profiles.domain.services.HouseholdQueryService;
@@ -45,22 +45,13 @@ public class HouseholdsController {
     private final HouseholdQueryService queryService;
     private final HouseholdAccessService accessService;
     private final HouseholdCommandService commandService;
-    private final HouseholdRepository householdRepository;
 
     public HouseholdsController(HouseholdQueryService queryService,
                                 HouseholdAccessService accessService,
                                 HouseholdCommandService commandService) {
-        this(queryService, accessService, commandService, null);
-    }
-
-    public HouseholdsController(HouseholdQueryService queryService,
-                                HouseholdAccessService accessService,
-                                HouseholdCommandService commandService,
-                                HouseholdRepository householdRepository) {
         this.queryService = queryService;
         this.accessService = accessService;
         this.commandService = commandService;
-        this.householdRepository = householdRepository;
     }
 
     @PostMapping
@@ -82,7 +73,11 @@ public class HouseholdsController {
             }
         }
         if (responsibleUserId == null && resource.responsibleAccountId() != null) {
-            responsibleUserId = resource.responsibleAccountId();
+            try {
+                responsibleUserId = Long.valueOf(resource.responsibleAccountId());
+            } catch (NumberFormatException ignored) {
+                // If it's a UUID string, responsibleUserId is resolved from principal or stays null
+            }
         }
         var command = CreateHouseholdCommandFromResourceAssembler.toCommandFromResource(resource, responsibleUserId);
         var householdId = commandService.handle(command);
@@ -121,13 +116,9 @@ public class HouseholdsController {
     })
     public ResponseEntity<HouseholdResource> getMyHousehold(Principal principal) {
         var userId = userIdOf(principal);
-        if (householdRepository != null) {
-            var activeHouseholds = householdRepository.findActiveByMemberUserId(new UserId(userId));
-            if (!activeHouseholds.isEmpty()) {
-                return ResponseEntity.ok(HouseholdResourceFromEntityAssembler.toResourceFromEntity(activeHouseholds.get(0)));
-            }
-        }
-        return ResponseEntity.notFound().build();
+        return queryService.handle(new GetActiveHouseholdByUserIdQuery(new UserId(userId)))
+                .map(household -> ResponseEntity.ok(HouseholdResourceFromEntityAssembler.toResourceFromEntity(household)))
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @GetMapping("/{householdId}")

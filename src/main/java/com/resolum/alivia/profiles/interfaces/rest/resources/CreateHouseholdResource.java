@@ -35,6 +35,6 @@ public record CreateHouseholdResource(
         String placeId,
 
         @Schema(description = "Identificador del usuario responsable de la cuenta (opcional si se envía Bearer token)", example = "1")
-        Long responsibleAccountId
+        String responsibleAccountId
 ) {
 }

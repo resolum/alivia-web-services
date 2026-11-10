@@ -26,7 +26,18 @@ public final class CreateHouseholdCommandFromResourceAssembler {
                 resource.latitude(),
                 resource.longitude(),
                 resource.placeId(),
-                responsibleUserId != null ? responsibleUserId : resource.responsibleAccountId()
+                responsibleUserId != null ? responsibleUserId : parseLongOrNull(resource.responsibleAccountId())
         );
+    }
+
+    private static Long parseLongOrNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.valueOf(value);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 }
