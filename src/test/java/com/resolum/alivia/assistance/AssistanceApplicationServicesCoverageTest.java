@@ -34,6 +34,7 @@ import com.resolum.alivia.shared.domain.model.valueobjects.PersonProfileId;
 import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -88,13 +89,14 @@ class AssistanceApplicationServicesCoverageTest {
         return SERVICES.stream().flatMap(serviceType -> Arrays.stream(serviceType.getDeclaredMethods())
                 .filter(method -> java.lang.reflect.Modifier.isPublic(method.getModifiers()))
                 .filter(method -> !method.isSynthetic())
-                .map(method -> DynamicTest.dynamicTest(
-                        serviceType.getSimpleName() + '.' + method.getName(),
-                        () -> invokeOperation(serviceType, method))));
+                .flatMap(method -> Stream.of(false, true).map(populated -> DynamicTest.dynamicTest(
+                        serviceType.getSimpleName() + '.' + method.getName()
+                                + (populated ? " with matching data" : " without data"),
+                        () -> invokeOperation(serviceType, method, populated)))));
     }
 
-    private void invokeOperation(Class<?> serviceType, Method method) throws Exception {
-        Object service = instantiate(serviceType);
+    private void invokeOperation(Class<?> serviceType, Method method, boolean populated) throws Exception {
+        Object service = instantiate(serviceType, populated);
         Object[] arguments = Arrays.stream(method.getParameters())
                 .map(parameter -> sampleValue(parameter.getType(), parameter.getName()))
                 .toArray();
@@ -107,17 +109,18 @@ class AssistanceApplicationServicesCoverageTest {
         }
     }
 
-    private Object instantiate(Class<?> type) throws ReflectiveOperationException {
+    private Object instantiate(Class<?> type, boolean populated) throws ReflectiveOperationException {
         Constructor<?> constructor = type.getDeclaredConstructors()[0];
         constructor.setAccessible(true);
-        Object[] dependencies = Arrays.stream(constructor.getParameterTypes()).map(this::stub).toArray();
+        Object[] dependencies = Arrays.stream(constructor.getParameterTypes())
+                .map(dependency -> stub(dependency, populated)).toArray();
         return constructor.newInstance(dependencies);
     }
 
-    private Object stub(Class<?> type) {
+    private Object stub(Class<?> type, boolean populated) {
         if (!type.isInterface()) {
             try {
-                return instantiate(type);
+                return instantiate(type, populated);
             } catch (ReflectiveOperationException exception) {
                 throw new IllegalStateException("Cannot create service dependency " + type.getName(), exception);
             }
@@ -134,39 +137,50 @@ class AssistanceApplicationServicesCoverageTest {
             if (method.getName().equals("save") && arguments != null && arguments.length > 0) {
                 return arguments[0];
             }
-            return repositoryValue(method.getGenericReturnType(), method.getReturnType());
+            return repositoryValue(method.getGenericReturnType(), method.getReturnType(), populated);
         });
     }
 
-    private Object repositoryValue(Type genericType, Class<?> rawType) {
+    private Object repositoryValue(Type genericType, Class<?> rawType, boolean populated) {
         if (genericType instanceof ParameterizedType parameterizedType) {
             Type elementType = parameterizedType.getActualTypeArguments()[0];
-            Object element = elementType instanceof Class<?> elementClass ? domainSample(elementClass) : null;
+            Object element = populated && elementType instanceof Class<?> elementClass ? domainSample(elementClass) : null;
             if (Optional.class.isAssignableFrom(rawType)) return Optional.ofNullable(element);
             if (Set.class.isAssignableFrom(rawType)) return element == null ? Set.of() : Set.of(element);
             if (Collection.class.isAssignableFrom(rawType)) return element == null ? List.of() : List.of(element);
         }
-        Object sample = domainSample(rawType);
+        Object sample = populated ? domainSample(rawType) : null;
         return sample != null ? sample : emptyValue(rawType);
     }
 
     private Object domainSample(Class<?> type) {
         Relative relative = new Relative(new UserId(1L), new PersonProfileId(1L), new BusinessId(1L));
+        ReflectionTestUtils.setField(relative, "id", 1L);
         AssistedPerson assistedPerson = new AssistedPerson(new PersonProfileId(2L), relative);
+        ReflectionTestUtils.setField(assistedPerson, "id", 1L);
         Caregiver caregiver = new Caregiver(new UserId(2L), assistedPerson);
+        ReflectionTestUtils.setField(caregiver, "id", 1L);
         LocalDateTime start = LocalDateTime.now().plusDays(1);
         CareShift firstShift = new CareShift(assistedPerson, 2L, "Caregiver", start, start.plusHours(2), "Notes");
         CareShift secondShift = new CareShift(assistedPerson, 3L, "Replacement", start.plusHours(2), start.plusHours(4), "Notes");
+        ReflectionTestUtils.setField(firstShift, "id", 1L);
+        ReflectionTestUtils.setField(secondShift, "id", 2L);
 
         if (type == Relative.class) return relative;
         if (type == AssistedPerson.class) return assistedPerson;
         if (type == Caregiver.class) return caregiver;
         if (type == CareActivity.class) {
-            return new CareActivity(assistedPerson, CareActivityType.MEDICATION, "Medication", "Daily dose");
+            CareActivity activity = new CareActivity(assistedPerson, CareActivityType.MEDICATION,
+                    "Medication", "Daily dose");
+            ReflectionTestUtils.setField(activity, "id", 1L);
+            return activity;
         }
         if (type == Invitation.class) {
-            return new Invitation(assistedPerson, relative, new EmailAddress("caregiver@alivia.test"),
+            Invitation invitation = new Invitation(assistedPerson, relative,
+                    new EmailAddress("caregiver@alivia.test"),
                     LocalDateTime.now().plusDays(7));
+            ReflectionTestUtils.setField(invitation, "id", 1L);
+            return invitation;
         }
         if (type == CareShift.class) return firstShift;
         if (type == Handover.class) return new Handover(firstShift, secondShift, "[]", "[]");
@@ -182,7 +196,7 @@ class AssistanceApplicationServicesCoverageTest {
         if (Set.class.isAssignableFrom(type)) return Set.of();
         if (List.class.isAssignableFrom(type) || Collection.class.isAssignableFrom(type)) return List.of();
         if (Map.class.isAssignableFrom(type)) return Map.of();
-        if (type.isInterface()) return stub(type);
+        if (type.isInterface()) return stub(type, true);
         return null;
     }
 
@@ -202,7 +216,7 @@ class AssistanceApplicationServicesCoverageTest {
         if (Map.class.isAssignableFrom(type)) return Map.of();
         if (type.isEnum()) return type.getEnumConstants()[0];
         if (type.isRecord()) return createRecord(type);
-        return type.isInterface() ? stub(type) : emptyValue(type);
+        return type.isInterface() ? stub(type, true) : emptyValue(type);
     }
 
     private Object createRecord(Class<?> recordType) {

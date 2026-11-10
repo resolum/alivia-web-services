@@ -19,7 +19,10 @@ import com.resolum.alivia.assistance.domain.model.aggregates.Invitation;
 import com.resolum.alivia.assistance.domain.model.aggregates.Relative;
 import com.resolum.alivia.assistance.domain.model.entities.ActivityAssignment;
 import com.resolum.alivia.assistance.domain.model.valueobjects.ActivityLogStatus;
+import com.resolum.alivia.assistance.domain.model.valueobjects.AgendaItem;
 import com.resolum.alivia.assistance.domain.model.valueobjects.CareActivityType;
+import com.resolum.alivia.assistance.domain.model.valueobjects.OccurrenceStatus;
+import com.resolum.alivia.assistance.domain.model.valueobjects.ReminderPriority;
 import com.resolum.alivia.assistance.domain.model.valueobjects.EmergencyContact;
 import com.resolum.alivia.assistance.domain.model.valueobjects.Kinship;
 import com.resolum.alivia.assistance.domain.model.valueobjects.MobilityLevel;
@@ -95,6 +98,79 @@ class AssistanceDomainCoverageTest {
         assertThat(overnight.occurrenceEnd(occurrenceDate).toLocalDate()).isEqualTo(occurrenceDate.plusDays(1));
         assertThatThrownBy(() -> new Schedule(ScheduleType.ONE_TIME, null, daytime, null))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void schedulesCoverEveryMixedAndBoundaryOverlapPath() {
+        Schedule oneTime = Schedule.oneTime(occurrenceDate, daytime);
+        Schedule overlapping = Schedule.oneTime(occurrenceDate,
+                new TimeRange(LocalTime.of(9, 30), LocalTime.of(10, 30)));
+        Schedule anotherDate = Schedule.oneTime(occurrenceDate.plusDays(2), daytime);
+        Schedule weeklyAnotherDay = Schedule.weekly(new WeeklyPeriod(
+                Set.of(occurrenceDate.plusDays(2).getDayOfWeek()), daytime));
+        Schedule previousNight = Schedule.weekly(new WeeklyPeriod(
+                Set.of(occurrenceDate.minusDays(1).getDayOfWeek()),
+                new TimeRange(LocalTime.of(23, 0), LocalTime.of(9, 30))));
+        Schedule overnight = Schedule.oneTime(occurrenceDate,
+                new TimeRange(LocalTime.of(23, 0), LocalTime.of(2, 0)));
+        Schedule nextDayWeekly = Schedule.weekly(new WeeklyPeriod(
+                Set.of(occurrenceDate.plusDays(1).getDayOfWeek()),
+                new TimeRange(LocalTime.of(1, 0), LocalTime.of(3, 0))));
+
+        assertThat(oneTime.overlapsWith(overlapping)).isTrue();
+        assertThat(oneTime.overlapsWith(anotherDate)).isFalse();
+        assertThat(oneTime.overlapsWith(weeklyAnotherDay)).isFalse();
+        assertThat(oneTime.overlapsWith(previousNight)).isTrue();
+        assertThat(overnight.overlapsWith(nextDayWeekly)).isTrue();
+        assertThat(oneTime.occursOn(occurrenceDate)).isTrue();
+        assertThat(weeklyAnotherDay.occursOn(occurrenceDate)).isFalse();
+        assertThatThrownBy(() -> oneTime.overlapsWith(null)).isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void agendaItemsResolveEveryStatusPriorityAndContactPath() {
+        LocalDateTime startsAt = occurrenceDate.atTime(9, 0);
+        LocalDateTime endsAt = occurrenceDate.atTime(10, 0);
+
+        assertThat(AgendaItem.resolveStatus(startsAt, endsAt, startsAt.minusMinutes(1), null))
+                .isEqualTo(OccurrenceStatus.SCHEDULED);
+        assertThat(AgendaItem.resolveStatus(startsAt, endsAt, startsAt.plusMinutes(1), null))
+                .isEqualTo(OccurrenceStatus.IN_PROGRESS);
+        assertThat(AgendaItem.resolveStatus(startsAt, endsAt, endsAt, null))
+                .isEqualTo(OccurrenceStatus.MISSED);
+        assertThat(AgendaItem.resolveStatus(startsAt, endsAt, startsAt, ActivityLogStatus.COMPLETED))
+                .isEqualTo(OccurrenceStatus.COMPLETED);
+        assertThat(AgendaItem.resolveStatus(startsAt, endsAt, startsAt, ActivityLogStatus.CANCELLED))
+                .isEqualTo(OccurrenceStatus.CANCELLED);
+        assertThat(AgendaItem.resolveStatus(startsAt, endsAt, startsAt, ActivityLogStatus.MISSED))
+                .isEqualTo(OccurrenceStatus.MISSED);
+        assertThat(AgendaItem.resolveStatus(startsAt, endsAt, startsAt, ActivityLogStatus.OMITTED))
+                .isEqualTo(OccurrenceStatus.OMITTED);
+
+        assertThat(AgendaItem.priorityOf(CareActivityType.MEDICATION)).isEqualTo(ReminderPriority.HIGH);
+        assertThat(AgendaItem.priorityOf(CareActivityType.HYGIENE)).isEqualTo(ReminderPriority.MEDIUM);
+        assertThat(AgendaItem.priorityOf(CareActivityType.APPOINTMENT)).isEqualTo(ReminderPriority.MEDIUM);
+        assertThat(AgendaItem.priorityOf(CareActivityType.THERAPY)).isEqualTo(ReminderPriority.LOW);
+        for (CareActivityType routine : Set.of(CareActivityType.MEAL, CareActivityType.BATH,
+                CareActivityType.EXERCISE, CareActivityType.OTHER)) {
+            assertThat(AgendaItem.priorityOf(routine)).isEqualTo(ReminderPriority.ROUTINE);
+        }
+
+        ActivityAssignment assignment = activity.assign(caregiver,
+                Schedule.oneTime(occurrenceDate, daytime), LocalDate.now());
+        ReflectionTestUtils.setField(assignment, "id", 5L);
+        AgendaItem item = AgendaItem.of(activity, assignment, occurrenceDate, null, startsAt.minusMinutes(1));
+        AgendaItem.Contact contact = new AgendaItem.Contact("Assisted", new PersonProfileId(30L),
+                "Caregiver", "caregiver@alivia.test");
+        AgendaItem contacted = item.withContact(contact);
+
+        assertThat(item.isPending()).isTrue();
+        assertThat(item.priority()).isEqualTo(ReminderPriority.HIGH);
+        assertThat(contacted.contact()).isEqualTo(contact);
+        assertThat(AgendaItem.resolveStatus(startsAt, endsAt, endsAt, ActivityLogStatus.COMPLETED))
+                .isNotEqualTo(OccurrenceStatus.SCHEDULED);
+        assertThatThrownBy(() -> AgendaItem.resolveStatus(null, endsAt, startsAt, null))
+                .isInstanceOf(NullPointerException.class);
     }
 
     @Test
