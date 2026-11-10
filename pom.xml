@@ -156,6 +156,12 @@
         <!-- A real PostgreSQL for the tests that H2 cannot stand in for (Flyway, locks, upserts, isolation levels).
              Version managed by Spring Boot. Those tests are skipped when Docker is not available. -->
         <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-docker-compose</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>testcontainers-postgresql</artifactId>
             <scope>test</scope>
