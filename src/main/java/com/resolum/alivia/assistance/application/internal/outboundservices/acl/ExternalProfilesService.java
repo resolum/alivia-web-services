@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -49,6 +50,13 @@ public class ExternalProfilesService {
                                     LocalDate birthDate) {
         profilesContextFacade.updatePersonProfileWithPhoto(profileId, photoData, photoFileName,
                 phoneNumber, firstName, lastName, birthDate);
+    }
+
+    public Optional<ProfilesContextFacade.PersonProfileData> fetchPersonProfile(PersonProfileId profileId) {
+        if (profileId == null || profileId.personProfileId() == null) {
+            return Optional.empty();
+        }
+        return profilesContextFacade.fetchPersonProfileById(profileId.personProfileId());
     }
 
     public Map<PersonProfileId, String> fetchPersonNames(Set<PersonProfileId> personProfileIds) {
