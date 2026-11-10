@@ -120,6 +120,7 @@ public record AgendaItem(
      */
     public static ReminderPriority priorityOf(CareActivityType type) {
         return switch (type) {
+            case HYGIENE -> ReminderPriority.MEDIUM;
             case MEDICATION -> ReminderPriority.HIGH;
             case APPOINTMENT -> ReminderPriority.MEDIUM;
             case THERAPY -> ReminderPriority.LOW;
