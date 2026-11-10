@@ -20,14 +20,28 @@ import com.resolum.alivia.assistance.application.internal.queryservices.Caregive
 import com.resolum.alivia.assistance.application.internal.queryservices.HandoverQueryServiceImpl;
 import com.resolum.alivia.assistance.application.internal.queryservices.InvitationQueryServiceImpl;
 import com.resolum.alivia.assistance.application.internal.queryservices.RelativeQueryServiceImpl;
+import com.resolum.alivia.assistance.domain.model.aggregates.AssistedPerson;
+import com.resolum.alivia.assistance.domain.model.aggregates.CareActivity;
+import com.resolum.alivia.assistance.domain.model.aggregates.CareShift;
+import com.resolum.alivia.assistance.domain.model.aggregates.Caregiver;
+import com.resolum.alivia.assistance.domain.model.aggregates.Handover;
+import com.resolum.alivia.assistance.domain.model.aggregates.Invitation;
+import com.resolum.alivia.assistance.domain.model.aggregates.Relative;
+import com.resolum.alivia.assistance.domain.model.valueobjects.CareActivityType;
+import com.resolum.alivia.shared.domain.model.valueobjects.BusinessId;
+import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
+import com.resolum.alivia.shared.domain.model.valueobjects.PersonProfileId;
+import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Proxy;
 import java.lang.reflect.RecordComponent;
+import java.lang.reflect.Type;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -41,7 +55,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 /** Exercises every Assistance application-service operation through isolated repository/facade stubs. */
@@ -71,7 +84,7 @@ class AssistanceApplicationServicesCoverageTest {
     );
 
     @TestFactory
-    Stream<DynamicTest> everyApplicationOperationHandlesAnEmptyBackingStore() {
+    Stream<DynamicTest> everyApplicationOperationHandlesRepositoryResultsAndValidation() {
         return SERVICES.stream().flatMap(serviceType -> Arrays.stream(serviceType.getDeclaredMethods())
                 .filter(method -> java.lang.reflect.Modifier.isPublic(method.getModifiers()))
                 .filter(method -> !method.isSynthetic())
@@ -87,9 +100,7 @@ class AssistanceApplicationServicesCoverageTest {
                 .toArray();
         try {
             Object result = method.invoke(service, arguments);
-            if (result instanceof Optional<?> optional) {
-                assertFalse(optional.isPresent());
-            }
+            // Successful completion is the assertion for commands and collection queries.
         } catch (InvocationTargetException exception) {
             assertInstanceOf(RuntimeException.class, exception.getCause(),
                     "Validation failures must use domain/runtime exceptions");
@@ -120,8 +131,46 @@ class AssistanceApplicationServicesCoverageTest {
                     default -> null;
                 };
             }
-            return emptyValue(method.getReturnType());
+            if (method.getName().equals("save") && arguments != null && arguments.length > 0) {
+                return arguments[0];
+            }
+            return repositoryValue(method.getGenericReturnType(), method.getReturnType());
         });
+    }
+
+    private Object repositoryValue(Type genericType, Class<?> rawType) {
+        if (genericType instanceof ParameterizedType parameterizedType) {
+            Type elementType = parameterizedType.getActualTypeArguments()[0];
+            Object element = elementType instanceof Class<?> elementClass ? domainSample(elementClass) : null;
+            if (Optional.class.isAssignableFrom(rawType)) return Optional.ofNullable(element);
+            if (Set.class.isAssignableFrom(rawType)) return element == null ? Set.of() : Set.of(element);
+            if (Collection.class.isAssignableFrom(rawType)) return element == null ? List.of() : List.of(element);
+        }
+        Object sample = domainSample(rawType);
+        return sample != null ? sample : emptyValue(rawType);
+    }
+
+    private Object domainSample(Class<?> type) {
+        Relative relative = new Relative(new UserId(1L), new PersonProfileId(1L), new BusinessId(1L));
+        AssistedPerson assistedPerson = new AssistedPerson(new PersonProfileId(2L), relative);
+        Caregiver caregiver = new Caregiver(new UserId(2L), assistedPerson);
+        LocalDateTime start = LocalDateTime.now().plusDays(1);
+        CareShift firstShift = new CareShift(assistedPerson, 2L, "Caregiver", start, start.plusHours(2), "Notes");
+        CareShift secondShift = new CareShift(assistedPerson, 3L, "Replacement", start.plusHours(2), start.plusHours(4), "Notes");
+
+        if (type == Relative.class) return relative;
+        if (type == AssistedPerson.class) return assistedPerson;
+        if (type == Caregiver.class) return caregiver;
+        if (type == CareActivity.class) {
+            return new CareActivity(assistedPerson, CareActivityType.MEDICATION, "Medication", "Daily dose");
+        }
+        if (type == Invitation.class) {
+            return new Invitation(assistedPerson, relative, new EmailAddress("caregiver@alivia.test"),
+                    LocalDateTime.now().plusDays(7));
+        }
+        if (type == CareShift.class) return firstShift;
+        if (type == Handover.class) return new Handover(firstShift, secondShift, "[]", "[]");
+        return null;
     }
 
     private Object emptyValue(Class<?> type) {

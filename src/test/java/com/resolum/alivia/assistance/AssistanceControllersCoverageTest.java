@@ -12,6 +12,7 @@ import com.resolum.alivia.assistance.interfaces.rest.controllers.RelativesContro
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -60,15 +61,21 @@ class AssistanceControllersCoverageTest {
     Stream<DynamicTest> everyPublicEndpointReturnsAResponse() {
         return CONTROLLERS.stream().flatMap(controllerType -> Arrays.stream(controllerType.getDeclaredMethods())
                 .filter(method -> java.lang.reflect.Modifier.isPublic(method.getModifiers()))
-                .map(method -> DynamicTest.dynamicTest(
-                        controllerType.getSimpleName() + '.' + method.getName(),
-                        () -> invokeEndpoint(controllerType, method))));
+                .flatMap(method -> Stream.of(false, true).map(fallback -> DynamicTest.dynamicTest(
+                        controllerType.getSimpleName() + '.' + method.getName()
+                                + (fallback ? "[fallback]" : "[complete]"),
+                        () -> invokeEndpoint(controllerType, method, fallback)))));
     }
 
-    private void invokeEndpoint(Class<?> controllerType, Method method) throws Exception {
+    private void invokeEndpoint(Class<?> controllerType, Method method, boolean fallback) throws Exception {
         Object controller = createController(controllerType);
         Object[] arguments = Arrays.stream(method.getParameters())
-                .map(parameter -> sampleValue(parameter.getType(), parameter.getName()))
+                .map(parameter -> {
+                    if (fallback && parameter.getType() == Principal.class) return null;
+                    RequestParam requestParam = parameter.getAnnotation(RequestParam.class);
+                    if (fallback && requestParam != null && !requestParam.required()) return null;
+                    return sampleValue(parameter.getType(), parameter.getName());
+                })
                 .toArray();
 
         Object result;
