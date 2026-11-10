@@ -29,6 +29,12 @@ import com.resolum.alivia.assistance.domain.exceptions.OccurrenceNotStartedExcep
 import com.resolum.alivia.assistance.domain.exceptions.RelativeNotFoundException;
 import com.resolum.alivia.assistance.domain.exceptions.ScheduleConflictException;
 import com.resolum.alivia.assistance.domain.exceptions.ScheduleNotEditableException;
+import com.resolum.alivia.assistance.domain.exceptions.CareShiftNotFoundException;
+import com.resolum.alivia.assistance.domain.exceptions.HandoverNotFoundException;
+import com.resolum.alivia.assistance.domain.exceptions.ShiftConflictException;
+import com.resolum.alivia.assistance.domain.exceptions.ShiftHasPendingHandoverException;
+import com.resolum.alivia.assistance.domain.exceptions.HandoverNotPendingException;
+import com.resolum.alivia.assistance.domain.exceptions.HandoverNotForCaregiverException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -50,7 +56,9 @@ public class AssistanceExceptionHandler {
             AssistedPersonNotFoundException.class,
             CaregiverNotFoundException.class,
             CareActivityNotFoundException.class,
-            ActivityAssignmentNotFoundException.class
+            ActivityAssignmentNotFoundException.class,
+            CareShiftNotFoundException.class,
+            HandoverNotFoundException.class
     })
     public ProblemDetail handleNotFound(RuntimeException ex) {
         return problem(HttpStatus.NOT_FOUND, "resource_not_found", ex.getMessage());
@@ -60,7 +68,8 @@ public class AssistanceExceptionHandler {
     @ExceptionHandler({
             AssistedPersonNotManagedByRelativeException.class,
             InvitationNotForUserException.class,
-            NotResponsibleForActivityException.class
+            NotResponsibleForActivityException.class,
+            HandoverNotForCaregiverException.class
     })
     public ProblemDetail handleForbidden(RuntimeException ex) {
         return problem(HttpStatus.FORBIDDEN, "access_denied", ex.getMessage());
@@ -81,10 +90,21 @@ public class AssistanceExceptionHandler {
             ScheduleNotEditableException.class,
             OccurrenceClosedException.class,
             DniAlreadyExistsException.class,
-            EmailAddressAlreadyExistsException.class
+            EmailAddressAlreadyExistsException.class,
+            ShiftConflictException.class
     })
     public ProblemDetail handleConflict(RuntimeException ex) {
         return problem(HttpStatus.CONFLICT, "conflict", ex.getMessage());
+    }
+
+    @ExceptionHandler(ShiftHasPendingHandoverException.class)
+    public ProblemDetail handleShiftHasPendingHandover(ShiftHasPendingHandoverException ex) {
+        return problem(HttpStatus.CONFLICT, "has_pending", ex.getMessage());
+    }
+
+    @ExceptionHandler(HandoverNotPendingException.class)
+    public ProblemDetail handleHandoverNotPending(HandoverNotPendingException ex) {
+        return problem(HttpStatus.CONFLICT, "already_recorded", ex.getMessage());
     }
 
     // 400 Bad Request

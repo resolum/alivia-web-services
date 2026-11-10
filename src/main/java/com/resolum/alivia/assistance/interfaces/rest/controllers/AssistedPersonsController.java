@@ -1,19 +1,22 @@
 package com.resolum.alivia.assistance.interfaces.rest.controllers;
 
-import com.resolum.alivia.assistance.domain.model.aggregates.Caregiver;
+import com.resolum.alivia.assistance.application.internal.outboundservices.acl.ExternalProfilesService;
+import com.resolum.alivia.assistance.domain.model.aggregates.AssistedPerson;
 import com.resolum.alivia.assistance.domain.model.commands.CreateAssistedPersonCommand;
 import com.resolum.alivia.assistance.domain.model.commands.UpdateAssistedPersonCommand;
+import com.resolum.alivia.assistance.domain.model.queries.GetAllAssistedPersonsQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetAssistedPersonByIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetAssistedPersonsByRelativeIdQuery;
-import com.resolum.alivia.assistance.domain.repositories.AssistedPersonRepository;
-import com.resolum.alivia.assistance.domain.repositories.CaregiverRepository;
-import com.resolum.alivia.assistance.domain.repositories.RelativeRepository;
+import com.resolum.alivia.assistance.domain.model.queries.GetAssistedPersonsByUserIdQuery;
+import com.resolum.alivia.assistance.domain.model.valueobjects.Kinship;
+import com.resolum.alivia.assistance.domain.model.valueobjects.MobilityLevel;
 import com.resolum.alivia.assistance.domain.services.AssistedPersonCommandService;
 import com.resolum.alivia.assistance.domain.services.AssistedPersonQueryService;
 import com.resolum.alivia.assistance.interfaces.rest.resources.AssistedPersonResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.CreateAssistedPersonResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.UpdateAssistedPersonResource;
 import com.resolum.alivia.assistance.interfaces.rest.transform.AssistedPersonResourceAssembler;
+import com.resolum.alivia.profiles.interfaces.acl.ProfilesContextFacade;
 import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
@@ -23,7 +26,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
 import java.util.List;
-import java.util.Objects;
 
 @Slf4j
 @RestController
@@ -33,24 +35,38 @@ public class AssistedPersonsController {
 
     private final AssistedPersonCommandService commandService;
     private final AssistedPersonQueryService queryService;
-    private final AssistedPersonRepository assistedPersonRepository;
-    private final RelativeRepository relativeRepository;
-    private final CaregiverRepository caregiverRepository;
+    private final ExternalProfilesService externalProfilesService;
 
     public AssistedPersonsController(AssistedPersonCommandService commandService,
                                    AssistedPersonQueryService queryService,
-                                   AssistedPersonRepository assistedPersonRepository,
-                                   RelativeRepository relativeRepository,
-                                   CaregiverRepository caregiverRepository) {
+                                   ExternalProfilesService externalProfilesService) {
         this.commandService = commandService;
         this.queryService = queryService;
-        this.assistedPersonRepository = assistedPersonRepository;
-        this.relativeRepository = relativeRepository;
-        this.caregiverRepository = caregiverRepository;
+        this.externalProfilesService = externalProfilesService;
+    }
+
+    private AssistedPersonResource toResource(AssistedPerson entity) {
+        ProfilesContextFacade.PersonProfileData profileData = null;
+        if (entity.getPersonProfileId() != null) {
+            profileData = externalProfilesService.fetchPersonProfile(entity.getPersonProfileId()).orElse(null);
+        }
+        return AssistedPersonResourceAssembler.toResourceFromEntity(entity, profileData);
+    }
+
+    private UserId userIdOf(Principal principal) {
+        if (principal == null) return null;
+        try {
+            return new UserId(Long.valueOf(principal.getName()));
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @PostMapping
-    public ResponseEntity<Long> createAssistedPerson(@RequestBody CreateAssistedPersonResource resource) {
+    public ResponseEntity<AssistedPersonResource> createAssistedPerson(
+            @RequestBody CreateAssistedPersonResource resource,
+            Principal principal) {
+        UserId userId = userIdOf(principal);
         CreateAssistedPersonCommand command = new CreateAssistedPersonCommand(
                 resource.relativeId(),
                 resource.emailAddress(),
@@ -58,15 +74,27 @@ public class AssistedPersonsController {
                 resource.phoneNumber(),
                 resource.firstName(),
                 resource.lastName(),
-                resource.dni(),
-                resource.birthDate()
+                resource.effectiveDni(),
+                resource.birthDate(),
+                resource.householdId(),
+                parseKinship(resource.kinship()),
+                parseMobilityLevel(resource.mobilityLevel()),
+                resource.emergencyContactName(),
+                resource.emergencyContactPhone(),
+                resource.consentGiven() != null ? resource.consentGiven() : true,
+                userId != null ? userId.userId() : null
         );
         Long id = commandService.handle(command);
-        return new ResponseEntity<>(id, HttpStatus.CREATED);
+        return queryService.handle(new GetAssistedPersonByIdQuery(id))
+                .map(this::toResource)
+                .map(r -> ResponseEntity.status(HttpStatus.CREATED).body(r))
+                .orElse(ResponseEntity.status(HttpStatus.CREATED).body(new AssistedPersonResource(id, null, resource.relativeId())));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Long> updateAssistedPerson(@PathVariable Long id, @RequestBody UpdateAssistedPersonResource resource) {
+    public ResponseEntity<Long> updateAssistedPerson(
+            @PathVariable Long id,
+            @RequestBody UpdateAssistedPersonResource resource) {
         UpdateAssistedPersonCommand command = new UpdateAssistedPersonCommand(
                 id,
                 resource.relativeId(),
@@ -74,7 +102,12 @@ public class AssistedPersonsController {
                 resource.phoneNumber(),
                 resource.firstName(),
                 resource.lastName(),
-                resource.birthDate()
+                resource.birthDate(),
+                resource.householdId(),
+                parseKinship(resource.kinship()),
+                parseMobilityLevel(resource.mobilityLevel()),
+                resource.emergencyContactName(),
+                resource.emergencyContactPhone()
         );
         Long updatedId = commandService.handle(command);
         return ResponseEntity.ok(updatedId);
@@ -83,7 +116,7 @@ public class AssistedPersonsController {
     @GetMapping("/{id}")
     public ResponseEntity<AssistedPersonResource> getAssistedPersonById(@PathVariable Long id) {
         return queryService.handle(new GetAssistedPersonByIdQuery(id))
-                .map(AssistedPersonResourceAssembler::toResourceFromEntity)
+                .map(this::toResource)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -95,39 +128,51 @@ public class AssistedPersonsController {
         if (relativeId != null) {
             List<AssistedPersonResource> list = queryService.handle(new GetAssistedPersonsByRelativeIdQuery(relativeId))
                     .stream()
-                    .map(AssistedPersonResourceAssembler::toResourceFromEntity)
+                    .map(this::toResource)
                     .toList();
             return ResponseEntity.ok(list);
         }
         if (principal != null) {
-            try {
-                UserId userId = new UserId(Long.valueOf(principal.getName()));
-                var relativeOpt = relativeRepository.findByUserId(userId);
-                if (relativeOpt.isPresent()) {
-                    List<AssistedPersonResource> list = queryService.handle(new GetAssistedPersonsByRelativeIdQuery(relativeOpt.get().getId()))
-                            .stream()
-                            .map(AssistedPersonResourceAssembler::toResourceFromEntity)
-                            .toList();
-                    return ResponseEntity.ok(list);
-                }
-                var caregivers = caregiverRepository.findAllByUserId(userId);
-                List<AssistedPersonResource> list = caregivers.stream()
-                        .map(Caregiver::getAssistedPerson)
-                        .filter(Objects::nonNull)
-                        .distinct()
-                        .map(AssistedPersonResourceAssembler::toResourceFromEntity)
+            UserId userId = userIdOf(principal);
+            if (userId != null) {
+                List<AssistedPersonResource> list = queryService.handle(new GetAssistedPersonsByUserIdQuery(userId))
+                        .stream()
+                        .map(this::toResource)
                         .toList();
                 if (!list.isEmpty()) {
                     return ResponseEntity.ok(list);
                 }
-            } catch (Exception e) {
-                log.warn("Could not find assisted persons by principal {}: {}", principal.getName(), e.getMessage());
             }
         }
-        List<AssistedPersonResource> list = assistedPersonRepository.findAll()
+        List<AssistedPersonResource> list = queryService.handle(new GetAllAssistedPersonsQuery())
                 .stream()
-                .map(AssistedPersonResourceAssembler::toResourceFromEntity)
+                .map(this::toResource)
                 .toList();
         return ResponseEntity.ok(list);
+    }
+
+    private Kinship parseKinship(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return Kinship.valueOf(value.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return switch (value.trim().toUpperCase()) {
+                case "PADRE", "MADRE" -> Kinship.PARENT;
+                case "ABUELO", "ABUELA" -> Kinship.GRANDPARENT;
+                case "TIO", "TIA" -> Kinship.AUNT_UNCLE;
+                case "CONYUGE", "ESPOSO", "ESPOSA" -> Kinship.SPOUSE;
+                case "HERMANO", "HERMANA" -> Kinship.SIBLING;
+                default -> Kinship.OTHER;
+            };
+        }
+    }
+
+    private MobilityLevel parseMobilityLevel(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return MobilityLevel.valueOf(value.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return MobilityLevel.PARTIAL;
+        }
     }
 }
