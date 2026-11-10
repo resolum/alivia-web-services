@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
  * Internal entity of CareActivity.
  */
 @Entity
-@Table(name = "activity_assignments")
+@Table(name = "assistance_activity_assignments")
 @Getter
 public class ActivityAssignment extends AuditableModel {
 

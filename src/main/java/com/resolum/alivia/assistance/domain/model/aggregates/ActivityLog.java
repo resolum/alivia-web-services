@@ -35,7 +35,7 @@ import java.util.Objects;
  * Historical snapshot of an assignment occurrence execution.
  */
 @Entity
-@Table(name = "activity_logs", uniqueConstraints = {
+@Table(name = "assistance_activity_logs", uniqueConstraints = {
         @UniqueConstraint(name = "uk_activity_log_assignment_date", columnNames = {"assignment_id", "date"})
 })
 @Getter

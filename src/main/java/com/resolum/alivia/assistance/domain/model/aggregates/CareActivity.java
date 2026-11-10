@@ -31,7 +31,7 @@ import java.util.Objects;
  * Care activity of an assisted person, together with its assignments.
  */
 @Entity
-@Table(name = "care_activities")
+@Table(name = "assistance_care_activities")
 @Getter
 public class CareActivity extends AuditableAbstractAggregateRoot<CareActivity> {
 
