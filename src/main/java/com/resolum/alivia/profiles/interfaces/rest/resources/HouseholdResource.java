@@ -38,5 +38,8 @@ public record HouseholdResource(
         LocalDateTime createdAt,
 
         @Schema(description = "Fecha de la ultima modificacion")
-        LocalDateTime updatedAt) {
+        LocalDateTime updatedAt,
+
+        @Schema(description = "Identificador del usuario responsable de la cuenta", example = "1")
+        Long responsibleAccountId) {
 }

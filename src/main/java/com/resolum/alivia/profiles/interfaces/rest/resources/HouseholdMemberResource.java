@@ -24,5 +24,8 @@ public record HouseholdMemberResource(
         LocalDateTime createdAt,
 
         @Schema(description = "Fecha de la ultima modificacion")
-        LocalDateTime updatedAt) {
+        LocalDateTime updatedAt,
+        @Schema(description = "Nombres y apellidos del miembro, si tiene perfil de persona", example = "Lucia Salazar",
+                nullable = true)
+        String fullName) {
 }

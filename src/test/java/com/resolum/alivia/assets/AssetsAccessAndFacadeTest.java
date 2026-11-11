@@ -18,7 +18,20 @@ import com.resolum.alivia.assets.domain.services.DeviceQueryService;
 import com.resolum.alivia.assets.domain.services.EdgeCommandService;
 import com.resolum.alivia.assets.domain.services.EdgeQueryService;
 import com.resolum.alivia.assets.interfaces.rest.controllers.DevicesController;
+import com.resolum.alivia.assets.interfaces.rest.controllers.EdgeCredentialsController;
+import com.resolum.alivia.assets.interfaces.rest.controllers.EdgeDeviceTableController;
+import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryQueryService;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeAccessTable;
 import com.resolum.alivia.assets.interfaces.rest.controllers.EdgesController;
+import com.resolum.alivia.assets.interfaces.rest.controllers.InstallationEdgesController;
+import com.resolum.alivia.assets.domain.model.commands.IssueEdgeCredentialCommand;
+import com.resolum.alivia.assets.domain.model.commands.PlaceEdgeInInstallationCommand;
+import com.resolum.alivia.assets.domain.model.commands.RemoveEdgeFromInstallationCommand;
+import com.resolum.alivia.assets.domain.model.commands.RevokeEdgeCredentialCommand;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeType;
+import com.resolum.alivia.assets.domain.model.valueobjects.InstallationEdges;
+import com.resolum.alivia.assets.domain.model.valueobjects.IssuedEdgeCredential;
+import com.resolum.alivia.assets.domain.services.EdgeCredentialCommandService;
 import com.resolum.alivia.assets.interfaces.rest.resources.RegisterDeviceResource;
 import com.resolum.alivia.assets.interfaces.rest.resources.UpdateDeviceResource;
 import com.resolum.alivia.assets.interfaces.rest.resources.UpdateEdgeResource;
@@ -57,17 +70,88 @@ class AssetsAccessAndFacadeTest {
             ReflectionTestUtils.setField(device, "id", 7L);
             when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetDeviceByIdQuery.class)))
                     .thenReturn(Optional.of(device));
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetDevicesQuery.class)))
+                    .thenReturn(org.springframework.data.domain.Page.empty());
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetDeviceInventoryItemByIdQuery.class)))
+                    .thenReturn(Optional.of(new com.resolum.alivia.assets.domain.model.valueobjects.DeviceInventoryItem(device, null)));
             return new DevicesController(commands, queries, 1L);
         }
 
         @Bean
         EdgesController edgesController() {
-            return new EdgesController(mock(EdgeCommandService.class), mock(EdgeQueryService.class));
+            var commands = mock(EdgeCommandService.class);
+            var queries = mock(EdgeQueryService.class);
+            when(commands.handle(any(com.resolum.alivia.assets.domain.model.commands.RegisterEdgeCommand.class))).thenReturn(3L);
+            when(commands.handle(any(com.resolum.alivia.assets.domain.model.commands.ChangeEdgeStatusCommand.class))).thenReturn(3L);
+            var edge = new Edge(1L, "AA:BB:CC:DD:EE:FF", "ACTUATOR_EDGE");
+            ReflectionTestUtils.setField(edge, "id", 3L);
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetEdgeByIdQuery.class)))
+                    .thenReturn(Optional.of(edge));
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetEdgesQuery.class)))
+                    .thenReturn(org.springframework.data.domain.Page.empty());
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetEdgeInventoryItemByIdQuery.class)))
+                    .thenReturn(Optional.of(new com.resolum.alivia.assets.domain.model.valueobjects.EdgeInventoryItem(edge, null)));
+            return new EdgesController(commands, queries, 1L);
+        }
+
+        @Bean
+        InstallationEdgesController installationEdgesController() {
+            var commands = mock(HouseholdDeviceRegistryCommandService.class);
+            var view = new InstallationEdges(3L, null, null, null);
+            when(commands.handle(any(PlaceEdgeInInstallationCommand.class))).thenReturn(view);
+            when(commands.handle(any(RemoveEdgeFromInstallationCommand.class))).thenReturn(view);
+            return new InstallationEdgesController(commands);
+        }
+
+        @Bean
+        EdgeDeviceTableController edgeDeviceTableController() {
+            var queries = mock(HouseholdDeviceRegistryQueryService.class);
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetEdgeTableVersionByEdgeIdQuery.class)))
+                    .thenReturn(Optional.of(new com.resolum.alivia.assets.domain.model.valueobjects.EdgeTableVersion(3L, 1L)));
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByEdgeIdQuery.class)))
+                    .thenReturn(Optional.of(new EdgeAccessTable(3L, 5L, 1L, java.util.List.of())));
+            return new EdgeDeviceTableController(queries, mock(com.resolum.alivia.assets.domain.services.EdgeSyncCommandService.class),
+                    mock(com.resolum.alivia.assets.domain.services.EdgeTableWaitService.class));
+        }
+
+        @Bean
+        com.resolum.alivia.assets.interfaces.rest.controllers.EdgeSyncStateController edgeSyncStateController() {
+            var commands = mock(com.resolum.alivia.assets.domain.services.EdgeSyncCommandService.class);
+            when(commands.handle(any(com.resolum.alivia.assets.domain.model.commands.AcknowledgeEdgeVersionCommand.class)))
+                    .thenReturn(new com.resolum.alivia.assets.domain.model.valueobjects.AppliedEdgeVersion(7L, 1L, java.time.LocalDateTime.of(2026, 11, 5, 10, 0)));
+            return new com.resolum.alivia.assets.interfaces.rest.controllers.EdgeSyncStateController(commands);
+        }
+
+        @Bean
+        com.resolum.alivia.assets.interfaces.rest.controllers.InstallationEdgeSyncController installationEdgeSyncController() {
+            var queries = mock(com.resolum.alivia.assets.domain.services.EdgeSyncQueryService.class);
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetInstallationEdgeSyncQuery.class)))
+                    .thenReturn(Optional.of(new com.resolum.alivia.assets.domain.model.valueobjects.InstallationEdgeSync(3L, 1L, java.util.List.of())));
+            return new com.resolum.alivia.assets.interfaces.rest.controllers.InstallationEdgeSyncController(queries);
+        }
+
+        @Bean
+        EdgeCredentialsController edgeCredentialsController() {
+            var commands = mock(EdgeCredentialCommandService.class);
+            when(commands.handle(any(IssueEdgeCredentialCommand.class)))
+                    .thenReturn(new IssuedEdgeCredential(7L, EdgeType.ACTUATOR_EDGE, "7.secret"));
+            var queries = mock(com.resolum.alivia.assets.domain.services.EdgeCredentialQueryService.class);
+            when(queries.handle(any(com.resolum.alivia.assets.domain.model.queries.GetEdgeCredentialStatusQuery.class)))
+                    .thenReturn(com.resolum.alivia.assets.domain.model.valueobjects.EdgeCredentialStatus.notIssued(7L));
+            return new EdgeCredentialsController(commands, queries);
         }
     }
 
+    private static final org.springframework.security.core.Authentication ACTOR =
+            new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("1", null);
     private static final RegisterDeviceResource REGISTER = new RegisterDeviceResource("AA:BB:CC:DD:EE:FF", "Luz", "LIGHT");
+    private static final com.resolum.alivia.assets.interfaces.rest.resources.ChangeDeviceStatusResource DEVICE_STATUS =
+            new com.resolum.alivia.assets.interfaces.rest.resources.ChangeDeviceStatusResource("MAINTENANCE");
     private static final UpdateDeviceResource UPDATE = new UpdateDeviceResource("AA:BB:CC:DD:EE:FF", "LIGHT");
+    private static final com.resolum.alivia.assets.interfaces.rest.resources.RegisterEdgeResource REGISTER_EDGE =
+            new com.resolum.alivia.assets.interfaces.rest.resources.RegisterEdgeResource("AA:BB:CC:DD:EE:FF", "ACTUATOR_EDGE");
+    private static final com.resolum.alivia.assets.interfaces.rest.resources.ChangeEdgeStatusResource EDGE_STATUS =
+            new com.resolum.alivia.assets.interfaces.rest.resources.ChangeEdgeStatusResource("MAINTENANCE");
     private static final UpdateEdgeResource UPDATE_EDGE = new UpdateEdgeResource("AA:BB:CC:DD:EE:FF", "ACTUATOR_EDGE");
 
     @AfterEach
@@ -90,7 +174,19 @@ class AssetsAccessAndFacadeTest {
 
             assertEquals(7L, context.getBean(DevicesController.class).registerDevice(REGISTER).id());
             assertDoesNotThrow(() -> context.getBean(DevicesController.class).updateDevice(7L, UPDATE));
+            assertEquals(7L, context.getBean(DevicesController.class).changeDeviceStatus(7L, DEVICE_STATUS).id());
+            assertEquals(0, context.getBean(DevicesController.class).getDevices(null, null, 0, 20).totalElements());
+            assertEquals(7L, context.getBean(DevicesController.class).getDevice(7L).id());
+            assertEquals(0, context.getBean(EdgesController.class).getEdges(null, null, 0, 20).totalElements());
+            assertEquals(3L, context.getBean(EdgesController.class).getEdge(3L).id());
             assertDoesNotThrow(() -> context.getBean(EdgesController.class).updateEdge(3L, UPDATE_EDGE));
+            assertEquals(3L, context.getBean(EdgesController.class).registerEdge(REGISTER_EDGE).id());
+            assertEquals(3L, context.getBean(EdgesController.class).changeEdgeStatus(3L, EDGE_STATUS).id());
+            assertDoesNotThrow(() -> context.getBean(InstallationEdgesController.class).placeEdge(3L, 7L));
+            assertDoesNotThrow(() -> context.getBean(InstallationEdgesController.class).removeEdge(3L, 7L));
+            assertDoesNotThrow(() -> context.getBean(EdgeCredentialsController.class).issueCredential(7L, ACTOR));
+            assertDoesNotThrow(() -> context.getBean(EdgeCredentialsController.class).revokeCredential(7L, ACTOR));
+            assertEquals(7L, context.getBean(EdgeCredentialsController.class).getCredentialStatus(7L).edgeId());
         }
     }
 
@@ -105,7 +201,31 @@ class AssetsAccessAndFacadeTest {
                 assertThrows(AccessDeniedException.class,
                         () -> context.getBean(DevicesController.class).updateDevice(7L, UPDATE), role);
                 assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(DevicesController.class).changeDeviceStatus(7L, DEVICE_STATUS), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(DevicesController.class).getDevices(null, null, 0, 20), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(DevicesController.class).getDevice(7L), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(EdgesController.class).getEdges(null, null, 0, 20), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(EdgesController.class).getEdge(3L), role);
+                assertThrows(AccessDeniedException.class,
                         () -> context.getBean(EdgesController.class).updateEdge(3L, UPDATE_EDGE), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(EdgesController.class).registerEdge(REGISTER_EDGE), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(EdgesController.class).changeEdgeStatus(3L, EDGE_STATUS), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(InstallationEdgesController.class).placeEdge(3L, 7L), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(InstallationEdgesController.class).removeEdge(3L, 7L), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(EdgeCredentialsController.class).issueCredential(7L, ACTOR), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(EdgeCredentialsController.class).revokeCredential(7L, ACTOR), role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(EdgeCredentialsController.class).getCredentialStatus(7L), role);
             }
         }
     }
@@ -170,5 +290,50 @@ class AssetsAccessAndFacadeTest {
 
         verify(assignments).handle(new AssignDeviceToInstallationCommand(3L, 7L, "sala", "Luz", 6L, CallerAuthority.AUTHORIZED_BY_CONTEXT));
         verify(assignments).handle(new UnassignDeviceCommand(7L, "Fin de la visita", 6L, CallerAuthority.AUTHORIZED_BY_CONTEXT));
+    }
+
+    @Test
+    void onlyAuthenticatedEdgeServicesMayReadTheTableOfDevices() {
+        var edge = new TestingAuthenticationToken("edge:7", "n/a", "ROLE_EDGE_MICROPHONE");
+        var actuator = new TestingAuthenticationToken("edge:8", "n/a", "ROLE_EDGE_ACTUATOR");
+        try (var context = context()) {
+            SecurityContextHolder.getContext().setAuthentication(edge);
+            assertEquals(200, context.getBean(EdgeDeviceTableController.class).getDeviceTable(null, edge).getStatusCode().value());
+            SecurityContextHolder.getContext().setAuthentication(actuator);
+            assertEquals(200, context.getBean(EdgeDeviceTableController.class).getDeviceTable(null, actuator).getStatusCode().value());
+
+            for (var role : new String[]{"ROLE_ADMINISTRATOR", "ROLE_CAREGIVER", "ROLE_TECHNICIAN", "ROLE_SUBSCRIPTION_MANAGER", "ROLE_ASSISTED_PERSON"}) {
+                signInAs(role);
+                assertThrows(AccessDeniedException.class,
+                        () -> context.getBean(EdgeDeviceTableController.class).getDeviceTable(null, edge), role);
+            }
+        }
+    }
+
+    @Test
+    void onlyEdgeServicesMayConfirmAndOnlyAdministratorsMayReadTheSyncState() {
+        var edge = new TestingAuthenticationToken("edge:7", "n/a", "ROLE_EDGE_ACTUATOR");
+        var confirm = new com.resolum.alivia.assets.interfaces.rest.resources.AcknowledgeEdgeVersionResource(1L);
+        try (var context = context()) {
+            SecurityContextHolder.getContext().setAuthentication(edge);
+            assertEquals(1L, context.getBean(com.resolum.alivia.assets.interfaces.rest.controllers.EdgeSyncStateController.class)
+                    .acknowledge(confirm, edge).getBody().appliedVersion());
+            assertThrows(AccessDeniedException.class, () -> context.getBean(
+                    com.resolum.alivia.assets.interfaces.rest.controllers.InstallationEdgeSyncController.class).getEdgeSync(3L));
+
+            for (var role : new String[]{"ROLE_ADMINISTRATOR", "ROLE_CAREGIVER", "ROLE_TECHNICIAN", "ROLE_SUBSCRIPTION_MANAGER"}) {
+                signInAs(role);
+                assertThrows(AccessDeniedException.class, () -> context.getBean(
+                        com.resolum.alivia.assets.interfaces.rest.controllers.EdgeSyncStateController.class).acknowledge(confirm, edge), role);
+            }
+            signInAs("ROLE_ADMINISTRATOR");
+            assertDoesNotThrow(() -> context.getBean(
+                    com.resolum.alivia.assets.interfaces.rest.controllers.InstallationEdgeSyncController.class).getEdgeSync(3L));
+            for (var role : new String[]{"ROLE_CAREGIVER", "ROLE_TECHNICIAN", "ROLE_SUBSCRIPTION_MANAGER"}) {
+                signInAs(role);
+                assertThrows(AccessDeniedException.class, () -> context.getBean(
+                        com.resolum.alivia.assets.interfaces.rest.controllers.InstallationEdgeSyncController.class).getEdgeSync(3L), role);
+            }
+        }
     }
 }

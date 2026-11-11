@@ -1,0 +1,261 @@
+name: CD - Build, publish and deploy to Azure
+
+# Builds the API image, publishes it to Azure Container Registry and deploys it to the App Service of an environment
+# (docs/operations/azure-deployment.md, section 7).
+#
+#   push to develop      -> staging
+#   push to main         -> production (the GitHub environment "production" must require reviewers)
+#   workflow_dispatch    -> the chosen environment; with image_tag it deploys an image that is already in the registry
+#                           (promote what was tested in staging) instead of building one.
+#
+# It does NOT run the tests: they run in the pull request. Branch protection on develop and main must require
+# "Check - Maven Test Suite", or an untested commit could be deployed.
+#
+# Signing in to Azure uses OIDC with the managed identity of the environment (Terraform module deploy-identity): there is
+# no secret. Azure trusts only jobs that run in the GitHub environment of the same name, which is why the image is built
+# and pushed by the same job that deploys, inside that environment.
+#
+# Third-party actions are pinned to a full commit SHA, not a tag: this job holds an Azure token and publishes images, and
+# aquasecurity/trivy-action was compromised in March 2026 through its tags. Update a pin by looking up the new release,
+# reading its notes and replacing the SHA and the version in the comment.
+
+on:
+  push:
+    branches: [ 'develop', 'main' ]
+    paths:
+      - 'src/**'
+      - 'pom.xml'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'infrastructure/scripts/**'
+      - '.github/workflows/cd-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to (production only from main)'
+        type: choice
+        required: true
+        options:
+          - staging
+          - production
+      image_tag:
+        description: 'Tag of an image already in the registry, deployed as it is. Empty: build the selected ref.'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolve environment and image
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.resolve.outputs.environment }}
+      image_tag: ${{ steps.resolve.outputs.image_tag }}
+      build: ${{ steps.resolve.outputs.build }}
+
+    steps:
+      - name: Resolve
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+          INPUT_ENVIRONMENT: ${{ inputs.environment }}
+          INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            environment="$INPUT_ENVIRONMENT"
+          else
+            case "$REF" in
+              refs/heads/develop) environment=staging ;;
+              refs/heads/main) environment=production ;;
+              *) fail "The branch $REF is not deployed by this workflow." ;;
+            esac
+          fi
+
+          case "$environment" in
+            staging | production) ;;
+            *) fail "Unknown environment: $environment" ;;
+          esac
+
+          if [ "$environment" = "production" ] && [ "$REF" != "refs/heads/main" ]; then
+            fail "Production is deployed only from main (this run is on $REF)."
+          fi
+
+          if [ -n "$INPUT_IMAGE_TAG" ]; then
+            [[ "$INPUT_IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || fail "The image tag is not valid."
+            [ "$INPUT_IMAGE_TAG" != "latest" ] || fail "latest is not deployed: use the tag of a commit."
+            image_tag="$INPUT_IMAGE_TAG"
+            build=false
+          else
+            image_tag="$SHA"
+            build=true
+          fi
+
+          {
+            echo "environment=$environment"
+            echo "image_tag=$image_tag"
+            echo "build=$build"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Deployment plan"
+            echo
+            echo "- Environment: \`$environment\`"
+            echo "- Image tag: \`$image_tag\`"
+            if [ "$build" = "true" ]; then
+              echo "- Source: built from \`$SHA\`"
+            else
+              echo "- Source: image already in the registry (nothing is built)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy - ${{ needs.resolve.outputs.environment }}
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Runs inside the GitHub environment: its variables and secrets, its approval rules and the OIDC subject
+    # repo:<owner>/<repo>:environment:<name> that Azure checks.
+    environment: ${{ needs.resolve.outputs.environment }}
+    # Two deployments to the same environment never overlap, and one in progress is never cancelled.
+    concurrency:
+      group: cd-deploy-${{ needs.resolve.outputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ENVIRONMENT: ${{ needs.resolve.outputs.environment }}
+      IMAGE_TAG: ${{ needs.resolve.outputs.image_tag }}
+      ACR_NAME: ${{ vars.ACR_NAME }}
+      IMAGE: ${{ vars.ACR_NAME }}.azurecr.io/alivia-api:${{ needs.resolve.outputs.image_tag }}
+
+    steps:
+      - name: Check the variables of the environment
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+        run: |
+          missing=()
+          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_RESOURCE_GROUP AZURE_WEBAPP_NAME ACR_NAME; do
+            [ -n "${!name:-}" ] || missing+=("$name")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::The GitHub environment '$ENVIRONMENT' lacks these variables: ${missing[*]} (see section 9.2 of the deployment document)."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # ---- Build and scan: only when no image was given -----------------------------------------------------------
+      - name: Set up Docker Buildx
+        if: needs.resolve.outputs.build == 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build date
+        if: needs.resolve.outputs.build == 'true'
+        id: build-date
+        run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      # Built into the local Docker store, not pushed: the image is published only if the scan below passes.
+      - name: Build image
+        if: needs.resolve.outputs.build == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: false
+          load: true
+          provenance: false
+          sbom: false
+          tags: ${{ env.IMAGE }}
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ steps.build-date.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Fails on CRITICAL or HIGH vulnerabilities that already have a fix; those without one do not block.
+      - name: Scan image
+        if: needs.resolve.outputs.build == 'true'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+
+      # ---- Azure ---------------------------------------------------------------------------------------------------
+      - name: Sign in to Azure (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Publish image
+        if: needs.resolve.outputs.build == 'true'
+        run: |
+          az acr login --name "$ACR_NAME"
+          docker push "$IMAGE"
+
+      # ---- Deploy --------------------------------------------------------------------------------------------------
+      # deploy.sh owns the configuration of the application (decision P-4). A variable that is empty here counts as not
+      # set: required ones make it stop and list their names; optional ones are simply not copied.
+      - name: Deploy and verify
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+          # Optional: when set, deploy.sh starts the PostgreSQL server if it is stopped
+          AZURE_POSTGRES_SERVER_NAME: ${{ vars.AZURE_POSTGRES_SERVER_NAME }}
+          # Secrets of the environment
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          IAM_JWT_SECRET: ${{ secrets.IAM_JWT_SECRET }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+          IAM_SUPER_ADMIN_PASSWORD: ${{ secrets.IAM_SUPER_ADMIN_PASSWORD }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          # Variables of the environment: required
+          DB_URL: ${{ vars.DB_URL }}
+          DB_USERNAME: ${{ vars.DB_USERNAME }}
+          MONGODB_DATABASE: ${{ vars.MONGODB_DATABASE }}
+          CORS_ALLOWED_ORIGINS: ${{ vars.CORS_ALLOWED_ORIGINS }}
+          IAM_EMAIL_VERIFICATION_LINK_BASE_URL: ${{ vars.IAM_EMAIL_VERIFICATION_LINK_BASE_URL }}
+          STRIPE_PUBLISHABLE_KEY: ${{ vars.STRIPE_PUBLISHABLE_KEY }}
+          CLOUDINARY_CLOUD_NAME: ${{ vars.CLOUDINARY_CLOUD_NAME }}
+          IAM_SUPER_ADMIN_EMAIL: ${{ vars.IAM_SUPER_ADMIN_EMAIL }}
+          # Variables of the environment: optional
+          IAM_EMAIL_PROVIDER: ${{ vars.IAM_EMAIL_PROVIDER }}
+          IAM_EMAIL_FROM: ${{ vars.IAM_EMAIL_FROM }}
+          IAM_EMAIL_FROM_NAME: ${{ vars.IAM_EMAIL_FROM_NAME }}
+          IAM_ACCOUNT_ACTIVATION_LINK_BASE_URL: ${{ vars.IAM_ACCOUNT_ACTIVATION_LINK_BASE_URL }}
+          IAM_ACCOUNT_ACTIVATION_EXPIRATION_HOURS: ${{ vars.IAM_ACCOUNT_ACTIVATION_EXPIRATION_HOURS }}
+          IAM_EMAIL_VERIFICATION_EXPIRATION_HOURS: ${{ vars.IAM_EMAIL_VERIFICATION_EXPIRATION_HOURS }}
+          IAM_EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS: ${{ vars.IAM_EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS }}
+          IAM_DEFAULT_PHOTO_URL: ${{ vars.IAM_DEFAULT_PHOTO_URL }}
+          HCM_DEFAULT_BUSINESS_ID: ${{ vars.HCM_DEFAULT_BUSINESS_ID }}
+          IAM_JWT_ACCESS_TOKEN_EXPIRATION_MINUTES: ${{ vars.IAM_JWT_ACCESS_TOKEN_EXPIRATION_MINUTES }}
+          IAM_JWT_REFRESH_TOKEN_EXPIRATION_DAYS: ${{ vars.IAM_JWT_REFRESH_TOKEN_EXPIRATION_DAYS }}
+          IAM_EDGE_CREDENTIAL_ROTATION_RECOMMENDED_AFTER: ${{ vars.IAM_EDGE_CREDENTIAL_ROTATION_RECOMMENDED_AFTER }}
+          IAM_EDGE_CREDENTIAL_MAX_FAILED_ATTEMPTS_PER_MINUTE: ${{ vars.IAM_EDGE_CREDENTIAL_MAX_FAILED_ATTEMPTS_PER_MINUTE }}
+          MULTIPART_MAX_FILE_SIZE: ${{ vars.MULTIPART_MAX_FILE_SIZE }}
+          JAVA_TOOL_OPTIONS: ${{ vars.JAVA_TOOL_OPTIONS }}
+          DOCUMENTATION_APPLICATION_DESCRIPTION: ${{ vars.DOCUMENTATION_APPLICATION_DESCRIPTION }}
+          DOCUMENTATION_APPLICATION_VERSION: ${{ vars.DOCUMENTATION_APPLICATION_VERSION }}
+        run: bash infrastructure/scripts/deploy.sh "$ENVIRONMENT" "$IMAGE_TAG"

@@ -7,11 +7,33 @@ Flyway es el dueño del esquema. Las migraciones viven en
 
 | Elemento | Valor |
 |---|---|
-| Migraciones existentes | `V1__baseline.sql` — esquema completo (24 tablas, 235 columnas, 234 constraints, 45 índices) · `V2__constraints_and_indexes.sql` — 19 claves foráneas y 11 índices |
+| Migraciones existentes | `V1` a `V18` (ver el [historial](#historial-de-migraciones)); la última es `V18__add_assisted_person_care_profiles.sql` |
 | `ddl-auto` en `dev` | `update` (Hibernate puede crear tablas que falten; úsalo solo en local) |
 | `ddl-auto` en `prod` | `validate` — Flyway crea el esquema y Hibernate solo lo comprueba al arrancar |
 | `ddl-auto` en `test` | El del perfil de pruebas; Flyway está deshabilitado (ver más abajo) |
 | Historial | Tabla `flyway_schema_history` |
+
+## Historial de migraciones
+
+| Versión | Contenido | Origen |
+|---|---|---|
+| `V1` | Esquema completo capturado de las entidades (24 tablas, 235 columnas, 234 constraints, 45 índices). | AP-480 |
+| `V2` | 19 claves foráneas y 11 índices de búsqueda ([`data-integrity.md`](data-integrity.md)). | AP-482 |
+| `V3` | Vínculos de los perfiles con su usuario IAM, preferencias de comunicación, hogares y sus miembros. | AP-356 |
+| `V4` | Tablas de Business y de citas que `V1` no incluyó. | AP-480 |
+| `V5` | Tablas del contexto Assets: dispositivos, edges y redes de dispositivos. | AP-371 |
+| `V6` | Asignación de un dispositivo a un hogar (`device_assignments`), con un índice único parcial: una sola asignación activa por dispositivo. | AP-376 |
+| `V7` | La instalación pertenece a un hogar y la asignación recuerda su instalación. | AP-376 |
+| `V8` | Quién cerró una asignación y por qué (historial inmutable, con un `CHECK`). | AP-373 |
+| `V9` | Tablas y columnas de Operations y Subscriptions que nunca se migraron (flujo de órdenes técnicas). | AP-76 |
+| `V10`, `V11` | `V10` añadió el estado pendiente de una red; `V11` lo revirtió porque esa confirmación pertenece a Operations. Se conservan ambas: una migración aplicada no se edita. | AP-376 |
+| `V12` | `household_device_registries`: un registro por hogar con sus entradas vigentes, versión de la tabla y edges. Reemplaza a `device_networks` moviendo sus datos. **Antes de aplicarla, ver [Antes de aplicar `V12`](#antes-de-aplicar-v12-asignaciones-sin-registro).** | AP-68 |
+| `V13` | Paridad con lo que trajo `develop` (columnas y `CHECK` de incidencias, citas y contratos) y columna `version` de dispositivos y edges (bloqueo optimista). | AP-68 |
+| `V14` | Citas sin datos de contacto obligatorios y sin la restricción de un único turno por borrador. Viene de `develop`/`main`. | citas |
+| `V15` | `edge_credentials`: la credencial de cada edge service (solo el hash). Se llamó `V14` mientras la rama `feature/edge-communication` no incluía la `V14` de `develop`: **al fusionar, las tres migraciones de AP-68 se renumeraron** (`V14`→`V15`, `V15`→`V16`, `V16`→`V17`); una base de desarrollo que ya las aplicó con los números anteriores debe recrearse. | AP-68 |
+| `V16` | `edge_sync_states`: qué versión de su tabla confirmó cada edge y cuándo se le vio por última vez. | AP-68 |
+| `V17` | `edge_credentials`: cuándo se emitió el secreto vigente y quién lo emitió y lo revocó (con el motivo). Las filas existentes toman `updated_at` como fecha de emisión (una estimación) y no tienen emisor; `issued_at` pasa a ser obligatoria. Probada con un `V15` con credenciales actualizado por Flyway (`EdgeCredentialMigrationOnPostgresTest`). | AP-68 |
+| `V18` | `assisted_person_care_profiles`: el perfil de cuidado de la persona asistida (módulo `nursing`). La entidad llegó a `develop` y `main` sin migración: solo funcionaba donde `ddl-auto=update` crea tablas, y con `validate` (producción) la aplicación no arrancaba. Las pruebas contra PostgreSQL real lo detectan. | nursing |
 
 `V1` no es un marcador: contiene el DDL completo que Hibernate genera para las
 entidades JPA actuales. Se capturó con el procedimiento de la sección
@@ -42,8 +64,25 @@ El perfil `test` usa H2 en memoria y **deshabilita Flyway**
 El DDL de las migraciones es de PostgreSQL (columnas `identity`, `jsonb`, `CHECK` con
 `ARRAY[...]`) y H2 no puede ejecutarlo. Por eso las pruebas construyen el esquema con
 Hibernate y la paridad de las migraciones se verifica contra PostgreSQL real, no en la
-suite. `FlywayMigrationTest` solo valida convenciones de los archivos (nombre, versión
+suite H2. `FlywayMigrationTest` solo valida convenciones de los archivos (nombre, versión
 única, `V1` no vacío, ausencia de artefactos de `pg_dump`) y que `V2` sea aditiva.
+
+### Pruebas contra PostgreSQL real
+
+Las clases de `src/test/java/com/resolum/alivia/integration` arrancan **la aplicación completa
+contra un PostgreSQL 18 desechable** (Testcontainers, `postgres:18`): Flyway aplica de `V1` a
+la última migración, Hibernate solo valida (`ddl-auto=validate`, como en producción) y las
+peticiones pasan por el servidor y la cadena de seguridad reales. Cubren lo que H2 no puede
+mostrar: que las migraciones por sí solas construyen un esquema que Hibernate acepta, que cada
+migración se aplicó, que los beans tienen nombres únicos, y los bloqueos, el `on conflict` y
+los niveles de aislamiento. Sin Docker se omiten y el resto de la suite pasa igual.
+
+```powershell
+.\mvnw.cmd test "-Dtest=com.resolum.alivia.integration.*Test"
+```
+
+Una migración nueva que no coincida con su entidad hace fallar el arranque de estas pruebas
+con `Schema validation: ...`, así que ya no depende de recordar la verificación manual.
 
 ## Cómo se generó `V1`
 
@@ -98,7 +137,9 @@ En el log debe aparecer:
 ```
 Migrating schema "public" to version "1 - baseline"
 Migrating schema "public" to version "2 - constraints and indexes"
-Successfully applied 2 migrations to schema "public", now at version v2
+...
+Migrating schema "public" to version "15 - add edge sync states"
+Successfully applied 15 migrations to schema "public", now at version v15
 Started AliviaWebServicesApplication in ...
 ```
 
@@ -115,7 +156,7 @@ posteriores a `V1`:
 Creating Schema History table "public"."flyway_schema_history" with baseline ...
 Successfully baselined schema with version: 1
 Migrating schema "public" to version "2 - constraints and indexes"
-Successfully applied 1 migration to schema "public", now at version v2
+Successfully applied 14 migrations to schema "public", now at version v15
 ```
 
 Con `ddl-auto=validate`, ese arranque además demuestra que el esquema existente coincide
@@ -147,11 +188,61 @@ Ejecutada contra PostgreSQL 18.6 con `V1` y `V2`:
 | Índices de `V1` (`pg_indexes`) | ✅ 45/45 idénticos |
 | `.\mvnw.cmd clean verify` | ✅ 848 pruebas, 0 fallos, 8 *skipped* |
 
+Verificación posterior (`V12` a `V18`, AP-68): las pruebas de `integration` arrancan la aplicación
+sobre PostgreSQL 18 con `V1`..`V18` y `ddl-auto=validate` en cada ejecución (ver
+[Pruebas contra PostgreSQL real](#pruebas-contra-postgresql-real)).
+
 La prueba de deriva es la que justifica `validate` en producción: sin ella, Hibernate habría
 seguido arrancando con la columna ausente y el error aparecería en la primera consulta.
 La prueba de la FK huérfana es la que justifica que `V2` falle en lugar de aceptar datos
 inconsistentes. Las filas de paridad de `V1` y la prueba de deriva se conservan de las
 verificaciones de `P-480.2` y `P-464.2`: `V2` no modifica tablas, columnas ni tipos.
+
+## Antes de aplicar `V12`: asignaciones sin registro
+
+`V12` crea un registro por hogar y enlaza a él cada asignación (`device_assignments.registry_id`).
+Una asignación **activa** que no tiene instalación (`installation_id` nula) y cuyo hogar no
+tiene ninguna red con instalación queda sin registro: sigue en la tabla, pero ninguna tabla de
+dispositivos la incluye ni ningún edge la recibe. La migración no falla ni lo corrige; hay que
+comprobarlo antes en cada base que tenga datos de Assets.
+
+**1. Antes de `V12`** (con la base en `V11`): debe devolver 0 filas.
+
+```sql
+SELECT a.id AS assignment_id, a.device_id, a.household_id, a.installation_id
+FROM device_assignments a
+WHERE a.unassigned_at IS NULL
+  AND a.installation_id IS NULL
+  AND NOT EXISTS (SELECT 1 FROM device_networks n
+                  WHERE n.household_id = a.household_id
+                    AND n.installation_id IS NOT NULL
+                    AND n.business_id IS NOT NULL)
+ORDER BY a.id;
+```
+
+Si devuelve filas, decide fila por fila **antes** de migrar (la migración no decide por ti):
+
+- si el dispositivo sí está en un hogar con una instalación conocida, completa su
+  `installation_id` (y crea la red de esa instalación si no existe); o
+- si ya no está allí, ciérrala como cualquier desasignación: `unassigned_at`,
+  `unassigned_by` y `unassign_reason` los tres a la vez (el `CHECK` lo exige) y deja el
+  dispositivo `AVAILABLE` en `devices`.
+
+**2. Después de `V12`**: debe devolver 0 filas. Las asignaciones cerradas (historial) pueden
+tener `registry_id` nulo y no cuentan.
+
+```sql
+SELECT a.id AS assignment_id, a.device_id, a.household_id, a.installation_id
+FROM device_assignments a
+WHERE a.unassigned_at IS NULL AND a.registry_id IS NULL
+ORDER BY a.id;
+```
+
+Ambas consultas se probaron sobre una base `V11` con datos heredados (PostgreSQL 17): un hogar con
+red e instalación, otro sin red pero con asignación con instalación (`V12` le crea el registro), dos
+con asignaciones activas sin instalación (las dos filas que las consultas devuelven, antes y
+después), uno con red y asignación sin instalación (se enlaza por el hogar y no se marca) y una
+asignación cerrada (no se marca). `V12` a `V15` (entonces `V12` a `V15`; hoy `V12`, `V13`, `V15` y `V16`) se aplicaron sin errores sobre esos datos.
 
 ## Añadir una entidad nueva al esquema
 
@@ -166,7 +257,10 @@ Nada especial: `@Entity`, `@Table`, `@Column`, etc. Los nombres físicos los dec
 - Tabla: nombre de la clase en snake_case y pluralizado (`CareActivity` → `care_activities`).
 - Columna: nombre del campo en snake_case (`assistedPersonProfileId` → `assisted_person_profile_id`).
 
-Si usas `@Table(name = ...)` o `@Column(name = ...)` explícitos, el nombre es el que escribas.
+Cuidado: la estrategia **pluraliza también los nombres escritos en `@Table(name = ...)`**.
+`@Table(name = "edge_sync_state")` crea la tabla `edge_sync_states`, y con `validate` una
+migración que la llame en singular impide el arranque. Escribe siempre el nombre ya en plural
+(`edge_credentials`, `household_device_registries`). Los nombres de columna solo se pasan a snake_case.
 
 ### 2. Reserva el número de versión
 

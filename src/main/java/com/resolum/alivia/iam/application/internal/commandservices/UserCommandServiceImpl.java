@@ -128,10 +128,10 @@ public class UserCommandServiceImpl implements UserCommandService {
             throw new EmailAlreadyRegisteredException();
         }
         var password = new PasswordHash(hashingService.encode(command.password()));
-        var generatedToken = emailVerificationTokenService.generate();
         AccessRole role = command.role() != null ? command.role() : AccessRole.CAREGIVER;
         var now = LocalDateTime.now(clock);
         var user = new User(email, password, role, now);
+        var generatedToken = emailVerificationTokenService.generateCode(user.getAccountId());
         user.requestEmailVerification(generatedToken.token(), now);
         var savedUser = userRepository.save(user);
         createProfile(savedUser, command);
@@ -151,28 +151,28 @@ public class UserCommandServiceImpl implements UserCommandService {
      * @throws VerificationTokenExpiredException when the pending token has expired
      */
     @Override
-    @Transactional
+    // The wrong-code counter must survive the rejection.
+    @Transactional(noRollbackFor = InvalidVerificationTokenException.class)
     public AuthSession handle(VerifyEmailCommand command) {
-        if (command == null || command.verificationToken() == null
-                || command.verificationToken().isBlank()) {
-            log.warn("Email verification rejected: token is missing");
+        log.debug("Handling email verification command");
+        var user = command == null ? null : findUserByEmailForUpdate(command.email()).orElse(null);
+        var pendingToken = user == null ? null : user.getPendingEmailVerificationToken();
+        if (pendingToken == null) {
+            log.warn("Email verification rejected: no pending code for the given email");
             throw new InvalidVerificationTokenException();
         }
-        log.debug("Handling email verification command");
-        var tokenHash = emailVerificationTokenService.hash(command.verificationToken());
-        var user = userRepository.findByEmailVerificationTokenHash(tokenHash)
-                .orElseThrow(() -> {
-                    log.warn("Email verification rejected: token not found or already used");
-                    return new InvalidVerificationTokenException();
-                });
-        var pendingToken = user.getPendingEmailVerificationToken();
-        if (pendingToken == null
-                || !emailVerificationTokenService.matches(command.verificationToken(), pendingToken.value())) {
-            log.warn("Email verification rejected: token does not match account id {}", user.getId());
+        if (!user.hasCodeAttemptsLeft()) {
+            log.warn("Email verification rejected: account id {} has no code attempts left", user.getId());
+            throw new InvalidVerificationTokenException();
+        }
+        if (!emailVerificationTokenService.matchesCode(user.getAccountId(), command.code(), pendingToken.value())) {
+            user.registerFailedCodeAttempt();
+            userRepository.save(user);
+            log.warn("Email verification rejected: wrong code for account id {}", user.getId());
             throw new InvalidVerificationTokenException();
         }
         if (pendingToken.isExpiredAt(LocalDateTime.now(clock))) {
-            log.warn("Email verification rejected: token expired for account id {}", user.getId());
+            log.warn("Email verification rejected: code expired for account id {}", user.getId());
             throw new VerificationTokenExpiredException();
         }
         try {
@@ -223,7 +223,7 @@ public class UserCommandServiceImpl implements UserCommandService {
             log.warn("Verification resend rejected: account id {} must wait {}s", user.getId(), retryAfterSeconds);
             throw new VerificationResendTooSoonException(retryAfterSeconds);
         }
-        var generatedToken = emailVerificationTokenService.generate();
+        var generatedToken = emailVerificationTokenService.generateCode(user.getAccountId());
         user.requestEmailVerification(generatedToken.token(), now);
         var savedUser = userRepository.save(user);
         sendVerificationEmail(savedUser, generatedToken.rawToken());
@@ -316,6 +316,14 @@ public class UserCommandServiceImpl implements UserCommandService {
         }
     }
 
+    private Optional<User> findUserByEmailForUpdate(String email) {
+        try {
+            return userRepository.findByEmailForUpdate(new EmailAddress(email));
+        } catch (IllegalArgumentException exception) {
+            return Optional.empty();
+        }
+    }
+
     private void ensureCanSignIn(User user) {
         try {
             user.ensureCanSignIn();
@@ -385,11 +393,9 @@ public class UserCommandServiceImpl implements UserCommandService {
         }
     }
 
-    private void sendVerificationEmail(User user, String rawToken) {
+    private void sendVerificationEmail(User user, String code) {
         try {
-            var verificationLink = emailVerificationTokenService.buildVerificationLink(rawToken);
-            externalCommunicationsService.sendVerificationEmail(
-                    user.getEmail().email(), verificationLink);
+            externalCommunicationsService.sendVerificationEmail(user.getEmail().email(), code);
         } catch (RuntimeException exception) {
             log.error("Verification email delivery failed for account id {}: {}",
                     user.getId(), exception.getClass().getSimpleName());

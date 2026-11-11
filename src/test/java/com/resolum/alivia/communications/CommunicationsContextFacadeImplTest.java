@@ -26,30 +26,30 @@ class CommunicationsContextFacadeImplTest {
             new CommunicationsContextFacadeImpl(new EmailTemplateRenderer(), emailSender);
 
     @Test
-    void sendsTheVerificationEmailWithTheLinkInBothBodies() {
-        facade.sendEmail(EMAIL, "verify-email", Map.of("link", LINK));
+    void sendsTheVerificationEmailWithTheCodeInBothBodies() {
+        facade.sendEmail(EMAIL, "verify-email", Map.of("code", "482915"));
 
         var bodies = sentBodies("Verifica tu cuenta de Alivia");
-        assertTrue(bodies.get("text").contains(LINK));
-        assertTrue(bodies.get("html").contains("token=raw-token&amp;lang=es"));
+        assertTrue(bodies.get("text").contains("482915"));
+        assertTrue(bodies.get("html").contains(">482915</p>"));
         assertFalse(bodies.get("html").contains("{{"));
     }
 
     @Test
     void derivesThePlainTextFromTheHtmlKeepingLineBreaks() {
-        facade.sendEmail(EMAIL, "verify-email", Map.of("link", LINK));
+        facade.sendEmail(EMAIL, "verify-email", Map.of("code", "482915"));
 
         var text = sentBodies("Verifica tu cuenta de Alivia").get("text");
         assertTrue(text.startsWith("Alivia\n\nConfirma tu correo\n\nGracias por registrarte"));
-        assertTrue(text.contains("copia este enlace en tu navegador:\n" + LINK));
+        assertTrue(text.contains("Tu código:\n\n482915"));
         assertFalse(text.contains("<"));
     }
 
     @Test
     void sendsThePasswordResetEmail() {
-        facade.sendEmail(EMAIL, "reset-password", Map.of("link", LINK));
+        facade.sendEmail(EMAIL, "reset-password", Map.of("code", "482915"));
 
-        assertTrue(sentBodies("Restablece tu contraseña de Alivia").get("text").contains(LINK));
+        assertTrue(sentBodies("Restablece tu contraseña de Alivia").get("text").contains("482915"));
     }
 
     @Test

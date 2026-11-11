@@ -1,6 +1,8 @@
 package com.resolum.alivia.iam.infrastructure.authorization.sfs.configuration;
 
+import com.resolum.alivia.iam.infrastructure.authorization.sfs.model.EdgeAuthorities;
 import com.resolum.alivia.iam.infrastructure.authorization.sfs.pipeline.BearerAuthorizationRequestFilter;
+import com.resolum.alivia.iam.infrastructure.authorization.sfs.pipeline.EdgeAuthorizationRequestFilter;
 import com.resolum.alivia.iam.infrastructure.authorization.sfs.pipeline.UnauthorizedRequestHandlerEntryPoint;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -25,20 +27,24 @@ import java.util.List;
 public class WebSecurityConfiguration {
 
     private final BearerAuthorizationRequestFilter bearerFilter;
+    private final EdgeAuthorizationRequestFilter edgeFilter;
     private final UnauthorizedRequestHandlerEntryPoint unauthorizedEntryPoint;
     private final List<String> allowedOrigins;
 
     /**
      * Creates the configuration.
      *
-     * @param bearerFilter           the bearer token filter
+     * @param bearerFilter           the bearer token filter of users
+     * @param edgeFilter             the credential filter of the edge services
      * @param unauthorizedEntryPoint the 401 handler
      * @param allowedOrigins         the origin patterns allowed by CORS
      */
     public WebSecurityConfiguration(BearerAuthorizationRequestFilter bearerFilter,
+                                    EdgeAuthorizationRequestFilter edgeFilter,
                                     UnauthorizedRequestHandlerEntryPoint unauthorizedEntryPoint,
                                     @Value("${alivia.cors.allowed-origins}") List<String> allowedOrigins) {
         this.bearerFilter = bearerFilter;
+        this.edgeFilter = edgeFilter;
         this.unauthorizedEntryPoint = unauthorizedEntryPoint;
         this.allowedOrigins = allowedOrigins;
     }
@@ -68,6 +74,8 @@ public class WebSecurityConfiguration {
                 .sessionManagement(sessions -> sessions.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        // Changing the password needs the session; the rest of /auth is used before having one.
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/auth/change-password").authenticated()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/plans", "/api/v1/plans/*", "/api/v1/plans/*/pricing").permitAll()
                         // The guided contracting flow builds the draft and its payment before the account
@@ -81,12 +89,20 @@ public class WebSecurityConfiguration {
                         .requestMatchers(HttpMethod.POST, "/api/v1/appointments").permitAll()
                         .requestMatchers(HttpMethod.PUT, "/api/v1/appointments/holds/*").permitAll()
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/appointments/holds/*").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/households", "/api/v1/household").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/caregiver-invitations/*/accept").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/caregiver-invitations/*").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/caregiver-invitations/*/reject").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/stripe").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                         .requestMatchers("/error").permitAll()
+                        // The edge services call with their own credential and nothing else; users cannot use these.
+                        .requestMatchers("/api/v1/edge/**")
+                        .hasAnyAuthority(EdgeAuthorities.MICROPHONE, EdgeAuthorities.ACTUATOR)
                         .anyRequest().authenticated())
                 .addFilterBefore(bearerFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(edgeFilter, BearerAuthorizationRequestFilter.class)
                 .build();
     }
 }

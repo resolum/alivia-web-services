@@ -58,6 +58,16 @@ public interface UserRepository {
     Optional<User> findByRefreshTokenHash(String tokenHash);
 
     /**
+     * Finds a user by email address and locks the row for writing.
+     *
+     * <p>The lock serializes concurrent code attempts, so the failed-attempt limit holds.</p>
+     *
+     * @param email the email address
+     * @return the matching user, or empty when none exists
+     */
+    Optional<User> findByEmailForUpdate(EmailAddress email);
+
+    /**
      * Finds a user by its public account identifier.
      *
      * @param accountId the public account identifier

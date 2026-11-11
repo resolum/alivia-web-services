@@ -1,18 +1,25 @@
 package com.resolum.alivia.iam.interfaces.rest.controllers;
 
 import com.resolum.alivia.iam.domain.exceptions.AccountNotFoundException;
+import com.resolum.alivia.iam.domain.model.commands.ChangePasswordCommand;
+import com.resolum.alivia.iam.domain.model.commands.ForgotPasswordCommand;
 import com.resolum.alivia.iam.domain.model.commands.RefreshSessionCommand;
 import com.resolum.alivia.iam.domain.model.commands.ResendVerificationCommand;
+import com.resolum.alivia.iam.domain.model.commands.ResetPasswordCommand;
 import com.resolum.alivia.iam.domain.model.commands.SignInCommand;
 import com.resolum.alivia.iam.domain.model.commands.SignOutCommand;
 import com.resolum.alivia.iam.domain.model.queries.GetUserByAccountIdQuery;
+import com.resolum.alivia.iam.domain.services.PasswordResetService;
 import com.resolum.alivia.iam.domain.services.UserCommandService;
 import com.resolum.alivia.iam.domain.services.UserQueryService;
 import com.resolum.alivia.iam.interfaces.rest.resources.AuthenticatedUserResource;
+import com.resolum.alivia.iam.interfaces.rest.resources.ChangePasswordResource;
 import com.resolum.alivia.iam.interfaces.rest.resources.EmailVerificationStatusResource;
+import com.resolum.alivia.iam.interfaces.rest.resources.ForgotPasswordResource;
 import com.resolum.alivia.iam.interfaces.rest.resources.RefreshTokenResource;
 import com.resolum.alivia.iam.interfaces.rest.resources.RegisteredAccountResource;
 import com.resolum.alivia.iam.interfaces.rest.resources.ResendVerificationResource;
+import com.resolum.alivia.iam.interfaces.rest.resources.ResetPasswordResource;
 import com.resolum.alivia.iam.interfaces.rest.resources.SignInResource;
 import com.resolum.alivia.iam.interfaces.rest.resources.SignUpResource;
 import com.resolum.alivia.iam.interfaces.rest.resources.VerifyEmailResource;
@@ -21,6 +28,7 @@ import com.resolum.alivia.iam.interfaces.rest.transform.RegisteredAccountResourc
 import com.resolum.alivia.iam.interfaces.rest.transform.SignUpCommandFromResourceAssembler;
 import com.resolum.alivia.iam.interfaces.rest.transform.VerifyEmailCommandFromResourceAssembler;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -31,7 +39,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
@@ -57,17 +67,20 @@ public class AuthenticationController {
 
         private final UserCommandService userCommandService;
         private final UserQueryService userQueryService;
+        private final PasswordResetService passwordResetService;
 
         /**
          * Creates the controller.
          *
-         * @param userCommandService the IAM command service
-         * @param userQueryService   the IAM query service
+         * @param userCommandService   the IAM command service
+         * @param userQueryService     the IAM query service
+         * @param passwordResetService the forgot-password service
          */
         public AuthenticationController(UserCommandService userCommandService,
-                        UserQueryService userQueryService) {
+                        UserQueryService userQueryService, PasswordResetService passwordResetService) {
                 this.userCommandService = userCommandService;
                 this.userQueryService = userQueryService;
+                this.passwordResetService = passwordResetService;
         }
 
         /**
@@ -94,16 +107,16 @@ public class AuthenticationController {
         }
 
         /**
-         * Verifies the email address associated with a verification token.
+         * Verifies the email address of an account with the 6-digit code sent to it.
          *
          * @param resource the verify-email request
          * @return the session opened for the verified account
          */
         @PostMapping("/verify-email")
-        @Operation(summary = "Verificar el correo de una cuenta", description = "Activa la cuenta asociada al token. Cada token puede usarse una sola vez.")
+        @Operation(summary = "Verificar el correo de una cuenta", description = "Activa la cuenta con el código de 6 dígitos enviado al correo. Después de 5 códigos incorrectos hay que pedir uno nuevo.")
         @ApiResponses({
                         @ApiResponse(responseCode = "200", description = "Cuenta verificada y sesión iniciada", content = @Content(schema = @Schema(implementation = AuthenticatedUserResource.class))),
-                        @ApiResponse(responseCode = "400", description = "Token inválido, reutilizado o vencido", content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+                        @ApiResponse(responseCode = "400", description = "Código inválido, reutilizado, vencido o sin intentos restantes", content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
         })
         public AuthenticatedUserResource verifyEmail(@RequestBody VerifyEmailResource resource) {
                 log.info("Received email verification request");
@@ -150,6 +163,58 @@ public class AuthenticationController {
         public void resendVerification(@Valid @RequestBody ResendVerificationResource resource) {
                 log.info("Received verification resend request");
                 userCommandService.handle(new ResendVerificationCommand(resource.email()));
+        }
+
+        /**
+         * Sends a 6-digit password reset code when the email belongs to an active account.
+         *
+         * @param resource the forgot-password request
+         */
+        @PostMapping("/forgot-password")
+        @ResponseStatus(HttpStatus.ACCEPTED)
+        @Operation(summary = "Enviar un código para restablecer la contraseña", description = "Responde 202 exista o no la cuenta, para no revelar qué correos están registrados.")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "202", description = "Solicitud aceptada"),
+                        @ApiResponse(responseCode = "400", description = "Datos inválidos", content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+        })
+        public void forgotPassword(@Valid @RequestBody ForgotPasswordResource resource) {
+                passwordResetService.handle(new ForgotPasswordCommand(resource.email()));
+        }
+
+        /**
+         * Sets a new password with the 6-digit code sent by email.
+         *
+         * @param resource the reset-password request
+         */
+        @PostMapping("/reset-password")
+        @ResponseStatus(HttpStatus.NO_CONTENT)
+        @Operation(summary = "Restablecer la contraseña con el código recibido", description = "El código es de un solo uso y vence en 60 minutos. Después de 5 códigos incorrectos hay que pedir uno nuevo. Cierra la sesión abierta de la cuenta.")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "204", description = "Contraseña actualizada"),
+                        @ApiResponse(responseCode = "400", description = "Código inválido o vencido, sin intentos restantes, o contraseña débil", content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+        })
+        public void resetPassword(@Valid @RequestBody ResetPasswordResource resource) {
+                passwordResetService.handle(new ResetPasswordCommand(resource.email(), resource.code(), resource.password()));
+        }
+
+        /**
+         * Changes the password of the signed-in user after confirming the current one.
+         *
+         * @param resource       the change-password request
+         * @param authentication the authenticated user
+         */
+        @PatchMapping("/change-password")
+        @ResponseStatus(HttpStatus.NO_CONTENT)
+        @Operation(summary = "Cambiar la contraseña", description = "Requiere sesión iniciada. Confirma la contraseña actual antes de guardar la nueva. La sesión sigue abierta.")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "204", description = "Contraseña actualizada"),
+                        @ApiResponse(responseCode = "400", description = "Contraseña actual incorrecta o nueva contraseña débil", content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+                        @ApiResponse(responseCode = "401", description = "Sin sesión iniciada", content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+        })
+        public void changePassword(@Valid @RequestBody ChangePasswordResource resource,
+                        @Parameter(hidden = true) Authentication authentication) {
+                passwordResetService.handle(new ChangePasswordCommand(Long.valueOf(authentication.getName()),
+                                resource.currentPassword(), resource.newPassword()));
         }
 
         /**

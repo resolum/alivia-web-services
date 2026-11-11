@@ -49,6 +49,21 @@ public interface TokenService {
     String hashRefreshToken(String rawToken);
 
     /**
+     * Generates the secret of an edge service: 256 random bits, URL-safe, with no separator character.
+     *
+     * @return the plain-text secret
+     */
+    String generateEdgeSecret();
+
+    /**
+     * Calculates the SHA-256 hash of the secret of an edge service.
+     *
+     * @param rawSecret the plain-text secret
+     * @return the hash encoded as lowercase hexadecimal
+     */
+    String hashEdgeSecret(String rawSecret);
+
+    /**
      * Result of generating a refresh token.
      *
      * @param rawToken  the plain-text token sent to the client

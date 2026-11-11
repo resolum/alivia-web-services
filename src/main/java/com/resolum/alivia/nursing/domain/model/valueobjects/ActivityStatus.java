@@ -1,6 +1,0 @@
-package com.resolum.alivia.nursing.domain.model.valueobjects;
-
-public enum ActivityStatus {
-    ACTIVE,
-    INACTIVE
-}

@@ -140,7 +140,9 @@ class DeviceTest {
 
         assertThrows(InvalidAssetStatusTransition.class, () -> device.changeStatusTo(AssetStatus.AVAILABLE));
         assertThrows(InvalidAssetStatusTransition.class, () -> device.updateAssetStatus("AVAILABLE"));
-        assertThrows(IllegalArgumentException.class, () -> device.updateAssetStatus("ASSIGNED"));
+        var unknown = assertThrows(IllegalArgumentException.class, () -> device.updateAssetStatus(" assigned "));
+        // The caller reads the message: it names the status, not an internal class.
+        assertEquals("Unknown asset status: assigned.", unknown.getMessage());
         assertThrows(IllegalArgumentException.class, () -> device.updateAssetStatus(null));
         assertThrows(IllegalArgumentException.class, () -> device.updateAssetStatus(" "));
 

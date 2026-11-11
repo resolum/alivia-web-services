@@ -8,6 +8,8 @@ package com.resolum.alivia.profiles.interfaces.acl;
  * A missing household and a denied membership both return {@code false}, so consumers never
  * depend on Profiles exceptions.</p>
  */
+import java.util.Optional;
+
 public interface HouseholdAccessFacade {
 
     /**
@@ -29,4 +31,12 @@ public interface HouseholdAccessFacade {
      *         {@code false} otherwise, including when the household does not exist
      */
     boolean canManageHousehold(Long householdId, Long userId);
+
+    /**
+     * Resolves the alias of the household.
+     *
+     * @param householdId the household identifier
+     * @return the alias, or empty when the household does not exist
+     */
+    Optional<String> fetchHouseholdAlias(Long householdId);
 }

@@ -2,6 +2,7 @@ package com.resolum.alivia.profiles.interfaces.rest.controllers;
 
 import com.resolum.alivia.profiles.domain.exceptions.PersonProfileNotFoundException;
 import com.resolum.alivia.profiles.domain.model.queries.GetPersonProfileByIdQuery;
+import com.resolum.alivia.profiles.domain.model.queries.GetPersonProfileByUserIdQuery;
 import com.resolum.alivia.profiles.domain.services.PersonProfileCommandService;
 import com.resolum.alivia.profiles.domain.services.PersonProfileQueryService;
 import com.resolum.alivia.profiles.interfaces.rest.resources.CreatePersonProfileResource;
@@ -10,6 +11,7 @@ import com.resolum.alivia.profiles.interfaces.rest.resources.UpdatePersonProfile
 import com.resolum.alivia.profiles.interfaces.rest.transform.CreatePersonProfileCommandFromResourceAssembler;
 import com.resolum.alivia.profiles.interfaces.rest.transform.PersonProfileResourceFromEntityAssembler;
 import com.resolum.alivia.profiles.interfaces.rest.transform.UpdatePersonProfileCommandFromResourceAssembler;
+import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -17,6 +19,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.security.Principal;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 import static org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE;
@@ -49,6 +53,25 @@ public class PersonProfilesController {
                 .map(entity -> new ResponseEntity<>(PersonProfileResourceFromEntityAssembler.toResourceFromEntity(entity), HttpStatus.CREATED))
                 .orElseThrow(() -> new IllegalStateException(
                         "Person profile " + profileId + " was not found after creation."));
+    }
+
+    @GetMapping("/mine")
+    @Operation(summary = "Obtener el perfil de persona del usuario autenticado")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Perfil encontrado"),
+            @ApiResponse(responseCode = "404", description = "Perfil no encontrado para el usuario actual")
+    })
+    public ResponseEntity<PersonProfileResource> getMyPersonProfile(Principal principal) {
+        if (principal == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        Long userId;
+        try {
+            userId = Long.valueOf(principal.getName());
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().build();
+        }
+        return queryService.handle(new GetPersonProfileByUserIdQuery(new UserId(userId)))
+                .map(entity -> ResponseEntity.ok(PersonProfileResourceFromEntityAssembler.toResourceFromEntity(entity)))
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @GetMapping("/{profileId}")

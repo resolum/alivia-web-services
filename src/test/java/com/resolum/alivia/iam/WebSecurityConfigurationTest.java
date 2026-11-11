@@ -1,8 +1,11 @@
 package com.resolum.alivia.iam;
 
 import com.resolum.alivia.iam.application.internal.outboundservices.tokens.TokenService;
+import com.resolum.alivia.iam.domain.services.EdgeCredentialCommandService;
 import com.resolum.alivia.iam.infrastructure.authorization.sfs.configuration.WebSecurityConfiguration;
 import com.resolum.alivia.iam.infrastructure.authorization.sfs.pipeline.BearerAuthorizationRequestFilter;
+import com.resolum.alivia.iam.infrastructure.authorization.sfs.pipeline.EdgeAuthorizationRequestFilter;
+import com.resolum.alivia.iam.infrastructure.authorization.sfs.pipeline.EdgeFailedAttemptsLimiter;
 import com.resolum.alivia.iam.infrastructure.authorization.sfs.pipeline.UnauthorizedRequestHandlerEntryPoint;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +36,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -76,6 +80,7 @@ class WebSecurityConfigurationTest {
     @Test
     void privateEndpointWithoutTokenReturns401() throws Exception {
         mvc.perform(get(PRIVATE_PATH)).andExpect(status().isUnauthorized());
+        mvc.perform(patch("/api/v1/auth/change-password")).andExpect(status().isUnauthorized());
         mvc.perform(get(PRIVATE_PATH).header(HttpHeaders.AUTHORIZATION, "Basic abc"))
                 .andExpect(status().isUnauthorized());
     }
@@ -142,8 +147,18 @@ class WebSecurityConfigurationTest {
     @EnableWebMvc
     @EnableWebSecurity
     @Import({WebSecurityConfiguration.class, BearerAuthorizationRequestFilter.class,
-            UnauthorizedRequestHandlerEntryPoint.class, TestEndpoints.class})
+            EdgeAuthorizationRequestFilter.class, UnauthorizedRequestHandlerEntryPoint.class, TestEndpoints.class})
     static class TestConfig {
+
+        @Bean
+        EdgeCredentialCommandService edgeCredentialCommandService() {
+            return mock(EdgeCredentialCommandService.class);
+        }
+
+        @Bean
+        EdgeFailedAttemptsLimiter edgeFailedAttemptsLimiter() {
+            return new EdgeFailedAttemptsLimiter(0, java.time.Clock.systemUTC());
+        }
 
         @Bean
         TokenService tokenService() {
