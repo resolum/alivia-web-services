@@ -5,12 +5,15 @@ import com.resolum.alivia.assistance.domain.model.aggregates.Caregiver;
 import com.resolum.alivia.assistance.domain.model.aggregates.Relative;
 import com.resolum.alivia.assistance.domain.model.commands.CreateCaregiverCommand;
 import com.resolum.alivia.assistance.domain.model.commands.RevokeCaregiverAccessCommand;
+import com.resolum.alivia.assistance.domain.model.queries.GetAllAssistedPersonsQuery;
+import com.resolum.alivia.assistance.domain.model.queries.GetAssistedPersonsByRelativeIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetCaregiversByAssistedPersonIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetCaregiversByUserIdQuery;
-import com.resolum.alivia.assistance.domain.repositories.AssistedPersonRepository;
-import com.resolum.alivia.assistance.domain.repositories.RelativeRepository;
+import com.resolum.alivia.assistance.domain.model.queries.GetRelativeByUserIdQuery;
+import com.resolum.alivia.assistance.domain.services.AssistedPersonQueryService;
 import com.resolum.alivia.assistance.domain.services.CaregiverCommandService;
 import com.resolum.alivia.assistance.domain.services.CaregiverQueryService;
+import com.resolum.alivia.assistance.domain.services.RelativeQueryService;
 import com.resolum.alivia.assistance.interfaces.rest.controllers.CaregiversController;
 import com.resolum.alivia.assistance.interfaces.rest.resources.CreateCaregiverResource;
 import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
@@ -35,8 +38,8 @@ class CaregiversControllerTest {
 
     private CaregiverCommandService commands;
     private CaregiverQueryService queries;
-    private RelativeRepository relatives;
-    private AssistedPersonRepository persons;
+    private RelativeQueryService relativeQueryService;
+    private AssistedPersonQueryService assistedPersonQueryService;
     private CaregiversController controller;
     private Relative relative;
     private AssistedPerson person;
@@ -46,9 +49,9 @@ class CaregiversControllerTest {
     void setUp() {
         commands = mock(CaregiverCommandService.class);
         queries = mock(CaregiverQueryService.class);
-        relatives = mock(RelativeRepository.class);
-        persons = mock(AssistedPersonRepository.class);
-        controller = new CaregiversController(commands, queries, relatives, persons);
+        relativeQueryService = mock(RelativeQueryService.class);
+        assistedPersonQueryService = mock(AssistedPersonQueryService.class);
+        controller = new CaregiversController(commands, queries, relativeQueryService, assistedPersonQueryService);
         relative = relative(1L);
         person = assistedPerson(2L, relative);
         caregiver = caregiver(3L, 9L, person);
@@ -67,7 +70,7 @@ class CaregiversControllerTest {
 
     @Test
     void revokeResolvesTheRelative() {
-        when(relatives.findByUserId(new UserId(1L))).thenReturn(Optional.of(relative));
+        when(relativeQueryService.handle(new GetRelativeByUserIdQuery(1L))).thenReturn(Optional.of(relative));
 
         assertThat(controller.revokeCaregiver(3L, 4L, null).getBody()).isEqualTo(3L);
         controller.revokeCaregiver(3L, null, principal("1"));
@@ -82,10 +85,10 @@ class CaregiversControllerTest {
     void listsCaregiversByPersonRelativeCaregiverOrEveryone() {
         when(queries.handle(new GetCaregiversByAssistedPersonIdQuery(2L))).thenReturn(List.of(caregiver));
         when(queries.handle(new GetCaregiversByUserIdQuery(9L))).thenReturn(List.of(caregiver));
-        when(relatives.findByUserId(new UserId(1L))).thenReturn(Optional.of(relative));
-        when(relatives.findByUserId(new UserId(9L))).thenReturn(Optional.empty());
-        when(persons.findAllByRelativeId(1L)).thenReturn(List.of(person));
-        when(persons.findAll()).thenReturn(List.of(person));
+        when(relativeQueryService.handle(new GetRelativeByUserIdQuery(1L))).thenReturn(Optional.of(relative));
+        when(relativeQueryService.handle(new GetRelativeByUserIdQuery(9L))).thenReturn(Optional.empty());
+        when(assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(1L))).thenReturn(List.of(person));
+        when(assistedPersonQueryService.handle(any(GetAllAssistedPersonsQuery.class))).thenReturn(List.of(person));
 
         assertThat(controller.getCaregivers(null, 2L).getBody()).hasSize(1);
         assertThat(controller.getCaregivers(principal("1"), null).getBody()).hasSize(1);
