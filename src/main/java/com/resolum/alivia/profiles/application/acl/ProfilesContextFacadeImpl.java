@@ -22,6 +22,7 @@ import com.resolum.alivia.profiles.domain.model.commands.CreateBusinessProfileCo
 import com.resolum.alivia.profiles.domain.model.commands.CreatePersonProfileCommand;
 import com.resolum.alivia.profiles.domain.model.commands.CreateStaffProfileCommand;
 import com.resolum.alivia.profiles.domain.model.commands.UpdateBusinessProfileCommand;
+import com.resolum.alivia.profiles.domain.model.commands.UpdatePersonProfileCommand;
 import com.resolum.alivia.profiles.domain.model.commands.UpdateStaffProfileCommand;
 import com.resolum.alivia.profiles.domain.model.queries.ExistsBusinessProfileByEmailAddressQuery;
 import com.resolum.alivia.profiles.domain.model.queries.ExistsPersonProfileByDniQuery;
@@ -176,6 +177,20 @@ public class ProfilesContextFacadeImpl implements ProfilesContextFacade {
         return profileId;
     }
 
+    @Override
+    @Transactional
+    public Long updatePersonProfileWithPhoto(Long profileId, byte[] photoData, String photoFileName,
+                                            String phoneNumber, String firstName, String lastName,
+                                            LocalDate birthDate) {
+        log.info("Updating person profile via ACL with photo data for profile ID: {}", profileId);
+        var command = new UpdatePersonProfileCommand(
+                profileId, firstName, lastName, birthDate, phoneNumber, photoData, photoFileName);
+        Long updatedProfileId = personProfileCommandService.handle(command);
+        log.info("Person profile updated via ACL with id: {}", updatedProfileId);
+        return updatedProfileId;
+    }
+
+
     /**
      * {@inheritDoc}
      */
@@ -239,6 +254,23 @@ public class ProfilesContextFacadeImpl implements ProfilesContextFacade {
         if (userId != null) {
             profile.linkToUser(new UserId(userId));
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<ProfilesContextFacade.PersonProfileData> fetchPersonProfileById(Long profileId) {
+        if (profileId == null || profileId <= 0) return Optional.empty();
+        return personProfileQueryService.handle(new GetPersonProfileByIdQuery(profileId))
+                .map(profile -> new ProfilesContextFacade.PersonProfileData(
+                        profile.getId(),
+                        profile.getEmailAddress() != null ? profile.getEmailAddress().email() : null,
+                        profile.getPhoto() != null ? profile.getPhoto().photoUrl() : null,
+                        profile.getPhoto() != null ? profile.getPhoto().photoPublicId() : null,
+                        profile.getPhoneNumber() != null ? profile.getPhoneNumber().phoneNumber() : null,
+                        profile.getPersonName() != null ? profile.getPersonName().firstName() : null,
+                        profile.getPersonName() != null ? profile.getPersonName().lastName() : null,
+                        profile.getDni() != null ? profile.getDni().dni() : null,
+                        profile.getBirthDate() != null ? profile.getBirthDate().date() : null));
     }
 
     @Override

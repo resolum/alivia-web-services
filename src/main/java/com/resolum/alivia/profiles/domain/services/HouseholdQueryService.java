@@ -1,9 +1,11 @@
 package com.resolum.alivia.profiles.domain.services;
 
 import java.util.List;
+import java.util.Optional;
 
 import com.resolum.alivia.profiles.domain.model.aggregates.Household;
 import com.resolum.alivia.profiles.domain.model.entities.HouseholdMember;
+import com.resolum.alivia.profiles.domain.model.queries.GetActiveHouseholdByUserIdQuery;
 import com.resolum.alivia.profiles.domain.model.queries.GetHouseholdMembersQuery;
 import com.resolum.alivia.profiles.domain.model.queries.GetHouseholdQuery;
 
@@ -34,4 +36,12 @@ public interface HouseholdQueryService {
      *         when the household does not exist
      */
     List<HouseholdMember> handle(GetHouseholdMembersQuery query);
+
+    /**
+     * Finds the active household of a user.
+     *
+     * @param query the get active household by user id query
+     * @return the active household, or empty if none exists
+     */
+    Optional<Household> handle(GetActiveHouseholdByUserIdQuery query);
 }

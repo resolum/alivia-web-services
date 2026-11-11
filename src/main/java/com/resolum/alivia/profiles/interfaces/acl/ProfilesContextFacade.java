@@ -19,6 +19,13 @@ public interface ProfilesContextFacade {
                             LocalDate birthDate) {
     }
 
+    record PersonProfileData(Long id, String emailAddress, String photoUrl, String photoPublicId,
+                             String phoneNumber, String firstName, String lastName, String dni,
+                             LocalDate birthDate) {
+    }
+
+    Optional<PersonProfileData> fetchPersonProfileById(Long profileId);
+
     /**
      * Creates a new person profile linked to an IAM user.
      *
@@ -58,6 +65,10 @@ public interface ProfilesContextFacade {
     Long createPersonProfileWithPhoto(String emailAddress, byte[] photoData, String photoFileName,
                                      String phoneNumber, String firstName, String lastName,
                                      String dni, LocalDate birthDate);
+
+    Long updatePersonProfileWithPhoto(Long profileId, byte[] photoData, String photoFileName,
+                                     String phoneNumber, String firstName, String lastName,
+                                     LocalDate birthDate);
 
     /**
      * Creates a new staff profile linked to an IAM user.

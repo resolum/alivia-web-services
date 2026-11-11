@@ -9,6 +9,7 @@ import com.resolum.alivia.profiles.domain.model.aggregates.PersonProfile;
 import com.resolum.alivia.profiles.domain.model.queries.ExistsPersonProfileByDniQuery;
 import com.resolum.alivia.profiles.domain.model.queries.ExistsPersonProfileByEmailAddressQuery;
 import com.resolum.alivia.profiles.domain.model.queries.GetPersonProfileByIdQuery;
+import com.resolum.alivia.profiles.domain.model.queries.GetPersonProfileByUserIdQuery;
 import com.resolum.alivia.profiles.domain.model.valueobjects.Dni;
 import com.resolum.alivia.profiles.domain.services.PersonProfileQueryService;
 import com.resolum.alivia.profiles.infrastructure.persistence.jpa.repositories.PersonProfileRepository;
@@ -27,6 +28,13 @@ public class PersonProfileQueryServiceImpl implements PersonProfileQueryService 
     @Override
     public Optional<PersonProfile> handle(GetPersonProfileByIdQuery query) {
         return personProfileRepository.findById(query.profileId());
+    }
+
+    @Transactional(readOnly = true)
+    @Override
+    public Optional<PersonProfile> handle(GetPersonProfileByUserIdQuery query) {
+        if (query == null || query.userId() == null) return Optional.empty();
+        return personProfileRepository.findByUserId(query.userId().userId());
     }
 
     @Transactional(readOnly = true)

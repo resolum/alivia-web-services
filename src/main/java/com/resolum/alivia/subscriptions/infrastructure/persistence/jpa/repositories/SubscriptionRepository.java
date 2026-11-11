@@ -8,4 +8,7 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
     boolean existsByActiveHouseholdId(String householdId);
     Optional<Subscription> findByIdempotencyKey(String key);
     Optional<Subscription> findByActiveHouseholdId(String householdId);
+    Optional<Subscription> findFirstByUserIdOrderByIdDesc(Long userId);
+    Optional<Subscription> findFirstByHouseholdIdOrderByIdDesc(String householdId);
+    Optional<Subscription> findFirstByDraftId(String draftId);
 }
