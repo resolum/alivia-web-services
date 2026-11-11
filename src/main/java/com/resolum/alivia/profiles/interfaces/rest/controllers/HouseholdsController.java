@@ -3,6 +3,7 @@ package com.resolum.alivia.profiles.interfaces.rest.controllers;
 import java.security.Principal;
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +21,7 @@ import com.resolum.alivia.profiles.domain.model.queries.GetHouseholdQuery;
 import com.resolum.alivia.profiles.domain.services.HouseholdAccessService;
 import com.resolum.alivia.profiles.domain.services.HouseholdCommandService;
 import com.resolum.alivia.profiles.domain.services.HouseholdQueryService;
+import com.resolum.alivia.profiles.infrastructure.persistence.jpa.repositories.PersonProfileRepository;
 import com.resolum.alivia.profiles.interfaces.rest.resources.CreateHouseholdResource;
 import com.resolum.alivia.profiles.interfaces.rest.resources.HouseholdMemberResource;
 import com.resolum.alivia.profiles.interfaces.rest.resources.HouseholdResource;
@@ -45,6 +47,10 @@ public class HouseholdsController {
     private final HouseholdQueryService queryService;
     private final HouseholdAccessService accessService;
     private final HouseholdCommandService commandService;
+
+    /** Names the members in the members list; optional so the controller still works without it. */
+    @Autowired(required = false)
+    private PersonProfileRepository personProfileRepository;
 
     public HouseholdsController(HouseholdQueryService queryService,
                                 HouseholdAccessService accessService,
@@ -148,8 +154,20 @@ public class HouseholdsController {
         accessService.assertCanRead(householdId, userId);
         return queryService.handle(new GetHouseholdMembersQuery(householdId))
                 .stream()
-                .map(HouseholdMemberResourceFromEntityAssembler::toResourceFromEntity)
+                .map(member -> HouseholdMemberResourceFromEntityAssembler.toResourceFromEntity(member,
+                        fullNameOf(member.getUserId().userId())))
                 .toList();
+    }
+
+    /** "Lucia Salazar" for a member with a person profile; null otherwise. */
+    private String fullNameOf(Long userId) {
+        if (personProfileRepository == null || userId == null) return null;
+        return personProfileRepository.findByUserId(userId)
+                .map(profile -> profile.getPersonName())
+                .map(name -> String.join(" ", java.util.stream.Stream.of(name.firstName(), name.lastName())
+                        .filter(part -> part != null && !part.isBlank()).toList()))
+                .filter(name -> !name.isBlank())
+                .orElse(null);
     }
 
     private static Long userIdOf(Principal principal) {
