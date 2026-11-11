@@ -162,7 +162,14 @@ public class IamContextFacadeImpl implements IamContextFacade {
     @Override
     @Transactional
     public Long registerUser(String email, String password, String firstName, String lastName, String phoneNumber, String role) {
-        return signUpUser(email, password, firstName, lastName, phoneNumber, role, null, null, null, null);
+        String dni = null;
+        LocalDate birthDate = null;
+        if ("ROLE_CAREGIVER".equalsIgnoreCase(role) || "CAREGIVER".equalsIgnoreCase(role)) {
+            int hash = Math.abs((email != null ? email : "").hashCode());
+            dni = String.format("%08d", (hash % 90000000) + 10000000);
+            birthDate = LocalDate.of(1995, 1, 1);
+        }
+        return signUpUser(email, password, firstName, lastName, phoneNumber, role, null, null, dni, birthDate);
     }
 
     /**

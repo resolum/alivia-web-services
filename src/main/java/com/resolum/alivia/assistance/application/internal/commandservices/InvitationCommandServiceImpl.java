@@ -102,18 +102,13 @@ public class InvitationCommandServiceImpl implements InvitationCommandService {
         } else {
             // New user account flow
             String setupUrl = "http://localhost:5173/activate-account?invitationId=" + invitation.getId();
-            try {
-                String tempPassword = "Temp@" + UUID.randomUUID().toString().replace("-", "").substring(0, 8) + "1a";
-                Long userId = externalIamService.registerCaregiverAccount(email, tempPassword, "Cuidador", "Invitado", "51999888777");
-                invitation.assignCaregiverAccount(new UserId(userId), setupUrl);
-            } catch (Exception e) {
-                // If pre-registration in IAM fails (e.g. required profile fields like DNI/birthDate), account will be completed on activation
-                invitation.assignCaregiverAccount(new UserId(1L), setupUrl);
-            }
+            String tempPassword = "Temp@" + UUID.randomUUID().toString().replace("-", "").substring(0, 8) + "1a";
+            Long userId = externalIamService.registerCaregiverAccount(email, tempPassword, "Cuidador", "Invitado", "51999888777");
+            invitation.assignCaregiverAccount(new UserId(userId), setupUrl);
             try {
                 externalCommunicationsService.sendCaregiverInvitation(email, "Familiar", "Persona asistida", setupUrl, 7);
             } catch (Exception e) {
-                // Ignore communication errors in dev
+                // Ignore communication delivery issues in local dev
             }
         }
 
