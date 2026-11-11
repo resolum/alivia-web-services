@@ -42,16 +42,16 @@ public class AgendaController {
     private final CaregiverQueryService caregiverQueryService;
 
     public AgendaController(CareActivityQueryService careActivityQueryService,
-                            RelativeQueryService relativeQueryService,
-                            AssistedPersonQueryService assistedPersonQueryService,
-                            CaregiverQueryService caregiverQueryService) {
+            RelativeQueryService relativeQueryService,
+            AssistedPersonQueryService assistedPersonQueryService,
+            CaregiverQueryService caregiverQueryService) {
         this.careActivityQueryService = careActivityQueryService;
         this.relativeQueryService = relativeQueryService;
         this.assistedPersonQueryService = assistedPersonQueryService;
         this.caregiverQueryService = caregiverQueryService;
     }
 
-    @GetMapping(path = {"/care-agenda", "/agenda"})
+    @GetMapping(path = { "/care-agenda", "/agenda" })
     @Operation(summary = "Get care agenda for period", description = "Returns care agenda occurrences for given date range")
     public ResponseEntity<List<CareAgendaItemResource>> getCareAgenda(
             Principal principal,
@@ -64,22 +64,26 @@ public class AgendaController {
 
         List<AgendaItem> items = new ArrayList<>();
         if (assistedPersonId != null) {
-            items.addAll(careActivityQueryService.handle(new GetAgendaByAssistedPersonIdQuery(assistedPersonId, from, to)));
+            items.addAll(
+                    careActivityQueryService.handle(new GetAgendaByAssistedPersonIdQuery(assistedPersonId, from, to)));
         } else if (caregiverId != null) {
             items.addAll(careActivityQueryService.handle(new GetAgendaByCaregiverIdQuery(caregiverId, from, to)));
         } else if (principal != null) {
             try {
-                UserId userId = new UserId(Long.valueOf(principal.getName()));
+                Long userId = Long.valueOf(principal.getName());
                 var relativeOpt = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId));
                 if (relativeOpt.isPresent()) {
-                    var persons = assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(relativeOpt.get().getId()));
+                    var persons = assistedPersonQueryService
+                            .handle(new GetAssistedPersonsByRelativeIdQuery(relativeOpt.get().getId()));
                     for (var person : persons) {
-                        items.addAll(careActivityQueryService.handle(new GetAgendaByAssistedPersonIdQuery(person.getId(), from, to)));
+                        items.addAll(careActivityQueryService
+                                .handle(new GetAgendaByAssistedPersonIdQuery(person.getId(), from, to)));
                     }
                 } else {
                     var caregivers = caregiverQueryService.handle(new GetCaregiversByUserIdQuery(userId));
                     for (var caregiver : caregivers) {
-                        items.addAll(careActivityQueryService.handle(new GetAgendaByCaregiverIdQuery(caregiver.getId(), from, to)));
+                        items.addAll(careActivityQueryService
+                                .handle(new GetAgendaByCaregiverIdQuery(caregiver.getId(), from, to)));
                     }
                 }
             } catch (Exception e) {
@@ -90,7 +94,8 @@ public class AgendaController {
         if (items.isEmpty() && assistedPersonId == null && caregiverId == null) {
             var persons = assistedPersonQueryService.handle(new GetAllAssistedPersonsQuery());
             for (var person : persons) {
-                items.addAll(careActivityQueryService.handle(new GetAgendaByAssistedPersonIdQuery(person.getId(), from, to)));
+                items.addAll(careActivityQueryService
+                        .handle(new GetAgendaByAssistedPersonIdQuery(person.getId(), from, to)));
             }
         }
 
@@ -104,21 +109,24 @@ public class AgendaController {
         return ResponseEntity.ok(resources);
     }
 
-    @GetMapping(path = {"/agenda/assisted-persons/{assistedPersonId}", "/care-agenda/assisted-persons/{assistedPersonId}"})
+    @GetMapping(path = { "/agenda/assisted-persons/{assistedPersonId}",
+            "/care-agenda/assisted-persons/{assistedPersonId}" })
     public ResponseEntity<List<CareAgendaItemResource>> getAgendaByAssistedPersonId(
             @PathVariable Long assistedPersonId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        List<AgendaItem> agenda = careActivityQueryService.handle(new GetAgendaByAssistedPersonIdQuery(assistedPersonId, from, to));
+        List<AgendaItem> agenda = careActivityQueryService
+                .handle(new GetAgendaByAssistedPersonIdQuery(assistedPersonId, from, to));
         return ResponseEntity.ok(agenda.stream().map(CareAgendaItemResourceAssembler::toResourceFromEntity).toList());
     }
 
-    @GetMapping(path = {"/agenda/caregivers/{caregiverId}", "/care-agenda/caregivers/{caregiverId}"})
+    @GetMapping(path = { "/agenda/caregivers/{caregiverId}", "/care-agenda/caregivers/{caregiverId}" })
     public ResponseEntity<List<CareAgendaItemResource>> getAgendaByCaregiverId(
             @PathVariable Long caregiverId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        List<AgendaItem> agenda = careActivityQueryService.handle(new GetAgendaByCaregiverIdQuery(caregiverId, from, to));
+        List<AgendaItem> agenda = careActivityQueryService
+                .handle(new GetAgendaByCaregiverIdQuery(caregiverId, from, to));
         return ResponseEntity.ok(agenda.stream().map(CareAgendaItemResourceAssembler::toResourceFromEntity).toList());
     }
 }

@@ -45,7 +45,7 @@ public class CareActivitiesController {
         if (relativeId != null) return relativeId;
         if (principal != null) {
             try {
-                UserId userId = new UserId(Long.valueOf(principal.getName()));
+                Long userId = Long.valueOf(principal.getName());
                 return relativeQueryService.handle(new GetRelativeByUserIdQuery(userId)).map(Relative::getId).orElse(1L);
             } catch (Exception ignored) {}
         }

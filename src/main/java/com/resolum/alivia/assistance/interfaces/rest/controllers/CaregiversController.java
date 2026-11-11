@@ -64,7 +64,7 @@ public class CaregiversController {
         Long effectiveRelativeId = relativeId;
         if (effectiveRelativeId == null && principal != null) {
             try {
-                UserId userId = new UserId(Long.valueOf(principal.getName()));
+                Long userId = Long.valueOf(principal.getName());
                 effectiveRelativeId = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId)).map(Relative::getId).orElse(1L);
             } catch (Exception e) {
                 effectiveRelativeId = 1L;
@@ -91,7 +91,7 @@ public class CaregiversController {
         }
         if (principal != null) {
             try {
-                UserId userId = new UserId(Long.valueOf(principal.getName()));
+                Long userId = Long.valueOf(principal.getName());
                 var relativeOpt = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId));
                 if (relativeOpt.isPresent()) {
                     var persons = assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(relativeOpt.get().getId()));
@@ -103,6 +103,13 @@ public class CaregiversController {
                                 .toList());
                     }
                     return ResponseEntity.ok(all);
+                }
+                List<CaregiverResource> list = queryService.handle(new GetCaregiversByUserIdQuery(userId))
+                        .stream()
+                        .map(CaregiverResourceAssembler::toResourceFromEntity)
+                        .toList();
+                if (!list.isEmpty()) {
+                    return ResponseEntity.ok(list);
                 }
             } catch (Exception e) {
                 log.warn("Could not find caregivers by principal {}: {}", principal.getName(), e.getMessage());
@@ -117,6 +124,16 @@ public class CaregiversController {
                     .toList());
         }
         return ResponseEntity.ok(all);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<CaregiverResource> getCaregiverById(@PathVariable Long id) {
+        return queryService.handle(new GetCaregiversByUserIdQuery(id))
+                .stream()
+                .findFirst()
+                .map(CaregiverResourceAssembler::toResourceFromEntity)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
     @GetMapping("/user/{userId}")

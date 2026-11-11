@@ -73,7 +73,7 @@ public class ActivityLogsController {
         Long relativeId = resource.relativeId();
         if (relativeId == null && principal != null) {
             try {
-                UserId userId = new UserId(Long.valueOf(principal.getName()));
+                Long userId = Long.valueOf(principal.getName());
                 relativeId = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId)).map(Relative::getId).orElse(1L);
             } catch (Exception ignored) {}
         }

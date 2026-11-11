@@ -45,9 +45,9 @@ public class InvitationsController {
     private final AssistedPersonQueryService assistedPersonQueryService;
 
     public InvitationsController(InvitationCommandService commandService,
-                                 InvitationQueryService queryService,
-                                 RelativeQueryService relativeQueryService,
-                                 AssistedPersonQueryService assistedPersonQueryService) {
+            InvitationQueryService queryService,
+            RelativeQueryService relativeQueryService,
+            AssistedPersonQueryService assistedPersonQueryService) {
         this.commandService = commandService;
         this.queryService = queryService;
         this.relativeQueryService = relativeQueryService;
@@ -61,8 +61,9 @@ public class InvitationsController {
         Long relativeId = null;
         if (principal != null) {
             try {
-                UserId userId = new UserId(Long.valueOf(principal.getName()));
-                relativeId = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId)).map(Relative::getId).orElse(null);
+                Long userId = Long.valueOf(principal.getName());
+                relativeId = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId)).map(Relative::getId)
+                        .orElse(null);
             } catch (Exception ignored) {
             }
         }
@@ -81,17 +82,9 @@ public class InvitationsController {
         }
 
         Long assistedPersonId = resource.assistedPersonId();
-        if (assistedPersonId == null || assistedPersonQueryService.handle(new GetAssistedPersonByIdQuery(assistedPersonId)).isEmpty()) {
+        if (assistedPersonId == null) {
             var persons = assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(relativeId));
             assistedPersonId = persons.isEmpty() ? 1L : persons.get(0).getId();
-        } else {
-            var apOpt = assistedPersonQueryService.handle(new GetAssistedPersonByIdQuery(assistedPersonId));
-            if (apOpt.isPresent() && !apOpt.get().getRelative().getId().equals(relativeId)) {
-                var persons = assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(relativeId));
-                if (!persons.isEmpty()) {
-                    assistedPersonId = persons.get(0).getId();
-                }
-            }
         }
 
         CreateInvitationCommand command = new CreateInvitationCommand(
@@ -111,7 +104,8 @@ public class InvitationsController {
         if (caregiverUserId == null && principal != null) {
             try {
                 caregiverUserId = Long.valueOf(principal.getName());
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
         if (caregiverUserId == null) {
             caregiverUserId = 1L;
@@ -129,9 +123,11 @@ public class InvitationsController {
         Long effectiveRelativeId = null;
         if (principal != null) {
             try {
-                UserId userId = new UserId(Long.valueOf(principal.getName()));
-                effectiveRelativeId = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId)).map(Relative::getId).orElse(null);
-            } catch (Exception ignored) {}
+                Long userId = Long.valueOf(principal.getName());
+                effectiveRelativeId = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId))
+                        .map(Relative::getId).orElse(null);
+            } catch (Exception ignored) {
+            }
         }
         if (effectiveRelativeId == null) {
             effectiveRelativeId = relativeId != null ? relativeId : 1L;
@@ -149,9 +145,11 @@ public class InvitationsController {
         Long effectiveRelativeId = null;
         if (principal != null) {
             try {
-                UserId userId = new UserId(Long.valueOf(principal.getName()));
-                effectiveRelativeId = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId)).map(Relative::getId).orElse(null);
-            } catch (Exception ignored) {}
+                Long userId = Long.valueOf(principal.getName());
+                effectiveRelativeId = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId))
+                        .map(Relative::getId).orElse(null);
+            } catch (Exception ignored) {
+            }
         }
         if (effectiveRelativeId == null) {
             effectiveRelativeId = relativeId != null ? relativeId : 1L;
@@ -183,10 +181,11 @@ public class InvitationsController {
         }
         if (principal != null) {
             try {
-                UserId userId = new UserId(Long.valueOf(principal.getName()));
+                Long userId = Long.valueOf(principal.getName());
                 var relativeOpt = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId));
                 if (relativeOpt.isPresent()) {
-                    var persons = assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(relativeOpt.get().getId()));
+                    var persons = assistedPersonQueryService
+                            .handle(new GetAssistedPersonsByRelativeIdQuery(relativeOpt.get().getId()));
                     List<InvitationResource> all = new ArrayList<>();
                     for (var person : persons) {
                         all.addAll(queryService.handle(new GetInvitationsByAssistedPersonIdQuery(person.getId()))
