@@ -18,12 +18,24 @@ public final class HouseholdMemberResourceFromEntityAssembler {
      * @return the household member resource
      */
     public static HouseholdMemberResource toResourceFromEntity(HouseholdMember entity) {
+        return toResourceFromEntity(entity, null);
+    }
+
+    /**
+     * Maps the membership to its REST representation with the member's name.
+     *
+     * @param entity   the household member
+     * @param fullName the member's first and last names, or null when unknown
+     * @return the household member resource
+     */
+    public static HouseholdMemberResource toResourceFromEntity(HouseholdMember entity, String fullName) {
         return new HouseholdMemberResource(
                 entity.getId(),
                 entity.getUserId().userId(),
                 entity.getResponsibility() != null ? entity.getResponsibility().name() : null,
                 entity.getStatus() != null ? entity.getStatus().name() : null,
                 entity.getCreatedAt(),
-                entity.getUpdatedAt());
+                entity.getUpdatedAt(),
+                fullName);
     }
 }

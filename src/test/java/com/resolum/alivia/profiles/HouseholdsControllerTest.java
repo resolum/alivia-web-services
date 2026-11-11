@@ -1,5 +1,7 @@
 package com.resolum.alivia.profiles;
 
+import java.util.Optional;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -14,6 +16,9 @@ import com.resolum.alivia.profiles.domain.model.commands.CreateHouseholdCommand;
 import com.resolum.alivia.profiles.domain.model.commands.UpdateHouseholdCommand;
 import com.resolum.alivia.profiles.domain.model.queries.GetHouseholdMembersQuery;
 import com.resolum.alivia.profiles.domain.model.queries.GetHouseholdQuery;
+import com.resolum.alivia.profiles.domain.model.aggregates.PersonProfile;
+import com.resolum.alivia.profiles.domain.model.valueobjects.PersonName;
+import com.resolum.alivia.profiles.infrastructure.persistence.jpa.repositories.PersonProfileRepository;
 import com.resolum.alivia.profiles.domain.model.valueobjects.HouseholdResponsibility;
 import com.resolum.alivia.profiles.domain.services.HouseholdAccessService;
 import com.resolum.alivia.profiles.domain.services.HouseholdCommandService;
@@ -171,6 +176,32 @@ class HouseholdsControllerTest {
                 .andExpect(jsonPath("$[0].status").value("ACTIVE"));
 
         verify(accessService).assertCanRead(1L, 10L);
+    }
+
+    @Test
+    void getHouseholdMembersNamesEachMemberFromTheirPersonProfile() throws Exception {
+        var repository = mock(PersonProfileRepository.class);
+        var profile = mock(PersonProfile.class);
+        when(profile.getPersonName()).thenReturn(new PersonName("Lucia", "Salazar"));
+        when(repository.findByUserId(10L)).thenReturn(Optional.of(profile));
+        var controller = new HouseholdsController(queryService, accessService, commandService);
+        ReflectionTestUtils.setField(controller, "personProfileRepository", repository);
+        var named = MockMvcBuilders.standaloneSetup(controller).setControllerAdvice(new GlobalExceptionHandler()).build();
+        when(queryService.handle(new GetHouseholdMembersQuery(1L))).thenReturn(household().getMembers());
+
+        named.perform(get("/api/v1/households/1/members").principal(() -> "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].userId").value(10))
+                .andExpect(jsonPath("$[0].fullName").value("Lucia Salazar"));
+
+        when(profile.getPersonName()).thenReturn(null);
+        named.perform(get("/api/v1/households/1/members").principal(() -> "10"))
+                .andExpect(jsonPath("$[0].fullName").doesNotExist());
+
+        when(repository.findByUserId(10L)).thenReturn(Optional.empty());
+        named.perform(get("/api/v1/households/1/members").principal(() -> "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].fullName").doesNotExist());
     }
 
     @Test
