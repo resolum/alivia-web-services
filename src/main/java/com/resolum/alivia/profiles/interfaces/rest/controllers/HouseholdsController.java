@@ -15,7 +15,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.resolum.alivia.profiles.domain.model.aggregates.PersonProfile;
 import com.resolum.alivia.profiles.domain.model.queries.GetActiveHouseholdByUserIdQuery;
+import com.resolum.alivia.profiles.domain.model.valueobjects.PersonName;
 import com.resolum.alivia.profiles.domain.model.queries.GetHouseholdMembersQuery;
 import com.resolum.alivia.profiles.domain.model.queries.GetHouseholdQuery;
 import com.resolum.alivia.profiles.domain.services.HouseholdAccessService;
@@ -163,10 +165,8 @@ public class HouseholdsController {
     private String fullNameOf(Long userId) {
         if (personProfileRepository == null || userId == null) return null;
         return personProfileRepository.findByUserId(userId)
-                .map(profile -> profile.getPersonName())
-                .map(name -> String.join(" ", java.util.stream.Stream.of(name.firstName(), name.lastName())
-                        .filter(part -> part != null && !part.isBlank()).toList()))
-                .filter(name -> !name.isBlank())
+                .map(PersonProfile::getPersonName)
+                .map(PersonName::getFullName)
                 .orElse(null);
     }
 
