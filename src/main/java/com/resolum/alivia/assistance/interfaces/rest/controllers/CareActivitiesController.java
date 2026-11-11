@@ -2,12 +2,14 @@ package com.resolum.alivia.assistance.interfaces.rest.controllers;
 
 import com.resolum.alivia.assistance.domain.model.aggregates.Relative;
 import com.resolum.alivia.assistance.domain.model.commands.*;
+import com.resolum.alivia.assistance.domain.model.queries.GetAssistedPersonsByRelativeIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetCareActivitiesByAssistedPersonIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetCareActivityByIdQuery;
-import com.resolum.alivia.assistance.domain.repositories.AssistedPersonRepository;
-import com.resolum.alivia.assistance.domain.repositories.RelativeRepository;
+import com.resolum.alivia.assistance.domain.model.queries.GetRelativeByUserIdQuery;
+import com.resolum.alivia.assistance.domain.services.AssistedPersonQueryService;
 import com.resolum.alivia.assistance.domain.services.CareActivityCommandService;
 import com.resolum.alivia.assistance.domain.services.CareActivityQueryService;
+import com.resolum.alivia.assistance.domain.services.RelativeQueryService;
 import com.resolum.alivia.assistance.interfaces.rest.resources.*;
 import com.resolum.alivia.assistance.interfaces.rest.transform.CareActivityResourceAssembler;
 import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
@@ -26,17 +28,17 @@ public class CareActivitiesController {
 
     private final CareActivityCommandService commandService;
     private final CareActivityQueryService queryService;
-    private final RelativeRepository relativeRepository;
-    private final AssistedPersonRepository assistedPersonRepository;
+    private final RelativeQueryService relativeQueryService;
+    private final AssistedPersonQueryService assistedPersonQueryService;
 
     public CareActivitiesController(CareActivityCommandService commandService,
                                    CareActivityQueryService queryService,
-                                   RelativeRepository relativeRepository,
-                                   AssistedPersonRepository assistedPersonRepository) {
+                                   RelativeQueryService relativeQueryService,
+                                   AssistedPersonQueryService assistedPersonQueryService) {
         this.commandService = commandService;
         this.queryService = queryService;
-        this.relativeRepository = relativeRepository;
-        this.assistedPersonRepository = assistedPersonRepository;
+        this.relativeQueryService = relativeQueryService;
+        this.assistedPersonQueryService = assistedPersonQueryService;
     }
 
     private Long resolveRelativeId(Long relativeId, Principal principal) {
@@ -44,7 +46,7 @@ public class CareActivitiesController {
         if (principal != null) {
             try {
                 UserId userId = new UserId(Long.valueOf(principal.getName()));
-                return relativeRepository.findByUserId(userId).map(Relative::getId).orElse(1L);
+                return relativeQueryService.handle(new GetRelativeByUserIdQuery(userId)).map(Relative::getId).orElse(1L);
             } catch (Exception ignored) {}
         }
         return 1L;
@@ -57,7 +59,7 @@ public class CareActivitiesController {
         Long relativeId = resolveRelativeId(resource.relativeId(), principal);
         Long assistedPersonId = resource.assistedPersonId();
         if (assistedPersonId == null) {
-            var persons = assistedPersonRepository.findAllByRelativeId(relativeId);
+            var persons = assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(relativeId));
             assistedPersonId = persons.isEmpty() ? 1L : persons.get(0).getId();
         }
 

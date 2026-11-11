@@ -3,12 +3,15 @@ package com.resolum.alivia.assistance.interfaces.rest.controllers;
 import com.resolum.alivia.assistance.domain.model.aggregates.Relative;
 import com.resolum.alivia.assistance.domain.model.commands.CreateCaregiverCommand;
 import com.resolum.alivia.assistance.domain.model.commands.RevokeCaregiverAccessCommand;
+import com.resolum.alivia.assistance.domain.model.queries.GetAllAssistedPersonsQuery;
+import com.resolum.alivia.assistance.domain.model.queries.GetAssistedPersonsByRelativeIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetCaregiversByAssistedPersonIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetCaregiversByUserIdQuery;
-import com.resolum.alivia.assistance.domain.repositories.AssistedPersonRepository;
-import com.resolum.alivia.assistance.domain.repositories.RelativeRepository;
+import com.resolum.alivia.assistance.domain.model.queries.GetRelativeByUserIdQuery;
+import com.resolum.alivia.assistance.domain.services.AssistedPersonQueryService;
 import com.resolum.alivia.assistance.domain.services.CaregiverCommandService;
 import com.resolum.alivia.assistance.domain.services.CaregiverQueryService;
+import com.resolum.alivia.assistance.domain.services.RelativeQueryService;
 import com.resolum.alivia.assistance.interfaces.rest.resources.CaregiverResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.CreateCaregiverResource;
 import com.resolum.alivia.assistance.interfaces.rest.transform.CaregiverResourceAssembler;
@@ -31,17 +34,17 @@ public class CaregiversController {
 
     private final CaregiverCommandService commandService;
     private final CaregiverQueryService queryService;
-    private final RelativeRepository relativeRepository;
-    private final AssistedPersonRepository assistedPersonRepository;
+    private final RelativeQueryService relativeQueryService;
+    private final AssistedPersonQueryService assistedPersonQueryService;
 
     public CaregiversController(CaregiverCommandService commandService,
-                               CaregiverQueryService queryService,
-                               RelativeRepository relativeRepository,
-                               AssistedPersonRepository assistedPersonRepository) {
+                                CaregiverQueryService queryService,
+                                RelativeQueryService relativeQueryService,
+                                AssistedPersonQueryService assistedPersonQueryService) {
         this.commandService = commandService;
         this.queryService = queryService;
-        this.relativeRepository = relativeRepository;
-        this.assistedPersonRepository = assistedPersonRepository;
+        this.relativeQueryService = relativeQueryService;
+        this.assistedPersonQueryService = assistedPersonQueryService;
     }
 
     @PostMapping
@@ -62,7 +65,7 @@ public class CaregiversController {
         if (effectiveRelativeId == null && principal != null) {
             try {
                 UserId userId = new UserId(Long.valueOf(principal.getName()));
-                effectiveRelativeId = relativeRepository.findByUserId(userId).map(Relative::getId).orElse(1L);
+                effectiveRelativeId = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId)).map(Relative::getId).orElse(1L);
             } catch (Exception e) {
                 effectiveRelativeId = 1L;
             }
@@ -89,9 +92,9 @@ public class CaregiversController {
         if (principal != null) {
             try {
                 UserId userId = new UserId(Long.valueOf(principal.getName()));
-                var relativeOpt = relativeRepository.findByUserId(userId);
+                var relativeOpt = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId));
                 if (relativeOpt.isPresent()) {
-                    var persons = assistedPersonRepository.findAllByRelativeId(relativeOpt.get().getId());
+                    var persons = assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(relativeOpt.get().getId()));
                     List<CaregiverResource> all = new ArrayList<>();
                     for (var person : persons) {
                         all.addAll(queryService.handle(new GetCaregiversByAssistedPersonIdQuery(person.getId()))
@@ -101,16 +104,11 @@ public class CaregiversController {
                     }
                     return ResponseEntity.ok(all);
                 }
-                List<CaregiverResource> list = queryService.handle(new GetCaregiversByUserIdQuery(userId.userId()))
-                        .stream()
-                        .map(CaregiverResourceAssembler::toResourceFromEntity)
-                        .toList();
-                return ResponseEntity.ok(list);
             } catch (Exception e) {
                 log.warn("Could not find caregivers by principal {}: {}", principal.getName(), e.getMessage());
             }
         }
-        var persons = assistedPersonRepository.findAll();
+        var persons = assistedPersonQueryService.handle(new GetAllAssistedPersonsQuery());
         List<CaregiverResource> all = new ArrayList<>();
         for (var person : persons) {
             all.addAll(queryService.handle(new GetCaregiversByAssistedPersonIdQuery(person.getId()))
@@ -121,17 +119,7 @@ public class CaregiversController {
         return ResponseEntity.ok(all);
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<CaregiverResource> getCaregiverById(@PathVariable Long id) {
-        return queryService.handle(new GetCaregiversByUserIdQuery(id))
-                .stream()
-                .findFirst()
-                .map(CaregiverResourceAssembler::toResourceFromEntity)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    @GetMapping("/by-user/{userId}")
+    @GetMapping("/user/{userId}")
     public ResponseEntity<List<CaregiverResource>> getCaregiversByUserId(@PathVariable Long userId) {
         List<CaregiverResource> list = queryService.handle(new GetCaregiversByUserIdQuery(userId))
                 .stream()

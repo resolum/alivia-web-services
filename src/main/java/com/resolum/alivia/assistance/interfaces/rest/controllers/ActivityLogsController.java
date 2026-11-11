@@ -5,9 +5,10 @@ import com.resolum.alivia.assistance.domain.model.commands.CancelActivityOccurre
 import com.resolum.alivia.assistance.domain.model.commands.CompleteActivityCommand;
 import com.resolum.alivia.assistance.domain.model.queries.GetActivityLogsByAssistedPersonIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetActivityLogsByCaregiverIdQuery;
-import com.resolum.alivia.assistance.domain.repositories.RelativeRepository;
+import com.resolum.alivia.assistance.domain.model.queries.GetRelativeByUserIdQuery;
 import com.resolum.alivia.assistance.domain.services.ActivityLogCommandService;
 import com.resolum.alivia.assistance.domain.services.ActivityLogQueryService;
+import com.resolum.alivia.assistance.domain.services.RelativeQueryService;
 import com.resolum.alivia.assistance.interfaces.rest.resources.ActivityLogResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.CancelActivityOccurrenceResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.CompleteActivityResource;
@@ -30,14 +31,14 @@ public class ActivityLogsController {
 
     private final ActivityLogCommandService commandService;
     private final ActivityLogQueryService queryService;
-    private final RelativeRepository relativeRepository;
+    private final RelativeQueryService relativeQueryService;
 
     public ActivityLogsController(ActivityLogCommandService commandService,
                                   ActivityLogQueryService queryService,
-                                  RelativeRepository relativeRepository) {
+                                  RelativeQueryService relativeQueryService) {
         this.commandService = commandService;
         this.queryService = queryService;
-        this.relativeRepository = relativeRepository;
+        this.relativeQueryService = relativeQueryService;
     }
 
     @PostMapping("/complete")
@@ -73,7 +74,7 @@ public class ActivityLogsController {
         if (relativeId == null && principal != null) {
             try {
                 UserId userId = new UserId(Long.valueOf(principal.getName()));
-                relativeId = relativeRepository.findByUserId(userId).map(Relative::getId).orElse(1L);
+                relativeId = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId)).map(Relative::getId).orElse(1L);
             } catch (Exception ignored) {}
         }
         if (relativeId == null) {
