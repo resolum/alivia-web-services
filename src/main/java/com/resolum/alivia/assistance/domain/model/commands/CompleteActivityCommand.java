@@ -11,7 +11,6 @@ public record CompleteActivityCommand(
         String notes
 ) {
     public CompleteActivityCommand {
-        Objects.requireNonNull(careActivityId, "Care activity ID cannot be null.");
         Objects.requireNonNull(assignmentId, "Assignment ID cannot be null.");
         Objects.requireNonNull(date, "Date cannot be null.");
     }

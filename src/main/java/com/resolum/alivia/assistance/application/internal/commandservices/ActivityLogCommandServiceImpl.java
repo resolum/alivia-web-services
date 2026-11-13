@@ -47,8 +47,22 @@ public class ActivityLogCommandServiceImpl implements ActivityLogCommandService 
 
     @Override
     public Long handle(CompleteActivityCommand command) {
-        CareActivity activity = careActivityRepository.findById(command.careActivityId())
-                .orElseThrow(() -> new CareActivityNotFoundException(command.careActivityId()));
+        CareActivity activity = null;
+        if (command.careActivityId() != null) {
+            activity = careActivityRepository.findById(command.careActivityId())
+                    .orElseThrow(() -> new CareActivityNotFoundException(command.careActivityId()));
+        } else if (command.assignmentId() != null) {
+            for (CareActivity act : careActivityRepository.findAllActive()) {
+                if (act.getActivityAssignments().getActivityAssignments().stream()
+                        .anyMatch(a -> java.util.Objects.equals(a.getId(), command.assignmentId()))) {
+                    activity = act;
+                    break;
+                }
+            }
+        }
+        if (activity == null) {
+            throw new CareActivityNotFoundException(0L);
+        }
 
         ActivityAssignment assignment = activity.getActivityAssignments().getAssignmentWithId(command.assignmentId());
 
@@ -72,11 +86,33 @@ public class ActivityLogCommandServiceImpl implements ActivityLogCommandService 
 
     @Override
     public Long handle(CancelActivityOccurrenceCommand command) {
-        CareActivity activity = careActivityRepository.findById(command.careActivityId())
-                .orElseThrow(() -> new CareActivityNotFoundException(command.careActivityId()));
+        CareActivity activity = null;
+        if (command.careActivityId() != null) {
+            activity = careActivityRepository.findById(command.careActivityId())
+                    .orElseThrow(() -> new CareActivityNotFoundException(command.careActivityId()));
+        } else if (command.assignmentId() != null) {
+            for (CareActivity act : careActivityRepository.findAllActive()) {
+                if (act.getActivityAssignments().getActivityAssignments().stream()
+                        .anyMatch(a -> java.util.Objects.equals(a.getId(), command.assignmentId()))) {
+                    activity = act;
+                    break;
+                }
+            }
+        }
+        if (activity == null) {
+            throw new CareActivityNotFoundException(0L);
+        }
 
-        Relative relative = relativeRepository.findById(command.relativeId())
-                .orElseThrow(() -> new RelativeNotFoundException(command.relativeId()));
+        Relative relative = null;
+        if (command.relativeId() != null) {
+            relative = relativeRepository.findById(command.relativeId())
+                    .orElseThrow(() -> new RelativeNotFoundException(command.relativeId()));
+        } else {
+            relative = activity.getAssistedPerson().getRelative();
+        }
+        if (relative == null) {
+            throw new RelativeNotFoundException(0L);
+        }
 
         if (!activity.getAssistedPerson().isManagedBy(relative)) {
             throw new AssistedPersonNotManagedByRelativeException(activity.getAssistedPerson().getId(), relative.getId());

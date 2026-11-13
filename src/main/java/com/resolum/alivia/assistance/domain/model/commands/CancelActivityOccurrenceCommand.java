@@ -10,9 +10,7 @@ public record CancelActivityOccurrenceCommand(
         Long relativeId
 ) {
     public CancelActivityOccurrenceCommand {
-        Objects.requireNonNull(careActivityId, "Care activity ID cannot be null.");
         Objects.requireNonNull(assignmentId, "Assignment ID cannot be null.");
         Objects.requireNonNull(date, "Date cannot be null.");
-        Objects.requireNonNull(relativeId, "Relative ID cannot be null.");
     }
 }

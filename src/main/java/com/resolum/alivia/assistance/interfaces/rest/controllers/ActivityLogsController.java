@@ -3,9 +3,7 @@ package com.resolum.alivia.assistance.interfaces.rest.controllers;
 import com.resolum.alivia.assistance.domain.model.aggregates.Relative;
 import com.resolum.alivia.assistance.domain.model.commands.CancelActivityOccurrenceCommand;
 import com.resolum.alivia.assistance.domain.model.commands.CompleteActivityCommand;
-import com.resolum.alivia.assistance.domain.model.queries.GetActivityLogsByAssistedPersonIdQuery;
-import com.resolum.alivia.assistance.domain.model.queries.GetActivityLogsByCaregiverIdQuery;
-import com.resolum.alivia.assistance.domain.model.queries.GetRelativeByUserIdQuery;
+import com.resolum.alivia.assistance.domain.model.queries.*;
 import com.resolum.alivia.assistance.domain.services.ActivityLogCommandService;
 import com.resolum.alivia.assistance.domain.services.ActivityLogQueryService;
 import com.resolum.alivia.assistance.domain.services.RelativeQueryService;
@@ -70,15 +68,21 @@ public class ActivityLogsController {
     public ResponseEntity<Long> cancelActivity(
             Principal principal,
             @RequestBody CancelActivityOccurrenceResource resource) {
-        Long relativeId = resource.relativeId();
-        if (relativeId == null && principal != null) {
+        Long relativeId = null;
+        if (principal != null) {
             try {
                 Long userId = Long.valueOf(principal.getName());
-                relativeId = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId)).map(Relative::getId).orElse(1L);
+                var byUser = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId));
+                if (byUser.isPresent()) {
+                    relativeId = byUser.get().getId();
+                }
             } catch (Exception ignored) {}
         }
-        if (relativeId == null) {
-            relativeId = 1L;
+        if (relativeId == null && resource.relativeId() != null) {
+            var byId = relativeQueryService.handle(new GetRelativeByIdQuery(resource.relativeId()));
+            if (byId.isPresent()) {
+                relativeId = resource.relativeId();
+            }
         }
 
         CancelActivityOccurrenceCommand command = new CancelActivityOccurrenceCommand(

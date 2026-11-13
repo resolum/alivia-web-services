@@ -2,10 +2,7 @@ package com.resolum.alivia.assistance.interfaces.rest.controllers;
 
 import com.resolum.alivia.assistance.domain.model.aggregates.Relative;
 import com.resolum.alivia.assistance.domain.model.commands.*;
-import com.resolum.alivia.assistance.domain.model.queries.GetAssistedPersonsByRelativeIdQuery;
-import com.resolum.alivia.assistance.domain.model.queries.GetCareActivitiesByAssistedPersonIdQuery;
-import com.resolum.alivia.assistance.domain.model.queries.GetCareActivityByIdQuery;
-import com.resolum.alivia.assistance.domain.model.queries.GetRelativeByUserIdQuery;
+import com.resolum.alivia.assistance.domain.model.queries.*;
 import com.resolum.alivia.assistance.domain.services.AssistedPersonQueryService;
 import com.resolum.alivia.assistance.domain.services.CareActivityCommandService;
 import com.resolum.alivia.assistance.domain.services.CareActivityQueryService;
@@ -42,12 +39,24 @@ public class CareActivitiesController {
     }
 
     private Long resolveRelativeId(Long relativeId, Principal principal) {
-        if (relativeId != null) return relativeId;
         if (principal != null) {
             try {
                 Long userId = Long.valueOf(principal.getName());
-                return relativeQueryService.handle(new GetRelativeByUserIdQuery(userId)).map(Relative::getId).orElse(1L);
+                var byUser = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId));
+                if (byUser.isPresent()) {
+                    return byUser.get().getId();
+                }
             } catch (Exception ignored) {}
+        }
+        if (relativeId != null) {
+            var byId = relativeQueryService.handle(new GetRelativeByIdQuery(relativeId));
+            if (byId.isPresent()) {
+                return relativeId;
+            }
+        }
+        var allAssisted = assistedPersonQueryService.handle(new GetAllAssistedPersonsQuery());
+        if (!allAssisted.isEmpty() && allAssisted.get(0).getRelative() != null) {
+            return allAssisted.get(0).getRelative().getId();
         }
         return 1L;
     }
@@ -58,8 +67,11 @@ public class CareActivitiesController {
             @RequestBody CreateCareActivityResource resource) {
         Long relativeId = resolveRelativeId(resource.relativeId(), principal);
         Long assistedPersonId = resource.assistedPersonId();
-        if (assistedPersonId == null) {
+        if (assistedPersonId == null || assistedPersonQueryService.handle(new GetAssistedPersonByIdQuery(assistedPersonId)).isEmpty()) {
             var persons = assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(relativeId));
+            if (persons.isEmpty()) {
+                persons = assistedPersonQueryService.handle(new GetAllAssistedPersonsQuery());
+            }
             assistedPersonId = persons.isEmpty() ? 1L : persons.get(0).getId();
         }
 
