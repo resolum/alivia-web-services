@@ -28,8 +28,11 @@ import java.util.stream.Collectors;
 /**
  * Implementation of the IAM anti-corruption layer facade.
  *
- * <p>Delegates to domain services and returns primitive types only, so external
- * bounded contexts (e.g. Company/Business, Nursing, Profiles) do not depend on IAM internals.</p>
+ * <p>
+ * Delegates to domain services and returns primitive types only, so external
+ * bounded contexts (e.g. Company/Business, Nursing, Profiles) do not depend on
+ * IAM internals.
+ * </p>
  */
 @Slf4j
 @Service
@@ -51,9 +54,9 @@ public class IamContextFacadeImpl implements IamContextFacade {
      * @param edgeCredentialQueryService   reads the state of those credentials
      */
     public IamContextFacadeImpl(UserRepository userRepository, UserCommandService userCommandService,
-                                AccountActivationService accountActivationService,
-                                EdgeCredentialCommandService edgeCredentialCommandService,
-                                EdgeCredentialQueryService edgeCredentialQueryService) {
+            AccountActivationService accountActivationService,
+            EdgeCredentialCommandService edgeCredentialCommandService,
+            EdgeCredentialQueryService edgeCredentialQueryService) {
         this.edgeCredentialCommandService = edgeCredentialCommandService;
         this.edgeCredentialQueryService = edgeCredentialQueryService;
         this.accountActivationService = accountActivationService;
@@ -79,6 +82,19 @@ public class IamContextFacadeImpl implements IamContextFacade {
         } catch (IllegalArgumentException exception) {
             log.warn("User existence check rejected: email address is invalid");
             return false;
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Optional<Long> findUserIdByEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        try {
+            return userRepository.findByEmail(new EmailAddress(email)).map(User::getId);
+        } catch (IllegalArgumentException exception) {
+            return java.util.Optional.empty();
         }
     }
 
@@ -132,8 +148,8 @@ public class IamContextFacadeImpl implements IamContextFacade {
     @Override
     @Transactional
     public Long signUpUser(String email, String password, String firstName, String lastName, String phoneNumber,
-                           String roleStr, Long businessId, Long familiarId,
-                           String dni, LocalDate birthDate) {
+            String roleStr, Long businessId, Long familiarId,
+            String dni, LocalDate birthDate) {
         log.info("Signing up user via IAM ACL facade with role: {}", roleStr);
         AccessRole role = parseRole(roleStr);
         var command = new SignUpCommand(
@@ -149,8 +165,7 @@ public class IamContextFacadeImpl implements IamContextFacade {
                 dni,
                 birthDate,
                 null,
-                null
-        );
+                null);
         var user = userCommandService.handle(command);
         log.info("User signed up via IAM ACL facade with account ID: {}", user.getId());
         return user.getId();
@@ -161,7 +176,8 @@ public class IamContextFacadeImpl implements IamContextFacade {
      */
     @Override
     @Transactional
-    public Long registerUser(String email, String password, String firstName, String lastName, String phoneNumber, String role) {
+    public Long registerUser(String email, String password, String firstName, String lastName, String phoneNumber,
+            String role) {
         String dni = null;
         LocalDate birthDate = null;
         if ("ROLE_CAREGIVER".equalsIgnoreCase(role) || "CAREGIVER".equalsIgnoreCase(role)) {
@@ -177,9 +193,10 @@ public class IamContextFacadeImpl implements IamContextFacade {
      */
     @Override
     @Transactional
-    public Long registerCompanyUser(String email, String password, String firstName, String lastName, String phoneNumber,
-                                   String role, Long businessId,
-                                   String dni, LocalDate birthDate) {
+    public Long registerCompanyUser(String email, String password, String firstName, String lastName,
+            String phoneNumber,
+            String role, Long businessId,
+            String dni, LocalDate birthDate) {
         return signUpUser(email, password, firstName, lastName, phoneNumber, role, businessId, null,
                 dni, birthDate);
     }
@@ -199,9 +216,10 @@ public class IamContextFacadeImpl implements IamContextFacade {
      */
     @Override
     @Transactional
-    public Long registerAssistedPerson(String email, String password, String firstName, String lastName, String phoneNumber,
-                                      Long familiarId,
-                                      String dni, LocalDate birthDate) {
+    public Long registerAssistedPerson(String email, String password, String firstName, String lastName,
+            String phoneNumber,
+            Long familiarId,
+            String dni, LocalDate birthDate) {
         return signUpUser(email, password, firstName, lastName, phoneNumber, "ASSISTED_PERSON", null, familiarId,
                 dni, birthDate);
     }
@@ -233,7 +251,8 @@ public class IamContextFacadeImpl implements IamContextFacade {
     public java.util.Optional<EdgeCredentialSummary> getEdgeCredentialSummary(Long edgeId) {
         return edgeCredentialQueryService.handle(new GetEdgeCredentialByEdgeIdQuery(edgeId))
                 .map(view -> new EdgeCredentialSummary(view.edgeId(), view.active(), view.issuedAt(), view.issuedBy(),
-                        view.ageDays(), view.rotationRecommended(), view.lastUsedAt(), view.revokedAt(), view.revokedBy(),
+                        view.ageDays(), view.rotationRecommended(), view.lastUsedAt(), view.revokedAt(),
+                        view.revokedBy(),
                         view.revokedReason()));
     }
 

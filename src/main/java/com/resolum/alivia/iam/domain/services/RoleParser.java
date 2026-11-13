@@ -22,9 +22,12 @@ public final class RoleParser {
             return AccessRole.CAREGIVER;
         }
         String normalized = roleStr.trim().toUpperCase();
+        if (normalized.startsWith("ROLE_")) {
+            normalized = normalized.substring(5);
+        }
         return switch (normalized) {
             case "ADMIN", "ADMINISTRATOR", "ADMINISTRADOR" -> AccessRole.ADMINISTRATOR;
-            case "CAREGIVER", "CUIDADOR", "FAMILIAR", "FAMILY_MEMBER" -> AccessRole.CAREGIVER;
+            case "CAREGIVER", "CUIDADOR", "FAMILIAR", "FAMILY_MEMBER", "RELATIVE" -> AccessRole.CAREGIVER;
             case "EMPLOYEE", "EMPLEADO", "TECHNICIAN", "TECNICO" -> AccessRole.TECHNICIAN;
             case "SUBSCRIPTION_MANAGER", "GESTOR_SUSCRIPCIONES" -> AccessRole.SUBSCRIPTION_MANAGER;
             case "ASSISTED_PERSON", "PERSONA_ASISTIDA", "PACIENTE" -> AccessRole.ASSISTED_PERSON;

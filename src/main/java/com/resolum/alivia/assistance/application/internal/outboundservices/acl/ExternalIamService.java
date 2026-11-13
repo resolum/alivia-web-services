@@ -26,21 +26,27 @@ public class ExternalIamService {
     }
 
     public Long createRelativeUser(String email, String password, Long businessId,
-                                   String firstName, String lastName, String phoneNumber,
-                                   String dni, LocalDate birthDate) {
+            String firstName, String lastName, String phoneNumber,
+            String dni, LocalDate birthDate) {
         log.info("Requesting IAM sign-up for Relative user: {}", email);
         return iamContextFacade.registerCompanyUser(email, password, firstName, lastName, phoneNumber,
-                "ROLE_RELATIVE", businessId, dni, birthDate);
+                "CAREGIVER", businessId, dni, birthDate);
     }
 
-    public Long registerCaregiverAccount(String email, String password, String firstName, String lastName, String phoneNumber) {
+    public Long registerCaregiverAccount(String email, String password, String firstName, String lastName,
+            String phoneNumber) {
         log.info("Requesting IAM user creation for caregiver: {}", email);
-        return iamContextFacade.registerUser(email, password, firstName, lastName, phoneNumber, "ROLE_CAREGIVER");
+        return iamContextFacade.registerUser(email, password, firstName, lastName, phoneNumber, "CAREGIVER");
     }
 
     public boolean existsUserByEmail(String email) {
         log.debug("Checking in IAM whether a user exists by email");
         return iamContextFacade.existsUserByEmail(email);
+    }
+
+    public java.util.Optional<Long> findUserIdByEmail(String email) {
+        log.debug("Finding user ID in IAM by email");
+        return iamContextFacade.findUserIdByEmail(email);
     }
 
     public Map<UserId, String> fetchEmails(Set<UserId> userIds) {
