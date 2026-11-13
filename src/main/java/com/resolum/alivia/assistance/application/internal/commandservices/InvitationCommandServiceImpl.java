@@ -90,26 +90,23 @@ public class InvitationCommandServiceImpl implements InvitationCommandService {
                 .orElseThrow(() -> new InvitationNotFoundException(command.invitationId()));
 
         String email = invitation.getInviteeEmail().email();
+        String setupUrl = "http://localhost:5173/invitations/" + invitation.getId();
+
         if (externalIamService.existsUserByEmail(email)) {
             // Existing user in IAM
-            // In existing user flow: assign and send notification
-            Long userId = 1L; // Fallback or resolved from IAM
-            if (caregiverRepository.existsByAssistedPersonIdAndUserIdAndStatus(
-                    invitation.getAssistedPerson().getId(), new UserId(userId), CaregiverStatus.ACTIVE)) {
-                throw new CaregiverAlreadyExistsException(invitation.getAssistedPerson().getId(), userId);
-            }
-            invitation.assignExistingCaregiverAccount(new UserId(userId));
-        } else {
-            // New user account flow
-            String setupUrl = "http://localhost:5173/activate-account?invitationId=" + invitation.getId();
-            String tempPassword = "Temp@" + UUID.randomUUID().toString().replace("-", "").substring(0, 8) + "1a";
-            Long userId = externalIamService.registerCaregiverAccount(email, tempPassword, "Cuidador", "Invitado", "51999888777");
-            invitation.assignCaregiverAccount(new UserId(userId), setupUrl);
-            try {
-                externalCommunicationsService.sendCaregiverInvitation(email, "Familiar", "Persona asistida", setupUrl, 7);
-            } catch (Exception e) {
-                // Ignore communication delivery issues in local dev
-            }
+            externalIamService.findUserIdByEmail(email).ifPresent(userId -> {
+                if (caregiverRepository.existsByAssistedPersonIdAndUserIdAndStatus(
+                        invitation.getAssistedPerson().getId(), new UserId(userId), CaregiverStatus.ACTIVE)) {
+                    throw new CaregiverAlreadyExistsException(invitation.getAssistedPerson().getId(), userId);
+                }
+                invitation.assignExistingCaregiverAccount(new UserId(userId));
+            });
+        }
+
+        try {
+            externalCommunicationsService.sendCaregiverInvitation(email, "Familiar", "Persona asistida", setupUrl, 7);
+        } catch (Exception e) {
+            // Ignore communication delivery issues in local dev
         }
 
         invitationRepository.save(invitation);
