@@ -13,6 +13,7 @@ import com.resolum.alivia.iam.domain.repositories.UserRepository;
 import com.resolum.alivia.iam.domain.services.AccountActivationService;
 import com.resolum.alivia.iam.domain.services.EdgeCredentialCommandService;
 import com.resolum.alivia.iam.domain.services.EdgeCredentialQueryService;
+import com.resolum.alivia.iam.domain.model.valueobjects.UserStatus;
 import com.resolum.alivia.iam.domain.services.UserCommandService;
 import com.resolum.alivia.iam.interfaces.acl.IamContextFacade;
 import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
@@ -185,7 +186,14 @@ public class IamContextFacadeImpl implements IamContextFacade {
             dni = String.format("%08d", (hash % 90000000) + 10000000);
             birthDate = LocalDate.of(1995, 1, 1);
         }
-        return signUpUser(email, password, firstName, lastName, phoneNumber, role, null, null, dni, birthDate);
+        Long userId = signUpUser(email, password, firstName, lastName, phoneNumber, role, null, null, dni, birthDate);
+        userRepository.findById(userId).ifPresent(user -> {
+            if (user.getStatus() == UserStatus.PENDING_VERIFICATION) {
+                user.verifyEmail();
+                userRepository.save(user);
+            }
+        });
+        return userId;
     }
 
     /**

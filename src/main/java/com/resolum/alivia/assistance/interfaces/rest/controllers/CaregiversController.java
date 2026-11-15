@@ -1,5 +1,8 @@
 package com.resolum.alivia.assistance.interfaces.rest.controllers;
 
+import com.resolum.alivia.assistance.application.internal.outboundservices.acl.ExternalIamService;
+import com.resolum.alivia.assistance.application.internal.outboundservices.acl.ExternalProfilesService;
+import com.resolum.alivia.assistance.domain.model.aggregates.Caregiver;
 import com.resolum.alivia.assistance.domain.model.aggregates.Relative;
 import com.resolum.alivia.assistance.domain.model.commands.CreateCaregiverCommand;
 import com.resolum.alivia.assistance.domain.model.commands.RevokeCaregiverAccessCommand;
@@ -15,9 +18,11 @@ import com.resolum.alivia.assistance.domain.services.RelativeQueryService;
 import com.resolum.alivia.assistance.interfaces.rest.resources.CaregiverResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.CreateCaregiverResource;
 import com.resolum.alivia.assistance.interfaces.rest.transform.CaregiverResourceAssembler;
+import com.resolum.alivia.shared.domain.model.valueobjects.PersonProfileId;
 import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -25,6 +30,9 @@ import org.springframework.web.bind.annotation.*;
 import java.security.Principal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
@@ -36,15 +44,29 @@ public class CaregiversController {
     private final CaregiverQueryService queryService;
     private final RelativeQueryService relativeQueryService;
     private final AssistedPersonQueryService assistedPersonQueryService;
+    private final ExternalIamService externalIamService;
+    private final ExternalProfilesService externalProfilesService;
 
     public CaregiversController(CaregiverCommandService commandService,
                                 CaregiverQueryService queryService,
                                 RelativeQueryService relativeQueryService,
                                 AssistedPersonQueryService assistedPersonQueryService) {
+        this(commandService, queryService, relativeQueryService, assistedPersonQueryService, null, null);
+    }
+
+    @Autowired
+    public CaregiversController(CaregiverCommandService commandService,
+                                CaregiverQueryService queryService,
+                                RelativeQueryService relativeQueryService,
+                                AssistedPersonQueryService assistedPersonQueryService,
+                                @Autowired(required = false) ExternalIamService externalIamService,
+                                @Autowired(required = false) ExternalProfilesService externalProfilesService) {
         this.commandService = commandService;
         this.queryService = queryService;
         this.relativeQueryService = relativeQueryService;
         this.assistedPersonQueryService = assistedPersonQueryService;
+        this.externalIamService = externalIamService;
+        this.externalProfilesService = externalProfilesService;
     }
 
     @PostMapping
@@ -83,11 +105,8 @@ public class CaregiversController {
             Principal principal,
             @RequestParam(required = false) Long assistedPersonId) {
         if (assistedPersonId != null) {
-            List<CaregiverResource> list = queryService.handle(new GetCaregiversByAssistedPersonIdQuery(assistedPersonId))
-                    .stream()
-                    .map(CaregiverResourceAssembler::toResourceFromEntity)
-                    .toList();
-            return ResponseEntity.ok(list);
+            List<Caregiver> entities = queryService.handle(new GetCaregiversByAssistedPersonIdQuery(assistedPersonId));
+            return ResponseEntity.ok(enrichCaregivers(entities));
         }
         if (principal != null) {
             try {
@@ -95,35 +114,75 @@ public class CaregiversController {
                 var relativeOpt = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId));
                 if (relativeOpt.isPresent()) {
                     var persons = assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(relativeOpt.get().getId()));
-                    List<CaregiverResource> all = new ArrayList<>();
+                    List<Caregiver> all = new ArrayList<>();
                     for (var person : persons) {
-                        all.addAll(queryService.handle(new GetCaregiversByAssistedPersonIdQuery(person.getId()))
-                                .stream()
-                                .map(CaregiverResourceAssembler::toResourceFromEntity)
-                                .toList());
+                        all.addAll(queryService.handle(new GetCaregiversByAssistedPersonIdQuery(person.getId())));
                     }
-                    return ResponseEntity.ok(all);
+                    return ResponseEntity.ok(enrichCaregivers(all));
                 }
-                List<CaregiverResource> list = queryService.handle(new GetCaregiversByUserIdQuery(userId))
-                        .stream()
-                        .map(CaregiverResourceAssembler::toResourceFromEntity)
-                        .toList();
+                List<Caregiver> list = queryService.handle(new GetCaregiversByUserIdQuery(userId));
                 if (!list.isEmpty()) {
-                    return ResponseEntity.ok(list);
+                    return ResponseEntity.ok(enrichCaregivers(list));
                 }
             } catch (Exception e) {
                 log.warn("Could not find caregivers by principal {}: {}", principal.getName(), e.getMessage());
             }
         }
         var persons = assistedPersonQueryService.handle(new GetAllAssistedPersonsQuery());
-        List<CaregiverResource> all = new ArrayList<>();
+        List<Caregiver> all = new ArrayList<>();
         for (var person : persons) {
-            all.addAll(queryService.handle(new GetCaregiversByAssistedPersonIdQuery(person.getId()))
-                    .stream()
-                    .map(CaregiverResourceAssembler::toResourceFromEntity)
-                    .toList());
+            all.addAll(queryService.handle(new GetCaregiversByAssistedPersonIdQuery(person.getId())));
         }
-        return ResponseEntity.ok(all);
+        return ResponseEntity.ok(enrichCaregivers(all));
+    }
+
+    private List<CaregiverResource> enrichCaregivers(List<Caregiver> entities) {
+        if (entities.isEmpty()) {
+            return List.of();
+        }
+        if (externalIamService == null) {
+            return entities.stream().map(CaregiverResourceAssembler::toResourceFromEntity).toList();
+        }
+        Set<UserId> userIds = entities.stream()
+                .map(Caregiver::getUserId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<UserId, String> emails = externalIamService.fetchEmails(userIds);
+        Map<UserId, PersonProfileId> profileIds = externalIamService.fetchPersonProfileIds(userIds);
+
+        return entities.stream().map(c -> {
+            CaregiverResource base = CaregiverResourceAssembler.toResourceFromEntity(c);
+            UserId uid = c.getUserId();
+            String email = uid != null ? emails.get(uid) : null;
+            String fullName = null;
+            String phoneNumber = null;
+            String photoUrl = null;
+            if (uid != null && externalProfilesService != null && profileIds.containsKey(uid)) {
+                var profileOpt = externalProfilesService.fetchPersonProfile(profileIds.get(uid));
+                if (profileOpt.isPresent()) {
+                    var profile = profileOpt.get();
+                    String first = profile.firstName() != null ? profile.firstName().trim() : "";
+                    String last = profile.lastName() != null ? profile.lastName().trim() : "";
+                    fullName = (first + " " + last).trim();
+                    if (fullName.isEmpty()) fullName = null;
+                    phoneNumber = profile.phoneNumber();
+                    photoUrl = profile.photoUrl();
+                    if (email == null || email.isBlank()) {
+                        email = profile.emailAddress();
+                    }
+                }
+            }
+            return new CaregiverResource(
+                    base.id(),
+                    base.userId(),
+                    base.assistedPersonId(),
+                    base.status(),
+                    fullName,
+                    email,
+                    phoneNumber,
+                    photoUrl
+            );
+        }).toList();
     }
 
     @GetMapping("/{id}")
