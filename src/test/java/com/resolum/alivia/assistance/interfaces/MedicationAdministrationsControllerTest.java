@@ -12,7 +12,6 @@ import com.resolum.alivia.assistance.domain.model.queries.GetAgendaByAssistedPer
 import com.resolum.alivia.assistance.domain.model.queries.GetAllAssistedPersonsQuery;
 import com.resolum.alivia.assistance.domain.model.valueobjects.AgendaItem;
 import com.resolum.alivia.assistance.domain.model.valueobjects.CareActivityType;
-import com.resolum.alivia.assistance.domain.model.valueobjects.Contact;
 import com.resolum.alivia.assistance.domain.model.valueobjects.OccurrenceStatus;
 import com.resolum.alivia.assistance.domain.model.valueobjects.Schedule;
 import com.resolum.alivia.assistance.domain.services.ActivityLogCommandService;
@@ -73,7 +72,7 @@ class MedicationAdministrationsControllerTest {
                 LocalDateTime.of(occurrenceDate, LocalTime.of(8, 0)),
                 LocalDateTime.of(occurrenceDate, LocalTime.of(8, 30)),
                 30L, true, OccurrenceStatus.SCHEDULED,
-                new Contact("Ana", "ana@alivia.test", "Paciente", "pac@alivia.test")
+                new AgendaItem.Contact("Paciente", new PersonProfileId(101L), "Ana", "ana@alivia.test")
         );
 
         when(assistedPersonQueryService.handle(any(GetAllAssistedPersonsQuery.class))).thenReturn(List.of(person));
@@ -95,7 +94,9 @@ class MedicationAdministrationsControllerTest {
                 Schedule.oneTime(occurrenceDate, new TimeRange(LocalTime.of(8, 0), LocalTime.of(8, 30))),
                 occurrenceDate);
         ReflectionTestUtils.setField(assignment, "id", 5L);
-        ActivityLog log = ActivityLog.completed(activity, assignment, occurrenceDate, "Tomado sin novedad", null);
+        ActivityLog log = ActivityLog.completed(
+                activity, assignment, occurrenceDate, null,
+                LocalDateTime.of(occurrenceDate, LocalTime.of(8, 15)), "Tomado sin novedad");
 
         when(careActivityQueryService.handle(any(GetAgendaByAssistedPersonIdQuery.class))).thenReturn(List.of(agendaItem));
         when(activityLogQueryService.handle(any(GetActivityLogsByAssistedPersonIdQuery.class))).thenReturn(List.of(log));
@@ -103,9 +104,9 @@ class MedicationAdministrationsControllerTest {
         var response = controller.getAdministration("5-20261115");
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody().id()).isEqualTo("5-20261115");
+        assertThat(response.getBody().administrationId()).isEqualTo("5-20261115");
         assertThat(response.getBody().medication()).isEqualTo("Losartán");
-        assertThat(response.getBody().outcome().note()).isEqualTo("Tomado sin novedad");
+        assertThat(response.getBody().outcome().reason()).isEqualTo("Tomado sin novedad");
     }
 
     @Test

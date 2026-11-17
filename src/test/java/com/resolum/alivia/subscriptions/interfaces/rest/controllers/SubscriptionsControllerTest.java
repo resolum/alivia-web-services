@@ -105,11 +105,9 @@ class SubscriptionsControllerTest {
 
         Subscription subscription = createMockSubscription();
         ReflectionTestUtils.setField(subscription, "draftId", "draft-1");
-        ConfigurationDraft draft = new ConfigurationDraft(PlanCode.MINIMUM, "MONTHLY");
-        draft.replaceRooms(List.of(
-                new ConfiguredRoom("Dormitorio", java.util.Map.of()),
-                new ConfiguredRoom("Sala", java.util.Map.of()),
-                new ConfiguredRoom("Cocina", java.util.Map.of())));
+        ConfigurationDraft draft = mock(ConfigurationDraft.class);
+        when(draft.getRooms()).thenReturn(List.of(
+                mock(ConfiguredRoom.class), mock(ConfiguredRoom.class), mock(ConfiguredRoom.class)));
 
         when(queryService.handle(any(GetActiveSubscriptionByUserIdQuery.class))).thenReturn(Optional.of(subscription));
         when(paymentRepository.findFirstBySubscription_IdOrderByIdDesc(any())).thenReturn(Optional.empty());

@@ -105,7 +105,7 @@ class MedicationsControllerTest {
     @Test
     void listMedicationsFiltersAndEnrichesCaregiverNames() {
         CareActivity med = medicationActivity(1L, "Losartán", "50mg", EnumSet.allOf(DayOfWeek.class), LocalTime.of(8, 0));
-        CareActivity nonMed = new CareActivity(person, CareActivityType.HYDRATION, "Agua", "1 vaso");
+        CareActivity nonMed = new CareActivity(person, CareActivityType.MEAL, "Agua", "1 vaso");
         ReflectionTestUtils.setField(nonMed, "id", 2L);
 
         when(queryService.handle(new GetCareActivitiesByAssistedPersonIdQuery(20L))).thenReturn(List.of(med, nonMed));
@@ -163,9 +163,10 @@ class MedicationsControllerTest {
         verify(commandService).handle(any(AssignCareActivityCommand.class));
 
         // Now shrink from 2 times to 1 time (deactivates extra)
-        existing.assign(caregiver,
+        var extra = existing.assign(caregiver,
                 Schedule.weekly(new WeeklyPeriod(EnumSet.of(DayOfWeek.MONDAY), new TimeRange(LocalTime.of(20, 0), LocalTime.of(20, 30)))),
                 LocalDate.now());
+        ReflectionTestUtils.setField(extra, "id", 71L);
         controller.updateMedication(7L, principal("1"),
                 new UpdateMedicationRequestResource("10mg", List.of("08:00"), "daily", "bad-date", ""));
         verify(commandService).handle(any(DeactivateActivityAssignmentCommand.class));
