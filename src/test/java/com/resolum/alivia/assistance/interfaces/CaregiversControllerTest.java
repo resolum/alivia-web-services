@@ -16,7 +16,14 @@ import com.resolum.alivia.assistance.domain.services.CaregiverQueryService;
 import com.resolum.alivia.assistance.domain.services.RelativeQueryService;
 import com.resolum.alivia.assistance.interfaces.rest.controllers.CaregiversController;
 import com.resolum.alivia.assistance.interfaces.rest.resources.CreateCaregiverResource;
+import com.resolum.alivia.assistance.application.internal.outboundservices.acl.ExternalIamService;
+import com.resolum.alivia.assistance.application.internal.outboundservices.acl.ExternalProfilesService;
+import com.resolum.alivia.profiles.interfaces.acl.ProfilesContextFacade;
+import com.resolum.alivia.shared.domain.model.valueobjects.PersonProfileId;
 import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
+import java.time.LocalDate;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -105,5 +112,32 @@ class CaregiversControllerTest {
         assertThat(controller.getCaregiverById(9L).getStatusCode().value()).isEqualTo(200);
         assertThat(controller.getCaregiverById(8L).getStatusCode().value()).isEqualTo(404);
         assertThat(controller.getCaregiversByUserId(9L).getBody()).hasSize(1);
+    }
+
+    @Test
+    void enrichesCaregiversWithIamAndProfileDetails() {
+        var iam = mock(ExternalIamService.class);
+        var profiles = mock(ExternalProfilesService.class);
+        var enrichedController = new CaregiversController(
+                commands, queries, relativeQueryService, assistedPersonQueryService, iam, profiles);
+
+        UserId uid = new UserId(9L);
+        PersonProfileId pid = new PersonProfileId(77L);
+        when(queries.handle(new GetCaregiversByAssistedPersonIdQuery(2L))).thenReturn(List.of(caregiver));
+        when(iam.fetchEmails(Set.of(uid))).thenReturn(Map.of(uid, "ana@alivia.test"));
+        when(iam.fetchPersonProfileIds(Set.of(uid))).thenReturn(Map.of(uid, pid));
+        when(profiles.fetchPersonProfile(pid)).thenReturn(Optional.of(new ProfilesContextFacade.PersonProfileData(
+                77L, "ana@alivia.test", "https://img/ana.png", "pub-1", "+51999999999",
+                "Ana", "Torres", "12345678", LocalDate.of(1990, 1, 1))));
+
+        var body = enrichedController.getCaregivers(null, 2L).getBody();
+        assertThat(body).hasSize(1);
+        assertThat(body.get(0).fullName()).isEqualTo("Ana Torres");
+        assertThat(body.get(0).email()).isEqualTo("ana@alivia.test");
+        assertThat(body.get(0).phoneNumber()).isEqualTo("+51999999999");
+        assertThat(body.get(0).photoUrl()).isEqualTo("https://img/ana.png");
+
+        when(queries.handle(new GetCaregiversByAssistedPersonIdQuery(99L))).thenReturn(List.of());
+        assertThat(enrichedController.getCaregivers(null, 99L).getBody()).isEmpty();
     }
 }

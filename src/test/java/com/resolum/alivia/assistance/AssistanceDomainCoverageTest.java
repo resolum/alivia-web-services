@@ -277,6 +277,17 @@ class AssistanceDomainCoverageTest {
         withoutAccount.accept(new UserId(8L), LocalDateTime.now());
         assertThat(withoutAccount.getCaregiverUserId()).isEqualTo(new UserId(8L));
 
+        assertThat(CareActivityType.fromString(null)).isEqualTo(CareActivityType.OTHER);
+        assertThat(CareActivityType.fromString(" ")).isEqualTo(CareActivityType.OTHER);
+        assertThat(CareActivityType.fromString("NUTRITION")).isEqualTo(CareActivityType.MEAL);
+        assertThat(CareActivityType.fromString("MOBILITY")).isEqualTo(CareActivityType.EXERCISE);
+        assertThat(CareActivityType.fromString("THERAPY")).isEqualTo(CareActivityType.THERAPY);
+        assertThat(CareActivityType.fromString("BATH")).isEqualTo(CareActivityType.BATH);
+        assertThat(CareActivityType.fromString("HYGIENE")).isEqualTo(CareActivityType.HYGIENE);
+        assertThat(CareActivityType.fromString("MEDICATION")).isEqualTo(CareActivityType.MEDICATION);
+        assertThat(CareActivityType.fromString("SOCIAL")).isEqualTo(CareActivityType.APPOINTMENT);
+        assertThat(CareActivityType.fromString("UNKNOWN_TYPE")).isEqualTo(CareActivityType.OTHER);
+
         Invitation expired = new Invitation(assistedPerson, relative, new EmailAddress("old@alivia.test"),
                 LocalDateTime.now().minusDays(1));
         expired.assignExistingCaregiverAccount(new UserId(8L));
