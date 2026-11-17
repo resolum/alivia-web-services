@@ -101,6 +101,9 @@ public class Invitation extends AuditableAbstractAggregateRoot<Invitation> {
             throw new InvitationExpiredException();
         }
         if (this.caregiverUserId == null) {
+            if (caregiverUserId == null) {
+                throw new CaregiverAccountNotAssignedException();
+            }
             this.caregiverUserId = caregiverUserId;
         } else if (!this.caregiverUserId.equals(caregiverUserId)) {
             throw new InvitationNotForUserException();
