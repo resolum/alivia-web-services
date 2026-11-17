@@ -15,8 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static com.resolum.alivia.assistance.AssistanceFixtures.assistedPerson;
@@ -36,8 +35,9 @@ class HandoversControllerTest {
 
         Relative rel = relative(1L);
         AssistedPerson person = assistedPerson(2L, rel);
-        CareShift fromShift = new CareShift(person, 3L, "Ana", LocalDate.now(), LocalTime.of(8, 0), LocalTime.of(16, 0));
-        CareShift toShift = new CareShift(person, 4L, "Luis", LocalDate.now(), LocalTime.of(16, 0), LocalTime.of(23, 0));
+        LocalDateTime base = LocalDateTime.of(2026, 11, 15, 8, 0);
+        CareShift fromShift = new CareShift(person, 3L, "Ana", base, base.plusHours(8), "");
+        CareShift toShift = new CareShift(person, 4L, "Luis", base.plusHours(8), base.plusHours(16), "");
         ReflectionTestUtils.setField(fromShift, "id", 10L);
         ReflectionTestUtils.setField(toShift, "id", 11L);
         Handover handover = new Handover(fromShift, toShift, "[]", "[]");
