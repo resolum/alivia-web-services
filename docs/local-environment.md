@@ -50,7 +50,7 @@ aplicación Android con Firebase Cloud Messaging:
 1. En la consola de Firebase, del mismo proyecto que usa la app Android, ve a Configuración del proyecto → Cuentas de
    servicio → Generar nueva clave privada. Guarda el JSON **fuera del repositorio** (es un secreto).
 2. Arranca el backend con `PUSH_PROVIDER=firebase` y `FIREBASE_CREDENTIALS_PATH=/ruta/a/la/clave.json`
-   (o `FIREBASE_CREDENTIALS_JSON` con el contenido del archivo).
+   (o `FIREBASE_CREDENTIALS_JSON` con el contenido del archivo, en JSON o en Base64).
 
 La app registra su token en `POST /api/v1/push-devices` al iniciar sesión y lo borra al cerrarla; cada notificación
 creada en el backend se envía a todos los dispositivos de su destinatario.

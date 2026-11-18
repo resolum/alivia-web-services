@@ -80,6 +80,13 @@ class PushNotificationSenderWiringTest {
     }
 
     @Test
+    void acceptsTheServiceAccountEncodedInBase64() throws Exception {
+        String encoded = Base64.getEncoder().encodeToString(serviceAccountJson().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        assertThat(FirebaseConfiguration.loadCredentials(encoded, null)).isNotNull();
+    }
+
+    @Test
     void rejectsAServiceAccountThatIsNotJson() {
         assertThatThrownBy(() -> FirebaseConfiguration.loadCredentials("not json", null))
                 .isInstanceOf(UncheckedIOException.class);

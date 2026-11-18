@@ -126,7 +126,7 @@ Opcionales que **sí conviene definir** (sin ellas la aplicación usa un valor p
 | `IAM_EMAIL_FROM_NAME` | variable | Nombre visible del remitente (por defecto `Alivia`) |
 | `IAM_ACCOUNT_ACTIVATION_LINK_BASE_URL` | variable | `<url del frontend>/activate-account`. Su valor por defecto es `http://localhost:4200/activate-account` |
 | `PUSH_PROVIDER` | variable | `firebase` para enviar las notificaciones push con Firebase Cloud Messaging. Sin definir es `log`: las notificaciones se guardan en el centro de notificaciones pero solo se escriben en el log |
-| `FIREBASE_CREDENTIALS_JSON` | **secreto** | Contenido de la clave JSON de la cuenta de servicio del proyecto de Firebase (Configuración del proyecto → Cuentas de servicio → Generar nueva clave privada), **en una sola línea** (`jq -c . clave.json`). La aplicación no arranca con `PUSH_PROVIDER=firebase` si no puede leerla |
+| `FIREBASE_CREDENTIALS_JSON` | **secreto** | Contenido de la clave JSON de la cuenta de servicio del proyecto de Firebase (Configuración del proyecto → Cuentas de servicio → Generar nueva clave privada), **en una sola línea** (`jq -c . clave.json`) o codificado en Base64 (`base64 -i clave.json`). La aplicación no arranca con `PUSH_PROVIDER=firebase` si no puede leerla |
 
 Los demás opcionales (`HCM_DEFAULT_BUSINESS_ID`, `IAM_DEFAULT_PHOTO_URL`, tiempos de los tokens, `JAVA_TOOL_OPTIONS`,
 etc.) están en `OPTIONAL_APP_VARS` de `deploy.sh`; se definen solo si hay que cambiar el valor por defecto.

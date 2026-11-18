@@ -15,11 +15,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 /**
  * Starts the Firebase Admin SDK when Firebase Cloud Messaging is the push provider.
  *
- * <p>The service account is read from {@code alivia.communications.push.firebase.credentials-json},
+ * <p>The service account is read from {@code alivia.communications.push.firebase.credentials-json} (JSON or Base64),
  * then from {@code credentials-path}; with neither, the Google application default credentials
  * are used.</p>
  */
@@ -46,10 +47,23 @@ public class FirebaseConfiguration {
         return FirebaseMessaging.getInstance(firebaseApp);
     }
 
+    /** The service account as JSON, or the same JSON encoded in Base64 (easier to keep in one line). */
+    static byte[] decode(String credentials) {
+        String value = credentials.trim();
+        if (value.startsWith("{")) {
+            return value.getBytes(StandardCharsets.UTF_8);
+        }
+        try {
+            return Base64.getMimeDecoder().decode(value);
+        } catch (IllegalArgumentException e) {
+            return value.getBytes(StandardCharsets.UTF_8);
+        }
+    }
+
     static GoogleCredentials loadCredentials(String credentialsJson, String credentialsPath) {
         try {
             if (credentialsJson != null && !credentialsJson.isBlank()) {
-                try (InputStream in = new ByteArrayInputStream(credentialsJson.getBytes(StandardCharsets.UTF_8))) {
+                try (InputStream in = new ByteArrayInputStream(decode(credentialsJson))) {
                     return GoogleCredentials.fromStream(in);
                 }
             }
