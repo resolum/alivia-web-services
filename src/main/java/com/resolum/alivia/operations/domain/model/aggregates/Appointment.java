@@ -1,5 +1,6 @@
 package com.resolum.alivia.operations.domain.model.aggregates;
 
+import com.resolum.alivia.operations.domain.model.events.TechnicalOrderAssignedEvent;
 import com.resolum.alivia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
 import com.resolum.alivia.shared.domain.model.valueobjects.TimeRange;
 import com.resolum.alivia.operations.domain.exceptions.InstalledDeviceAlreadyRegistered;
@@ -171,6 +172,7 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> imp
         this.directions = directions == null || directions.isBlank() ? null : directions.trim();
         this.status = AppointmentStatus.SCHEDULED;
         record(technicianId, technicianName, AssignmentReason.BOOKED, null, bookedAt);
+        addDomainEvent(new TechnicalOrderAssignedEvent(this, TechnicalOrderAssignedEvent.Change.ASSIGNED));
     }
 
     /**
@@ -184,6 +186,7 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> imp
             throw new IllegalArgumentException("The technician is already responsible for this order.");
         }
         record(newTechnicianId, newTechnicianName, AssignmentReason.ASSIGNED, note, at);
+        addDomainEvent(new TechnicalOrderAssignedEvent(this, TechnicalOrderAssignedEvent.Change.ASSIGNED));
     }
 
     /**
@@ -199,10 +202,14 @@ public class Appointment extends AuditableAbstractAggregateRoot<Appointment> imp
         if (newTechnicianId.equals(technicianId) && slot.equals(slotId())) {
             throw new IllegalArgumentException("The reassignment must change the technician or the block.");
         }
+        var change = newTechnicianId.equals(technicianId)
+                ? TechnicalOrderAssignedEvent.Change.RESCHEDULED
+                : TechnicalOrderAssignedEvent.Change.ASSIGNED;
         this.scheduledDate = slot.date();
         this.startTime = slot.window().start();
         this.endTime = slot.window().end();
         record(newTechnicianId, newTechnicianName, AssignmentReason.REASSIGNED, reason, at);
+        addDomainEvent(new TechnicalOrderAssignedEvent(this, change));
     }
 
     /**
