@@ -1,4 +1,4 @@
-package com.resolum.alivia.communications.infrastructure.push;
+package com.resolum.alivia.communications.infrastructure.push.firebase;
 
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.messaging.FirebaseMessaging;

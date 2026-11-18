@@ -1,4 +1,4 @@
-package com.resolum.alivia.communications.infrastructure.push;
+package com.resolum.alivia.communications.infrastructure.push.firebase;
 
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;

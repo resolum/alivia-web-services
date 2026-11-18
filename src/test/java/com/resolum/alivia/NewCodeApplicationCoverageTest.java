@@ -44,7 +44,7 @@ class NewCodeApplicationCoverageTest {
             "com.resolum.alivia.communications.infrastructure.adapters.AlertRepositoryImpl",
             "com.resolum.alivia.communications.infrastructure.adapters.EmailRepositoryImpl",
             "com.resolum.alivia.communications.infrastructure.adapters.PushDeviceRepositoryImpl",
-            "com.resolum.alivia.communications.infrastructure.push.LoggingPushNotificationSender",
+            "com.resolum.alivia.communications.infrastructure.push.firebase.LoggingPushNotificationSender",
             "com.resolum.alivia.communications.interfaces.rest.advice.CommunicationsExceptionHandler",
             "com.resolum.alivia.profiles.application.acl.HouseholdAccessFacadeImpl",
             "com.resolum.alivia.profiles.application.acl.ProfilesContextFacadeImpl",

@@ -1,4 +1,4 @@
-package com.resolum.alivia.communications.infrastructure.push;
+package com.resolum.alivia.communications.infrastructure.push.firebase;
 
 import com.google.firebase.messaging.AndroidConfig;
 import com.google.firebase.messaging.AndroidNotification;

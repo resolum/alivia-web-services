@@ -1,4 +1,4 @@
-package com.resolum.alivia.communications.infrastructure.push;
+package com.resolum.alivia.communications.infrastructure.push.firebase;
 
 import com.resolum.alivia.communications.application.internal.outboundservices.push.PushNotificationSender;
 import com.resolum.alivia.communications.domain.model.valueobjects.PushPlatform;
