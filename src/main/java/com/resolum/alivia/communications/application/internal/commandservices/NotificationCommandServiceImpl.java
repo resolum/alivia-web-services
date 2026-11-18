@@ -80,7 +80,9 @@ public class NotificationCommandServiceImpl implements NotificationCommandServic
 
         for (PushDevice device : devices) {
             try {
-                boolean sent = pushSender.sendNotification(device.getToken(), device.getPlatform(), notification.getTitle(), notification.getBody(), data);
+                boolean sent = notification.getType().isUrgent()
+                        ? pushSender.sendHighPriorityAlert(device.getToken(), device.getPlatform(), notification.getTitle(), notification.getBody(), data)
+                        : pushSender.sendNotification(device.getToken(), device.getPlatform(), notification.getTitle(), notification.getBody(), data);
                 if (sent) {
                     anySuccess = true;
                 } else if (pushSender.isTokenInvalid(device.getToken())) {

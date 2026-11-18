@@ -13,5 +13,11 @@ public enum NotificationType {
     EDGE_RECONNECTED,
     ASSIGNMENT_CREATED,
     ORDER_RESCHEDULED,
-    CARE_ACTIVITY_REMINDER
+    CARE_ACTIVITY_REMINDER,
+    HELP_REQUESTED;
+
+    /** Types delivered as urgent alerts: high priority on the phone, on its alerts channel. */
+    public boolean isUrgent() {
+        return this == HELP_REQUESTED || this == ACTUATOR_FAILURE;
+    }
 }
