@@ -65,8 +65,7 @@ public class CareActivityReminderScheduler {
      * @return how many reminders were sent
      */
     public int remindDueActivities() {
-        Integer sent = transactions.execute(status -> remindDueActivitiesNow());
-        return sent == null ? 0 : sent;
+        return transactions.execute(status -> remindDueActivitiesNow());
     }
 
     private int remindDueActivitiesNow() {
