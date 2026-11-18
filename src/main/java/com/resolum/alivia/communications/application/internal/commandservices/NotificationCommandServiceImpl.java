@@ -15,6 +15,7 @@ import com.resolum.alivia.communications.domain.services.NotificationCommandServ
 import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -52,7 +53,12 @@ public class NotificationCommandServiceImpl implements NotificationCommandServic
         return saved.getId();
     }
 
+    /**
+     * Sends the push notification and keeps its delivery status. It runs in its own transaction because it is called
+     * after the notification's transaction committed, where joining that transaction would never save the status.
+     */
     @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void handle(SendPushNotificationCommand command) {
         Notification notification = notificationRepository.findById(command.notificationId())
                 .orElseThrow(() -> new NotificationNotFound(command.notificationId()));
