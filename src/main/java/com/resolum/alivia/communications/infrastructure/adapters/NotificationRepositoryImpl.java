@@ -2,6 +2,7 @@ package com.resolum.alivia.communications.infrastructure.adapters;
 
 import com.resolum.alivia.communications.domain.model.aggregates.Notification;
 import com.resolum.alivia.communications.domain.model.valueobjects.NotificationStatus;
+import com.resolum.alivia.communications.domain.model.valueobjects.NotificationType;
 import com.resolum.alivia.communications.domain.model.valueobjects.PushStatus;
 import com.resolum.alivia.communications.domain.repositories.NotificationRepository;
 import com.resolum.alivia.communications.infrastructure.persistence.jpa.repositories.NotificationJpaRepository;
@@ -43,5 +44,10 @@ public class NotificationRepositoryImpl implements NotificationRepository {
     @Override
     public List<Notification> findByPushStatusAndPushAttemptsLessThan(PushStatus pushStatus, Integer pushAttempts) {
         return jpaRepository.findByPushStatusAndPushAttemptsLessThan(pushStatus, pushAttempts);
+    }
+
+    @Override
+    public boolean existsByRecipientIdAndTypeAndSourceId(UserId recipientId, NotificationType type, String sourceId) {
+        return jpaRepository.existsByRecipientIdAndTypeAndSourceId(recipientId, type, sourceId);
     }
 }

@@ -70,6 +70,12 @@ public class HcmContextFacadeImpl implements HcmContextFacade {
                 .findFirst();
     }
 
+    @Override
+    public Optional<Long> fetchUserIdOfTechnician(Long employeeId) {
+        if (employeeId == null) return Optional.empty();
+        return employees.findById(employeeId).map(Employee::getUserId);
+    }
+
     private static Optional<WorkSchedule> scheduleOf(Employee employee, List<WorkSchedule> activeSchedules) {
         return activeSchedules.stream().filter(schedule -> schedule.getEmployeeId().equals(employee.getId())).findFirst();
     }

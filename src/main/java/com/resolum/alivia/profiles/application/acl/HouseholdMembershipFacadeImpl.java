@@ -53,6 +53,18 @@ public class HouseholdMembershipFacadeImpl implements HouseholdMembershipFacade 
         }
     }
 
+    @Override
+    public Optional<Set<Long>> fetchActivePrincipalUserIds(Long householdId) {
+        try {
+            return Optional.of(householdQueryService.handle(new GetHouseholdMembersQuery(householdId)).stream()
+                    .filter(member -> member.isActive() && member.getResponsibility() == HouseholdResponsibility.PRINCIPAL)
+                    .map(member -> member.getUserId().userId())
+                    .collect(Collectors.toUnmodifiableSet()));
+        } catch (HouseholdNotFoundException exception) {
+            return Optional.empty();
+        }
+    }
+
     /**
      * {@inheritDoc}
      */

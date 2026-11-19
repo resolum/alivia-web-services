@@ -122,6 +122,12 @@
             <artifactId>pluralize</artifactId>
             <version>1.0.0</version>
         </dependency>
+        <!-- Firebase Admin SDK: sends push notifications through Firebase Cloud Messaging. -->
+        <dependency>
+            <groupId>com.google.firebase</groupId>
+            <artifactId>firebase-admin</artifactId>
+            <version>9.8.0</version>
+        </dependency>
         <dependency>
             <groupId>com.stripe</groupId>
             <artifactId>stripe-java</artifactId>

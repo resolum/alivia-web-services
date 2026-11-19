@@ -21,6 +21,14 @@ public interface HouseholdMembershipFacade {
     Optional<Set<Long>> fetchActiveMemberUserIds(Long householdId);
 
     /**
+     * Lists the users with an active {@code PRINCIPAL} membership: the relatives in charge of the household.
+     *
+     * @param householdId the household identifier
+     * @return the user identifiers, or empty when the household does not exist
+     */
+    Optional<Set<Long>> fetchActivePrincipalUserIds(Long householdId);
+
+    /**
      * Adds a user to the household as an active member.
      *
      * @param householdId    the household identifier
