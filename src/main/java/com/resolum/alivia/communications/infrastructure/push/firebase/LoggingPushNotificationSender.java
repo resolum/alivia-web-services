@@ -1,16 +1,17 @@
-package com.resolum.alivia.communications.infrastructure.push;
+package com.resolum.alivia.communications.infrastructure.push.firebase;
 
 import com.resolum.alivia.communications.application.internal.outboundservices.push.PushNotificationSender;
 import com.resolum.alivia.communications.domain.model.valueobjects.PushPlatform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
+/** Writes push notifications to the log; the default when no push provider is configured. */
 @Component
-@ConditionalOnMissingBean(type = "com.resolum.alivia.communications.infrastructure.push.FirebasePushNotificationSender")
+@ConditionalOnProperty(prefix = "alivia.communications.push", name = "provider", havingValue = "log", matchIfMissing = true)
 public class LoggingPushNotificationSender implements PushNotificationSender {
 
     private static final Logger log = LoggerFactory.getLogger(LoggingPushNotificationSender.class);

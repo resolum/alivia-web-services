@@ -26,4 +26,8 @@ public class ExternalHcmService {
     public Optional<Long> fetchTechnicianIdOfUser(Long userId) {
         return hcmContextFacade.fetchTechnicianIdOfUser(userId);
     }
+
+    public Optional<Long> fetchUserIdOfTechnician(Long technicianId) {
+        return hcmContextFacade.fetchUserIdOfTechnician(technicianId);
+    }
 }

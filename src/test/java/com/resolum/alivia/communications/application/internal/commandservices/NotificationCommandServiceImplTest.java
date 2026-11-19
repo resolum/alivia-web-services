@@ -79,6 +79,21 @@ class NotificationCommandServiceImplTest {
     }
 
     @Test
+    void handleSendPushNotificationSendsAHelpRequestAsAnUrgentAlert() {
+        Notification notification = new Notification(new UserId(10L), NotificationType.HELP_REQUESTED, "edge-1",
+                "Solicitud de asistencia", "Tu familiar pidió ayuda desde casa.");
+        when(notificationRepository.findById(2L)).thenReturn(Optional.of(notification));
+        when(pushDeviceRepository.findByUserId(new UserId(10L))).thenReturn(List.of(
+                new PushDevice(new UserId(10L), "token-1", PushPlatform.ANDROID)));
+        when(pushSender.sendHighPriorityAlert(any(), any(), any(), any(), any())).thenReturn(true);
+
+        service.handle(new SendPushNotificationCommand(2L));
+
+        assertEquals(PushStatus.SENT, notification.getPushStatus());
+        verify(pushSender).sendHighPriorityAlert(any(), any(), any(), any(), any());
+    }
+
+    @Test
     void handleMarkNotificationAsReadUpdatesStatus() {
         Notification notification = new Notification(
                 new UserId(10L),

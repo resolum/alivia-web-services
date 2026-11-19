@@ -109,6 +109,19 @@ class HouseholdMembershipTest {
     }
 
     @Test
+    @DisplayName("Facade lists only the active relatives in charge")
+    void facadeListsActivePrincipalsOnly() {
+        var household = household(10L);
+        household.addMember(new UserId(11L), HouseholdResponsibility.CAREGIVER);
+        household.addMember(new UserId(13L), HouseholdResponsibility.PRINCIPAL).revoke();
+        when(householdRepository.findById(1L)).thenReturn(Optional.of(household));
+        when(householdRepository.findById(2L)).thenReturn(Optional.empty());
+
+        assertEquals(Optional.of(Set.of(10L)), facade.fetchActivePrincipalUserIds(1L));
+        assertEquals(Optional.empty(), facade.fetchActivePrincipalUserIds(2L));
+    }
+
+    @Test
     @DisplayName("Facade adds a member by responsibility name and answers false when it already belongs")
     void facadeAddsMemberAndReportsDuplicates() {
         var household = household(10L);

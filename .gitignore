@@ -46,3 +46,8 @@ build/
 *.tfvars
 tfplan
 crash.log
+
+### Firebase ###
+# Service account keys of the Firebase project are secrets: supply them as files outside the repository or env vars.
+*firebase-adminsdk*.json
+firebase-service-account*.json

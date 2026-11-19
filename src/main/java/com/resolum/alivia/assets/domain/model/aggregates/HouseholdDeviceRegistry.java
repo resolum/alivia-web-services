@@ -222,6 +222,11 @@ public class HouseholdDeviceRegistry extends AuditableAbstractAggregateRoot<Hous
         return entries.stream().filter(DeviceAssignment::isActive);
     }
 
+    /** The active placement of a device in this household, when it has one. */
+    public Optional<DeviceAssignment> activeAssignmentOf(Long deviceId) {
+        return deviceId == null ? Optional.empty() : activeEntryOf(deviceId);
+    }
+
     private Optional<DeviceAssignment> activeEntryOf(Long deviceId) {
         return activeEntries().filter(entry -> entry.getDevice().getId().equals(deviceId)).findFirst();
     }

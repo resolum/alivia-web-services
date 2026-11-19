@@ -35,4 +35,12 @@ public interface HcmContextFacade {
      * @return the employee identifier, or empty when the account is not an active technician
      */
     Optional<Long> fetchTechnicianIdOfUser(Long userId);
+
+    /**
+     * IAM user of the technician that Operations stores in an order, to notify them.
+     *
+     * @param employeeId the employee identifier
+     * @return the user identifier, or empty when the employee does not exist
+     */
+    Optional<Long> fetchUserIdOfTechnician(Long employeeId);
 }
