@@ -1,11 +1,15 @@
 package com.resolum.alivia.subscriptions.interfaces.rest.controllers;
 
+import com.resolum.alivia.iam.interfaces.acl.IamContextFacade;
+import com.resolum.alivia.profiles.interfaces.acl.ProfilesContextFacade;
+import com.resolum.alivia.subscriptions.domain.model.aggregates.Subscription;
 import com.resolum.alivia.subscriptions.domain.model.commands.RequestPlanChangeCommand;
 import com.resolum.alivia.subscriptions.domain.model.commands.UpdateSubscriptionStatusCommand;
 import com.resolum.alivia.subscriptions.domain.model.queries.GetActiveSubscriptionByUserIdQuery;
 import com.resolum.alivia.subscriptions.domain.model.valueobjects.SubscriptionStatus;
 import com.resolum.alivia.subscriptions.domain.services.SubscriptionCommandService;
 import com.resolum.alivia.subscriptions.domain.services.SubscriptionQueryService;
+import com.resolum.alivia.subscriptions.infrastructure.persistence.jpa.repositories.ConfigurationDraftRepository;
 import com.resolum.alivia.subscriptions.infrastructure.persistence.jpa.repositories.PaymentRepository;
 import com.resolum.alivia.subscriptions.interfaces.rest.resources.ChangeSubscriptionStatusResource;
 import com.resolum.alivia.subscriptions.interfaces.rest.resources.RequestPlanChangeResource;
@@ -14,11 +18,13 @@ import com.resolum.alivia.subscriptions.interfaces.rest.transform.SubscriptionRe
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
 import java.util.Map;
+import java.util.Set;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
@@ -30,13 +36,29 @@ public class SubscriptionsController {
     private final SubscriptionQueryService queryService;
     private final SubscriptionCommandService commandService;
     private final PaymentRepository paymentRepository;
+    private final IamContextFacade iamContextFacade;
+    private final ProfilesContextFacade profilesContextFacade;
+    private final ConfigurationDraftRepository configurationDraftRepository;
 
     public SubscriptionsController(SubscriptionQueryService queryService,
-                                  SubscriptionCommandService commandService,
-                                  PaymentRepository paymentRepository) {
+                                   SubscriptionCommandService commandService,
+                                   PaymentRepository paymentRepository) {
+        this(queryService, commandService, paymentRepository, null, null, null);
+    }
+
+    @Autowired
+    public SubscriptionsController(SubscriptionQueryService queryService,
+                                   SubscriptionCommandService commandService,
+                                   PaymentRepository paymentRepository,
+                                   IamContextFacade iamContextFacade,
+                                   ProfilesContextFacade profilesContextFacade,
+                                   ConfigurationDraftRepository configurationDraftRepository) {
         this.queryService = queryService;
         this.commandService = commandService;
         this.paymentRepository = paymentRepository;
+        this.iamContextFacade = iamContextFacade;
+        this.profilesContextFacade = profilesContextFacade;
+        this.configurationDraftRepository = configurationDraftRepository;
     }
 
     private Long resolveUserId(Principal principal) {
@@ -49,6 +71,38 @@ public class SubscriptionsController {
         return 1L;
     }
 
+    private String resolveHolderName(Long userId) {
+        if (userId == null || iamContextFacade == null || profilesContextFacade == null) {
+            return null;
+        }
+        try {
+            var profileIds = iamContextFacade.fetchPersonProfileIdsByUserIds(Set.of(userId));
+            Long profileId = profileIds.get(userId);
+            if (profileId == null) {
+                return null;
+            }
+            return profilesContextFacade.fetchPersonProfileFullNameById(profileId).orElse(null);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private Integer resolveRoomsCount(Subscription subscription) {
+        if (subscription == null || subscription.getDraftId() == null || configurationDraftRepository == null) {
+            return null;
+        }
+        return configurationDraftRepository.findById(subscription.getDraftId())
+                .map(draft -> draft.getRooms() != null ? draft.getRooms().size() : null)
+                .orElse(null);
+    }
+
+    private SubscriptionResource buildResource(Subscription subscription, Long userId) {
+        var payment = paymentRepository.findFirstBySubscription_IdOrderByIdDesc(subscription.getId()).orElse(null);
+        String holderName = resolveHolderName(userId);
+        Integer roomsCount = resolveRoomsCount(subscription);
+        return SubscriptionResourceAssembler.toResource(subscription, payment, holderName, roomsCount);
+    }
+
     @GetMapping("/current")
     @Operation(summary = "Get the active running subscription of the current user")
     public ResponseEntity<SubscriptionResource> getCurrent(Principal principal) {
@@ -57,9 +111,7 @@ public class SubscriptionsController {
         if (subscriptionOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
-        var subscription = subscriptionOpt.get();
-        var payment = paymentRepository.findFirstBySubscription_IdOrderByIdDesc(subscription.getId()).orElse(null);
-        return ResponseEntity.ok(SubscriptionResourceAssembler.toResource(subscription, payment));
+        return ResponseEntity.ok(buildResource(subscriptionOpt.get(), userId));
     }
 
     @PutMapping("/{id}/status")
@@ -76,8 +128,7 @@ public class SubscriptionsController {
             default -> throw new IllegalArgumentException("Unknown subscription status: " + resource.status());
         };
         var updated = commandService.handle(new UpdateSubscriptionStatusCommand(id, userId, targetStatus));
-        var payment = paymentRepository.findFirstBySubscription_IdOrderByIdDesc(updated.getId()).orElse(null);
-        return ResponseEntity.ok(SubscriptionResourceAssembler.toResource(updated, payment));
+        return ResponseEntity.ok(buildResource(updated, userId));
     }
 
     @PostMapping("/{id}/plan-change")
@@ -88,8 +139,7 @@ public class SubscriptionsController {
             Principal principal) {
         Long userId = resolveUserId(principal);
         var updated = commandService.handle(new RequestPlanChangeCommand(id, userId, resource.planCode()));
-        var payment = paymentRepository.findFirstBySubscription_IdOrderByIdDesc(updated.getId()).orElse(null);
-        return ResponseEntity.ok(SubscriptionResourceAssembler.toResource(updated, payment));
+        return ResponseEntity.ok(buildResource(updated, userId));
     }
 
     @GetMapping("/{id}/receipt")

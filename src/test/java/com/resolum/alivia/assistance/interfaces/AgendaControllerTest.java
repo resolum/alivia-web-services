@@ -12,7 +12,14 @@ import com.resolum.alivia.assistance.domain.repositories.AssistedPersonRepositor
 import com.resolum.alivia.assistance.domain.repositories.CareActivityRepository;
 import com.resolum.alivia.assistance.domain.repositories.CaregiverRepository;
 import com.resolum.alivia.assistance.domain.repositories.RelativeRepository;
+import com.resolum.alivia.assistance.domain.model.queries.GetAllAssistedPersonsQuery;
+import com.resolum.alivia.assistance.domain.model.queries.GetAssistedPersonsByRelativeIdQuery;
+import com.resolum.alivia.assistance.domain.model.queries.GetCaregiversByUserIdQuery;
+import com.resolum.alivia.assistance.domain.model.queries.GetRelativeByUserIdQuery;
+import com.resolum.alivia.assistance.domain.services.AssistedPersonQueryService;
 import com.resolum.alivia.assistance.domain.services.CareActivityQueryService;
+import com.resolum.alivia.assistance.domain.services.CaregiverQueryService;
+import com.resolum.alivia.assistance.domain.services.RelativeQueryService;
 import com.resolum.alivia.assistance.interfaces.rest.controllers.AgendaController;
 import com.resolum.alivia.shared.domain.model.valueobjects.PersonProfileId;
 import com.resolum.alivia.shared.domain.model.valueobjects.TimeRange;
@@ -40,10 +47,9 @@ class AgendaControllerTest {
     private final LocalDate from = LocalDate.of(2026, 11, 10);
     private final LocalDate to = from.plusDays(1);
     private CareActivityQueryService queries;
-    private CareActivityRepository activities;
-    private AssistedPersonRepository persons;
-    private RelativeRepository relatives;
-    private CaregiverRepository caregivers;
+    private RelativeQueryService relativeQueryService;
+    private AssistedPersonQueryService assistedPersonQueryService;
+    private CaregiverQueryService caregiverQueryService;
     private AgendaController controller;
     private Relative relative;
     private AssistedPerson person;
@@ -51,11 +57,10 @@ class AgendaControllerTest {
     @BeforeEach
     void setUp() {
         queries = mock(CareActivityQueryService.class);
-        activities = mock(CareActivityRepository.class);
-        persons = mock(AssistedPersonRepository.class);
-        relatives = mock(RelativeRepository.class);
-        caregivers = mock(CaregiverRepository.class);
-        controller = new AgendaController(queries, activities, persons, relatives, caregivers);
+        relativeQueryService = mock(RelativeQueryService.class);
+        assistedPersonQueryService = mock(AssistedPersonQueryService.class);
+        caregiverQueryService = mock(CaregiverQueryService.class);
+        controller = new AgendaController(queries, relativeQueryService, assistedPersonQueryService, caregiverQueryService);
         relative = relative(1L);
         person = assistedPerson(2L, relative);
     }
@@ -95,8 +100,8 @@ class AgendaControllerTest {
 
     @Test
     void resolvesTheAgendaOfARelativeCaller() {
-        when(relatives.findByUserId(new UserId(1L))).thenReturn(Optional.of(relative));
-        when(persons.findAllByRelativeId(1L)).thenReturn(List.of(person));
+        when(relativeQueryService.handle(new GetRelativeByUserIdQuery(1L))).thenReturn(Optional.of(relative));
+        when(assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(1L))).thenReturn(List.of(person));
         when(queries.handle(new GetAgendaByAssistedPersonIdQuery(2L, from, to)))
                 .thenReturn(List.of(item(8, CareActivityType.THERAPY, OccurrenceStatus.SCHEDULED, null)));
 
@@ -106,8 +111,8 @@ class AgendaControllerTest {
 
     @Test
     void resolvesTheAgendaOfACaregiverCaller() {
-        when(relatives.findByUserId(new UserId(6L))).thenReturn(Optional.empty());
-        when(caregivers.findAllByUserId(new UserId(6L))).thenReturn(List.of(caregiver(3L, 6L, person)));
+        when(relativeQueryService.handle(new GetRelativeByUserIdQuery(6L))).thenReturn(Optional.empty());
+        when(caregiverQueryService.handle(new GetCaregiversByUserIdQuery(6L))).thenReturn(List.of(caregiver(3L, 6L, person)));
         when(queries.handle(new GetAgendaByCaregiverIdQuery(3L, from, to)))
                 .thenReturn(List.of(item(8, CareActivityType.HYGIENE, OccurrenceStatus.SCHEDULED, 3L)));
 
@@ -116,7 +121,7 @@ class AgendaControllerTest {
 
     @Test
     void fallsBackToEveryActiveActivityWhenTheCallerHasNothing() {
-        when(activities.findAllActive()).thenReturn(List.of(activity(5L, person, null), activity(6L, person, null)));
+        when(assistedPersonQueryService.handle(any(GetAllAssistedPersonsQuery.class))).thenReturn(List.of(person));
         when(queries.handle(any(GetAgendaByAssistedPersonIdQuery.class)))
                 .thenReturn(List.of(item(8, CareActivityType.APPOINTMENT, OccurrenceStatus.SCHEDULED, null)));
 

@@ -9,5 +9,18 @@ public record InvitationResource(
         String inviteeEmail,
         Long caregiverUserId,
         String status,
-        LocalDateTime expiresAt
-) {}
+        LocalDateTime expiresAt,
+        Boolean isNewUser
+) {
+    public InvitationResource(
+            Long id,
+            Long assistedPersonId,
+            Long inviterId,
+            String inviteeEmail,
+            Long caregiverUserId,
+            String status,
+            LocalDateTime expiresAt
+    ) {
+        this(id, assistedPersonId, inviterId, inviteeEmail, caregiverUserId, status, expiresAt, null);
+    }
+}
