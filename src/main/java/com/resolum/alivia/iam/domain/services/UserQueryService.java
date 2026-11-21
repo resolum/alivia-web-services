@@ -2,7 +2,10 @@ package com.resolum.alivia.iam.domain.services;
 
 import com.resolum.alivia.iam.domain.model.aggregates.User;
 import com.resolum.alivia.iam.domain.model.queries.GetUserByAccountIdQuery;
+import com.resolum.alivia.iam.domain.model.queries.GetUsersByBusinessIdQuery;
+import com.resolum.alivia.iam.domain.model.valueobjects.UserAccount;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -17,4 +20,9 @@ public interface UserQueryService {
      * @return the matching user, or empty when none exists
      */
     Optional<User> handle(GetUserByAccountIdQuery query);
+
+    /**
+     * Lists the accounts of a business's employees with their full names.
+     */
+    List<UserAccount> handle(GetUsersByBusinessIdQuery query);
 }

@@ -1,6 +1,8 @@
 package com.resolum.alivia.iam.domain.services;
 
 import com.resolum.alivia.iam.domain.model.aggregates.User;
+import com.resolum.alivia.iam.domain.model.commands.AssignAccessRoleCommand;
+import com.resolum.alivia.iam.domain.model.commands.RevokeAccessRoleCommand;
 import com.resolum.alivia.iam.domain.model.commands.RefreshSessionCommand;
 import com.resolum.alivia.iam.domain.model.commands.ResendVerificationCommand;
 import com.resolum.alivia.iam.domain.model.commands.SignInCommand;
@@ -59,4 +61,19 @@ public interface UserCommandService {
      * @param command the sign-out command
      */
     void handle(SignOutCommand command);
+
+    /**
+     * Grants a role to a user. Granting a role it already has changes nothing.
+     *
+     * @throws com.resolum.alivia.iam.domain.exceptions.AccountNotFoundException if the user does not exist
+     * @throws com.resolum.alivia.iam.domain.exceptions.RolesIncompatibleException if the role clashes with one it has
+     */
+    User handle(AssignAccessRoleCommand command);
+
+    /**
+     * Revokes one role of a user; the other roles stay.
+     *
+     * @throws com.resolum.alivia.iam.domain.exceptions.AccountNotFoundException if the user does not exist
+     */
+    User handle(RevokeAccessRoleCommand command);
 }

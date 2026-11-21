@@ -211,10 +211,10 @@ class IamContextFacadeImplTest {
         var caregiver = mock(User.class);
         when(caregiver.getId()).thenReturn(7L);
         when(caregiver.getProfileId()).thenReturn(15L);
-        when(caregiver.getAccessRole()).thenReturn(AccessRole.CAREGIVER);
+        when(caregiver.hasRole(AccessRole.CAREGIVER)).thenReturn(true);
         var technician = mock(User.class);
         when(technician.getProfileId()).thenReturn(30L);
-        when(technician.getAccessRole()).thenReturn(AccessRole.TECHNICIAN);
+        when(technician.hasRole(AccessRole.TECHNICIAN)).thenReturn(true);
         var withoutProfile = mock(User.class);
         when(userRepository.findAllByIds(Set.of(7L, 8L, 9L))).thenReturn(List.of(caregiver, technician, withoutProfile));
 
@@ -227,10 +227,10 @@ class IamContextFacadeImplTest {
         var technician = mock(User.class);
         when(technician.getId()).thenReturn(8L);
         when(technician.getProfileId()).thenReturn(40L);
-        when(technician.getAccessRole()).thenReturn(AccessRole.TECHNICIAN);
+        when(technician.hasRole(AccessRole.TECHNICIAN)).thenReturn(true);
         var caregiver = mock(User.class);
         when(caregiver.getProfileId()).thenReturn(15L);
-        when(caregiver.getAccessRole()).thenReturn(AccessRole.CAREGIVER);
+        when(caregiver.hasRole(AccessRole.CAREGIVER)).thenReturn(true);
         when(userRepository.findAllByIds(Set.of(7L, 8L))).thenReturn(List.of(caregiver, technician));
 
         assertEquals(Map.of(8L, 40L), facade.fetchStaffProfileIdsByUserIds(Set.of(7L, 8L)));

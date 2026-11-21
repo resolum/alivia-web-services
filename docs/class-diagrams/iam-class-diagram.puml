@@ -48,7 +48,7 @@ package "Model" #FFFDE7 {
     class User <<aggregate root>> {
       - email: EmailAddress
       - password: PasswordHash
-      - accessRole: AccessRole
+      - roles: Set<AccessRole>
       - status: UserStatus
       - emailVerified: Boolean
       - failedAccessAttempts: Integer
@@ -61,7 +61,11 @@ package "Model" #FFFDE7 {
 
       + verifyEmail(): void
       + changePassword(password: PasswordHash): void
+      + getAccessRole(): AccessRole
+      + getRoles(): Set<AccessRole>
+      + hasRole(role: AccessRole): Boolean
       + assignAccessRole(accessRole: AccessRole): void
+      + revokeAccessRole(accessRole: AccessRole): void
       + registerFailedAccess(): void
       + resetFailedAccessAttempts(): void
       + activate(): void
@@ -103,6 +107,13 @@ package "Model" #FFFDE7 {
       TECHNICIAN
       SUBSCRIPTION_MANAGER
       ASSISTED_PERSON
+      CLEANING
+      RELATIVE
+    }
+
+    class UserAccount <<value object>> {
+      - user: User
+      - fullName: String
     }
 
     enum UserStatus {
@@ -182,6 +193,11 @@ package "Model" #FFFDE7 {
       accessRole: AccessRole
     }
 
+    record RevokeAccessRoleCommand {
+      userId: Long
+      accessRole: AccessRole
+    }
+
     record ChangeUserStatusCommand {
       userId: Long
       status: UserStatus
@@ -198,6 +214,10 @@ package "Model" #FFFDE7 {
     }
 
     record GetAllUsersQuery
+
+    record GetUsersByBusinessIdQuery {
+      businessId: Long
+    }
   }
 }
 
@@ -213,14 +233,26 @@ package "Services" #FCE4EC {
     + handle(command: ChangePasswordCommand): void
     + handle(command: CreateEmployeeAccessCommand): User
     + handle(command: SetInitialPasswordCommand): void
-    + handle(command: AssignAccessRoleCommand): void
+    + handle(command: AssignAccessRoleCommand): User
+    + handle(command: RevokeAccessRoleCommand): User
     + handle(command: ChangeUserStatusCommand): void
+  }
+
+  class RoleParser <<domain service>> {
+    + {static} parse(roleStr: String): AccessRole
+    + {static} toApiName(role: AccessRole): String
+    + {static} parseAssignable(apiName: String): Optional<AccessRole>
+  }
+
+  class RoleCompatibilityPolicy <<domain service>> {
+    + {static} areCompatible(first: AccessRole, second: AccessRole): Boolean
   }
 
   interface UserQueryService {
     + handle(query: GetUserByIdQuery): Optional<User>
     + handle(query: GetUserByEmailQuery): Optional<User>
     + handle(query: GetAllUsersQuery): List<User>
+    + handle(query: GetUsersByBusinessIdQuery): List<UserAccount>
   }
 }
 
@@ -231,6 +263,7 @@ package "Interfaces" #E1BEE7 {
       + signUpUser(email: String, password: String, fullName: String, phoneNumber: String, role: String, businessId: Long, familiarId: Long): Long
       + registerUser(email: String, password: String, fullName: String, phoneNumber: String, role: String): Long
       + registerCompanyUser(email: String, password: String, fullName: String, phoneNumber: String, role: String, businessId: Long): Long
+      + replaceAccessRole(userId: Long, previous: String, next: String): void
       + registerAssistedPerson(email: String, password: String, fullName: String, phoneNumber: String, familiarId: Long): Long
     }
   }
@@ -246,7 +279,11 @@ User --|> AuditableAbstractAggregateRoot : inherits
 
 User *-- EmailAddress : email
 User *-- PasswordHash : password
-User --> AccessRole : authorized as
+User --> "1..*" AccessRole : authorized as
+UserAccount --> User
+User ..> RoleCompatibilityPolicy : checks roles
+RoleParser ..> AccessRole
+RoleCompatibilityPolicy ..> AccessRole
 User --> UserStatus : has status
 
 ' =====================================================
@@ -256,6 +293,7 @@ User --> UserStatus : has status
 RequestPasswordRecoveryCommand --> RecoveryChannel
 CreateEmployeeAccessCommand --> AccessRole
 AssignAccessRoleCommand --> AccessRole
+RevokeAccessRoleCommand --> AccessRole
 ChangeUserStatusCommand --> UserStatus
 
 ' =====================================================
@@ -275,6 +313,7 @@ UserCommandService ..> ChangePasswordCommand
 UserCommandService ..> CreateEmployeeAccessCommand
 UserCommandService ..> SetInitialPasswordCommand
 UserCommandService ..> AssignAccessRoleCommand
+UserCommandService ..> RevokeAccessRoleCommand
 UserCommandService ..> ChangeUserStatusCommand
 
 ' =====================================================
@@ -286,6 +325,18 @@ UserQueryService ..> User
 UserQueryService ..> GetUserByIdQuery
 UserQueryService ..> GetUserByEmailQuery
 UserQueryService ..> GetAllUsersQuery
+UserQueryService ..> GetUsersByBusinessIdQuery
+UserQueryService ..> UserAccount
+
+note right of RoleCompatibilityPolicy
+  Incompatible pairs (409 roles_incompatible),
+  same rules as user-role.entity.ts in the front:
+  - TECHNICIAN with SUBSCRIPTION_MANAGER
+  - staff (ADMINISTRATOR, TECHNICIAN,
+    SUBSCRIPTION_MANAGER, CLEANING) with household
+    (RELATIVE, CAREGIVER, ASSISTED_PERSON)
+  API names: ADMINISTRATOR=ADMIN, TECHNICIAN=TECH
+end note
 
 legend right
 |= Color |= Layer |
