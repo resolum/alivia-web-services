@@ -4,7 +4,7 @@ import com.resolum.alivia.subscriptions.domain.model.aggregates.Payment;
 import com.resolum.alivia.subscriptions.domain.model.aggregates.Subscription;
 import com.resolum.alivia.subscriptions.interfaces.rest.resources.SubscriptionResource;
 
-import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 
 public class SubscriptionResourceAssembler {
@@ -12,6 +12,10 @@ public class SubscriptionResourceAssembler {
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     public static SubscriptionResource toResource(Subscription s, Payment p) {
+        return toResource(s, p, null, null);
+    }
+
+    public static SubscriptionResource toResource(Subscription s, Payment p, String holderName, Integer roomsCount) {
         if (s == null) return null;
 
         String statusStr = switch (s.getStatus()) {
@@ -22,25 +26,41 @@ public class SubscriptionResourceAssembler {
         };
 
         String planCode = s.getPlan() != null ? s.getPlan().getCode().name() : "MINIMUM";
-        String planName = "MINIMUM".equals(planCode) ? "Plan Base" : "Plan Personalizado";
+        String planName = s.getPlan() != null && s.getPlan().getName() != null && !s.getPlan().getName().isBlank()
+                ? s.getPlan().getName()
+                : ("MINIMUM".equals(planCode) ? "Plan Base" : "Plan Personalizado");
+
+        String currency = s.getCurrency() == null || "PEN".equalsIgnoreCase(s.getCurrency())
+                ? "S/"
+                : s.getCurrency();
 
         String startedOn = s.getCurrentPeriod() != null && s.getCurrentPeriod().start() != null
                 ? s.getCurrentPeriod().start().format(DATE_FORMAT)
-                : "2024-10-15";
+                : LocalDate.now().format(DATE_FORMAT);
         String renewsOn = s.getCurrentPeriod() != null && s.getCurrentPeriod().end() != null
                 ? s.getCurrentPeriod().end().format(DATE_FORMAT)
-                : "2024-11-15";
+                : LocalDate.now().plusMonths(1).format(DATE_FORMAT);
 
-        int totalDevices = s.getActuators() != null
-                ? s.getActuators().values().stream().mapToInt(Integer::intValue).sum() + 2
-                : 5;
-        int roomsCount = 2;
+        int totalDevices = s.getActuators() != null && !s.getActuators().isEmpty()
+                ? s.getActuators().values().stream().mapToInt(Integer::intValue).sum()
+                : (s.getPlan() != null ? s.getPlan().getMinActuators() : 0);
+        int resolvedRooms = roomsCount != null && roomsCount > 0
+                ? roomsCount
+                : (s.getPlan() != null && s.getPlan().getMinimumRooms() > 0 ? s.getPlan().getMinimumRooms() : 1);
+
+        String resolvedHolder = holderName != null && !holderName.isBlank()
+                ? holderName
+                : "Titular de la cuenta";
+        String brand = s.getStripeCustomerId() != null && !s.getStripeCustomerId().isBlank()
+                ? "Stripe"
+                : "Tarjeta";
+        boolean autoCharge = s.getStripeSubscriptionId() != null && !s.getStripeSubscriptionId().isBlank();
 
         var paymentMethod = new SubscriptionResource.PaymentMethodResource(
-                "VISA",
-                "4242",
-                "María Elena Villanueva C.",
-                true
+                brand,
+                "••••",
+                resolvedHolder,
+                autoCharge
         );
 
         SubscriptionResource.SubscriptionPaymentResource lastPayment = null;
@@ -55,14 +75,6 @@ public class SubscriptionResourceAssembler {
                     p.isSucceeded() ? "paid" : "failed",
                     p.getReceiptUrl()
             );
-        } else {
-            lastPayment = new SubscriptionResource.SubscriptionPaymentResource(
-                    "pay-sample",
-                    s.getMonthlyAmount() != null ? s.getMonthlyAmount() : new BigDecimal("99.00"),
-                    startedOn,
-                    "paid",
-                    null
-            );
         }
 
         return new SubscriptionResource(
@@ -70,11 +82,11 @@ public class SubscriptionResourceAssembler {
                 statusStr,
                 planCode,
                 planName,
-                "S/",
+                currency,
                 s.getMonthlyAmount(),
                 startedOn,
                 renewsOn,
-                roomsCount,
+                resolvedRooms,
                 totalDevices,
                 paymentMethod,
                 lastPayment,

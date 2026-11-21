@@ -6,13 +6,17 @@ import com.resolum.alivia.assistance.domain.model.commands.AcceptInvitationComma
 import com.resolum.alivia.assistance.domain.model.commands.CreateInvitationCommand;
 import com.resolum.alivia.assistance.domain.model.commands.ResendInvitationCommand;
 import com.resolum.alivia.assistance.domain.model.commands.RevokeInvitationCommand;
+import com.resolum.alivia.assistance.domain.model.queries.GetAllAssistedPersonsQuery;
+import com.resolum.alivia.assistance.domain.model.queries.GetAssistedPersonsByRelativeIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetInvitationByIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetInvitationsByAssistedPersonIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetPendingInvitationsByCaregiverUserIdQuery;
-import com.resolum.alivia.assistance.domain.repositories.AssistedPersonRepository;
-import com.resolum.alivia.assistance.domain.repositories.RelativeRepository;
+import com.resolum.alivia.assistance.domain.model.queries.GetRelativeByIdQuery;
+import com.resolum.alivia.assistance.domain.model.queries.GetRelativeByUserIdQuery;
+import com.resolum.alivia.assistance.domain.services.AssistedPersonQueryService;
 import com.resolum.alivia.assistance.domain.services.InvitationCommandService;
 import com.resolum.alivia.assistance.domain.services.InvitationQueryService;
+import com.resolum.alivia.assistance.domain.services.RelativeQueryService;
 import com.resolum.alivia.assistance.interfaces.rest.controllers.InvitationsController;
 import com.resolum.alivia.assistance.interfaces.rest.resources.AcceptInvitationResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.CreateInvitationResource;
@@ -37,8 +41,8 @@ class InvitationsControllerTest {
 
     private InvitationCommandService commands;
     private InvitationQueryService queries;
-    private RelativeRepository relatives;
-    private AssistedPersonRepository persons;
+    private RelativeQueryService relativeQueryService;
+    private AssistedPersonQueryService assistedPersonQueryService;
     private InvitationsController controller;
     private Relative relative;
     private AssistedPerson person;
@@ -47,21 +51,23 @@ class InvitationsControllerTest {
     void setUp() {
         commands = mock(InvitationCommandService.class);
         queries = mock(InvitationQueryService.class);
-        relatives = mock(RelativeRepository.class);
-        persons = mock(AssistedPersonRepository.class);
-        controller = new InvitationsController(commands, queries, relatives, persons);
+        relativeQueryService = mock(RelativeQueryService.class);
+        assistedPersonQueryService = mock(AssistedPersonQueryService.class);
+        controller = new InvitationsController(commands, queries, relativeQueryService, assistedPersonQueryService);
         relative = relative(4L);
         person = assistedPerson(8L, relative);
         when(commands.handle(any(CreateInvitationCommand.class))).thenReturn(10L);
         when(commands.handle(any(AcceptInvitationCommand.class))).thenReturn(11L);
         when(commands.handle(any(RevokeInvitationCommand.class))).thenReturn(12L);
         when(commands.handle(any(ResendInvitationCommand.class))).thenReturn(13L);
+        when(relativeQueryService.handle(new GetRelativeByIdQuery(1L))).thenReturn(Optional.of(relative(1L)));
+        when(relativeQueryService.handle(new GetRelativeByIdQuery(2L))).thenReturn(Optional.of(relative(2L)));
     }
 
     @Test
     void createResolvesTheRelativeAndAssistedPersonFromTheCaller() {
-        when(relatives.findByUserId(new UserId(4L))).thenReturn(Optional.of(relative));
-        when(persons.findAllByRelativeId(4L)).thenReturn(List.of(person));
+        when(relativeQueryService.handle(new GetRelativeByUserIdQuery(4L))).thenReturn(Optional.of(relative));
+        when(assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(4L))).thenReturn(List.of(person));
 
         var response = controller.createInvitation(principal("4"), new CreateInvitationResource(null, null, "c@mail.com"));
 
@@ -71,7 +77,7 @@ class InvitationsControllerTest {
 
     @Test
     void createFallsBackToDefaultsWhenTheCallerCannotBeResolved() {
-        when(persons.findAllByRelativeId(1L)).thenReturn(List.of());
+        when(assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(1L))).thenReturn(List.of());
 
         controller.createInvitation(principal("not-a-number"), new CreateInvitationResource(null, null, "c@mail.com"));
         controller.createInvitation(null, new CreateInvitationResource(null, null, "c@mail.com"));
@@ -95,7 +101,7 @@ class InvitationsControllerTest {
 
     @Test
     void revokeAndResendResolveTheRelative() {
-        when(relatives.findByUserId(new UserId(4L))).thenReturn(Optional.of(relative));
+        when(relativeQueryService.handle(new GetRelativeByUserIdQuery(4L))).thenReturn(Optional.of(relative));
 
         assertThat(controller.revokeInvitation(1L, 9L, null).getBody()).isEqualTo(12L);
         controller.revokeInvitation(1L, null, principal("4"));
@@ -127,9 +133,9 @@ class InvitationsControllerTest {
     void listsInvitationsByAssistedPersonCallerOrEveryone() {
         var invitation = invitation(1L, person, relative);
         when(queries.handle(new GetInvitationsByAssistedPersonIdQuery(8L))).thenReturn(List.of(invitation));
-        when(relatives.findByUserId(new UserId(4L))).thenReturn(Optional.of(relative));
-        when(persons.findAllByRelativeId(4L)).thenReturn(List.of(person));
-        when(persons.findAll()).thenReturn(List.of(person));
+        when(relativeQueryService.handle(new GetRelativeByUserIdQuery(4L))).thenReturn(Optional.of(relative));
+        when(assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(4L))).thenReturn(List.of(person));
+        when(assistedPersonQueryService.handle(any(GetAllAssistedPersonsQuery.class))).thenReturn(List.of(person));
 
         assertThat(controller.getInvitations(null, 8L).getBody()).hasSize(1);
         assertThat(controller.getInvitations(principal("4"), null).getBody()).hasSize(1);

@@ -78,15 +78,32 @@ public class HandoversController {
         return ResponseEntity.status(HttpStatus.CREATED).body(HandoverResourceAssembler.toResourceFromEntity(handover));
     }
 
+    private Long parseOptionalLong(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(raw.trim());
+        } catch (NumberFormatException ignored) {
+            String digits = raw.replaceAll("\\D+", "");
+            if (!digits.isEmpty()) {
+                try {
+                    return Long.parseLong(digits);
+                } catch (NumberFormatException ignoredAgain) {
+                    return null;
+                }
+            }
+            return null;
+        }
+    }
+
     @PostMapping("/handovers/{id}/answer")
     @Operation(summary = "Answer shift handover (accept or decline)")
     public ResponseEntity<HandoverResource> answerHandover(
             @PathVariable Long id,
             @RequestBody AnswerHandoverResource resource) {
 
-        Long actorId = resource.actorId() != null && !resource.actorId().isBlank()
-                ? Long.parseLong(resource.actorId())
-                : null;
+        Long actorId = parseOptionalLong(resource.actorId());
 
         Handover handover = commandService.handle(new AnswerHandoverCommand(
                 id,
@@ -103,12 +120,15 @@ public class HandoversController {
     @Operation(summary = "Propose substitute for shift handover")
     public ResponseEntity<HandoverResource> proposeSubstitute(
             @PathVariable Long id,
-            @RequestBody ProposeSubstituteResource resource) {
+            @RequestBody ProposeSubstituteResource resource,
+            Principal principal) {
 
-        Long substituteId = Long.parseLong(resource.substituteCaregiverId());
-        Long actorId = resource.actorId() != null && !resource.actorId().isBlank()
-                ? Long.parseLong(resource.actorId())
-                : null;
+        Long substituteId = parseOptionalLong(resource.substituteCaregiverId());
+        if (substituteId == null) {
+            UserId currentUserId = userIdOf(principal);
+            substituteId = currentUserId != null ? currentUserId.userId() : 0L;
+        }
+        Long actorId = parseOptionalLong(resource.actorId());
 
         Handover handover = commandService.handle(new ProposeSubstituteCommand(
                 id,

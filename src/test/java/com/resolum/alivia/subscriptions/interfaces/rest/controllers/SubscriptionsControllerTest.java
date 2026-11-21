@@ -16,6 +16,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
+import com.resolum.alivia.iam.interfaces.acl.IamContextFacade;
+import com.resolum.alivia.profiles.interfaces.acl.ProfilesContextFacade;
+import com.resolum.alivia.subscriptions.domain.model.entities.ConfigurationDraft;
+import com.resolum.alivia.subscriptions.domain.model.entities.ConfiguredRoom;
+import com.resolum.alivia.subscriptions.infrastructure.persistence.jpa.repositories.ConfigurationDraftRepository;
+import org.springframework.test.util.ReflectionTestUtils;
+import java.util.Map;
+import java.util.Set;
 import java.math.BigDecimal;
 import java.security.Principal;
 import java.util.List;
@@ -85,5 +93,36 @@ class SubscriptionsControllerTest {
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         verify(commandService).handle(any(RequestPlanChangeCommand.class));
+    }
+
+    @Test
+    void getCurrentEnrichesHolderNameAndRoomsFromDraft() {
+        var iam = mock(IamContextFacade.class);
+        var profiles = mock(ProfilesContextFacade.class);
+        var drafts = mock(ConfigurationDraftRepository.class);
+        var enrichedController = new SubscriptionsController(
+                queryService, commandService, paymentRepository, iam, profiles, drafts);
+
+        Subscription subscription = createMockSubscription();
+        ReflectionTestUtils.setField(subscription, "draftId", "draft-1");
+        ConfigurationDraft draft = mock(ConfigurationDraft.class);
+        when(draft.getRooms()).thenReturn(List.of(
+                mock(ConfiguredRoom.class), mock(ConfiguredRoom.class), mock(ConfiguredRoom.class)));
+
+        when(queryService.handle(any(GetActiveSubscriptionByUserIdQuery.class))).thenReturn(Optional.of(subscription));
+        when(paymentRepository.findFirstBySubscription_IdOrderByIdDesc(any())).thenReturn(Optional.empty());
+        when(iam.fetchPersonProfileIdsByUserIds(Set.of(1L))).thenReturn(Map.of(1L, 50L));
+        when(profiles.fetchPersonProfileFullNameById(50L)).thenReturn(Optional.of("Dayro Rios"));
+        when(drafts.findById("draft-1")).thenReturn(Optional.of(draft));
+
+        var response = enrichedController.getCurrent(() -> "1");
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("Dayro Rios", response.getBody().paymentMethod().holderName());
+        assertEquals(3, response.getBody().rooms());
+
+        when(queryService.handle(any(GetActiveSubscriptionByUserIdQuery.class))).thenReturn(Optional.empty());
+        assertEquals(HttpStatus.NOT_FOUND, enrichedController.getCurrent(() -> "1").getStatusCode());
     }
 }

@@ -5,6 +5,10 @@ import com.resolum.alivia.assistance.interfaces.rest.resources.InvitationResourc
 
 public class InvitationResourceAssembler {
     public static InvitationResource toResourceFromEntity(Invitation entity) {
+        return toResourceFromEntity(entity, null);
+    }
+
+    public static InvitationResource toResourceFromEntity(Invitation entity, Boolean isNewUser) {
         return new InvitationResource(
                 entity.getId(),
                 entity.getAssistedPerson() != null ? entity.getAssistedPerson().getId() : null,
@@ -12,7 +16,8 @@ public class InvitationResourceAssembler {
                 entity.getInviteeEmail().email(),
                 entity.getCaregiverUserId() != null ? entity.getCaregiverUserId().userId() : null,
                 entity.getStatus().name(),
-                entity.getExpiresAt()
+                entity.getExpiresAt(),
+                isNewUser
         );
     }
 }
