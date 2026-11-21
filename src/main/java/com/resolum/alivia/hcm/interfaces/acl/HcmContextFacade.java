@@ -5,6 +5,7 @@ import com.resolum.alivia.shared.domain.model.valueobjects.TimeRange;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Anti-corruption layer of HCM for the contexts that send technicians to a home.
@@ -43,4 +44,11 @@ public interface HcmContextFacade {
      * @return the user identifier, or empty when the employee does not exist
      */
     Optional<Long> fetchUserIdOfTechnician(Long employeeId);
+
+    /**
+     * Returns the account ids of the employees of a business, whatever their status.
+     *
+     * @param businessId the business; {@code null} means the default business
+     */
+    Set<Long> fetchUserIdsOfBusiness(Long businessId);
 }

@@ -42,6 +42,17 @@
             **/domain/model/commands/**
         </sonar.cpd.exclusions>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- firebase-admin 9.8.0 brings Guava 33.5.0-jre (CVE-2026-102554, HIGH): Trivy blocks the deployment. -->
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>33.7.2-jre</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
     <dependencies>
         <!-- Source: https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-actuator -->
         <dependency>

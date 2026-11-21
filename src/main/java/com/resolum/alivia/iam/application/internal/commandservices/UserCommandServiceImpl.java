@@ -19,7 +19,10 @@ import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationResendTooSoonException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationTokenExpiredException;
 import com.resolum.alivia.iam.domain.model.aggregates.User;
+import com.resolum.alivia.iam.domain.exceptions.AccountNotFoundException;
+import com.resolum.alivia.iam.domain.model.commands.AssignAccessRoleCommand;
 import com.resolum.alivia.iam.domain.model.commands.RefreshSessionCommand;
+import com.resolum.alivia.iam.domain.model.commands.RevokeAccessRoleCommand;
 import com.resolum.alivia.iam.domain.model.commands.ResendVerificationCommand;
 import com.resolum.alivia.iam.domain.model.commands.SignInCommand;
 import com.resolum.alivia.iam.domain.model.commands.SignOutCommand;
@@ -306,6 +309,24 @@ public class UserCommandServiceImpl implements UserCommandService {
                     userRepository.save(user);
                     log.info("Signed out account id {}", user.getId());
                 });
+    }
+
+    @Override
+    @Transactional
+    public User handle(AssignAccessRoleCommand command) {
+        var user = userRepository.findById(command.userId()).orElseThrow(AccountNotFoundException::new);
+        user.assignAccessRole(command.accessRole());
+        log.info("Granted role {} to account id {}", command.accessRole(), user.getId());
+        return userRepository.save(user);
+    }
+
+    @Override
+    @Transactional
+    public User handle(RevokeAccessRoleCommand command) {
+        var user = userRepository.findById(command.userId()).orElseThrow(AccountNotFoundException::new);
+        user.revokeAccessRole(command.accessRole());
+        log.info("Revoked role {} from account id {}", command.accessRole(), user.getId());
+        return userRepository.save(user);
     }
 
     private Optional<User> findUserByEmail(String email) {

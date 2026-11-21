@@ -97,14 +97,14 @@ class EmployeeServicesTest {
     }
 
     @Test
-    void registersOperationalEmployeesAsTechnicians() {
+    void registersCleaningEmployeesWithTheCleaningRole() {
         when(profiles.createStaffProfile(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(30L);
-        when(iam.inviteCompanyUser(any(), any(), any(), eq("TECHNICIAN"), any())).thenReturn(20L);
+        when(iam.inviteCompanyUser(any(), any(), any(), eq("CLEANING"), any())).thenReturn(20L);
 
         var employee = commandService.handle(createCommand(1L, EmployeeRole.CLEANING));
 
         assertEquals(EmployeeRole.CLEANING, employee.getRole());
-        verify(iam).inviteCompanyUser("ana@alivia.pe", "Ana Pérez", "Limpieza", "TECHNICIAN", 30L);
+        verify(iam).inviteCompanyUser("ana@alivia.pe", "Ana Pérez", "Limpieza", "CLEANING", 30L);
     }
 
     @Test
@@ -128,6 +128,7 @@ class EmployeeServicesTest {
                 "Ana María", "Pérez", null, EmployeeRole.CLEANING));
 
         assertEquals(EmployeeRole.CLEANING, updated.getRole());
+        verify(iam).replaceAccessRole(20L, "TECHNICIAN", "CLEANING");
         verify(profiles).updateStaffProfile(30L, "Ana María", "Pérez", BIRTH_DATE, "+51900000000",
                 "https://img/ana.png", "ana");
         var captor = ArgumentCaptor.forClass(EmployeeChangeLog.class);
@@ -153,6 +154,7 @@ class EmployeeServicesTest {
         verify(profiles).updateStaffProfile(30L, "Ana", "Pérez", BIRTH_DATE, "+51987654321",
                 "https://img/ana.png", "ana");
         verifyNoInteractions(changeLogs);
+        verify(iam, never()).replaceAccessRole(any(), any(), any());
     }
 
     @Test

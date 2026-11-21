@@ -9,9 +9,12 @@ FROM eclipse-temurin:25-jre
 
 # The base image can lag behind the distribution's security updates (Trivy gates the deployment on them): upgrade only
 # the packages that have a fix, without installing anything new, and leave no package lists behind.
+# Ubuntu 26.04 ships Canonical's pebble service manager outside any package, so no upgrade can patch its Go runtime
+# (CVE-2026-97054). The image starts java directly and never uses it: remove it.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends --only-upgrade apt libapt-pkg7.0 \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -f /usr/bin/pebble
 
 # Set by the deployment workflow: which commit this image was built from, and when.
 ARG VCS_REF=unknown

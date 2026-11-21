@@ -79,6 +79,9 @@ public class EmployeeCommandServiceImpl implements EmployeeCommandService {
                 valueOr(command.phoneNumber(), current.phoneNumber()),
                 valueOr(command.photoUrl(), current.photoUrl()),
                 valueOr(command.photoPublicId(), current.photoPublicId()));
+        if (command.role() != null && command.role() != employee.getRole()) {
+            iam.changeEmployeeRole(employee.getUserId(), employee.getRole(), command.role());
+        }
         employee.changeRole(command.role());
         var saved = repository.save(employee);
         if (!changes.isEmpty()) {
