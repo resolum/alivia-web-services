@@ -21,6 +21,7 @@ public final class AuthenticatedUserResourceFromSessionAssembler {
      */
     public static AuthenticatedUserResource toResourceFromSession(AuthSession session) {
         var user = session.user();
+        var primaryRole = user.getAccessRole();
         return new AuthenticatedUserResource(
                 session.accessToken(),
                 session.refreshToken(),
@@ -28,7 +29,7 @@ public final class AuthenticatedUserResourceFromSessionAssembler {
                 session.expiresIn(),
                 new AuthenticatedUserResource.AccountResource(
                         user.getAccountId(), user.getEmail().email(),
-                        user.getAccessRole() == null ? null : user.getAccessRole().name(),
+                        primaryRole == null ? null : primaryRole.name(),
                         user.getRoles().stream().map(RoleParser::toApiName).sorted().toList(),
                         user.getStatus().name(), user.getProfileId()),
                 user.getRoles().stream().map(role -> "ROLE_" + role.name()).sorted().toList());

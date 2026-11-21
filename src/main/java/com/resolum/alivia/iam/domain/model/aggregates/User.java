@@ -25,7 +25,6 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -401,7 +400,7 @@ public class User extends AuditableAbstractAggregateRoot<User> {
      * @return the primary role, or {@code null} when every role was revoked
      */
     public AccessRole getAccessRole() {
-        return roles.stream().min(Comparator.naturalOrder()).orElse(null);
+        return roles.isEmpty() ? null : Collections.min(roles);
     }
 
     /**
