@@ -50,9 +50,15 @@ public final class BusinessResourceAssembler {
     }
 
     public static UpdateBusinessCommand toCommandFromResource(Long businessId, UpdateBusinessResource resource) {
+        return toCommandFromResource(businessId, resource.administratorId(), resource);
+    }
+
+    /** The administrator who changes the business is given apart from the resource: the caller, not the body. */
+    public static UpdateBusinessCommand toCommandFromResource(Long businessId, Long administratorId,
+                                                              UpdateBusinessResource resource) {
         return new UpdateBusinessCommand(
                 businessId,
-                resource.administratorId(),
+                administratorId,
                 resource.photoData(),
                 resource.photoFileName(),
                 resource.businessName(),

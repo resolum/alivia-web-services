@@ -16,12 +16,16 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+
+import java.security.Principal;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 @RestController
 @RequestMapping(value = "/api/v1/administrators", produces = APPLICATION_JSON_VALUE)
+@PreAuthorize("hasRole('ADMINISTRATOR')")
 @Tag(name = "Administradores", description = "Gestión de administradores de negocio")
 public class AdministratorsController {
 
@@ -59,7 +63,15 @@ public class AdministratorsController {
     })
     public ResponseEntity<AdministratorResource> updateAdministrator(
             @PathVariable Long administratorId,
-            @Valid @RequestBody UpdateAdministratorResource resource) {
+            @Valid @RequestBody UpdateAdministratorResource resource,
+            Principal principal) {
+        // An administrator edits its own record; registering another administrator is a separate operation.
+        var own = principal == null ? java.util.Optional.<com.resolum.alivia.business.domain.model.aggregates.Administrator>empty()
+                : queryService.handle(new GetAdministratorByUserIdQuery(parseUserId(principal)));
+        if (own.isEmpty() || !own.get().getId().equals(administratorId)) {
+            throw new com.resolum.alivia.business.domain.exceptions.UnauthorizedAdministratorException(
+                    "An administrator may only update its own record.");
+        }
         var command = AdministratorResourceAssembler.toCommandFromResource(administratorId, resource);
         commandService.handle(command);
         return queryService.handle(new GetAdministratorByIdQuery(administratorId))
@@ -89,5 +101,13 @@ public class AdministratorsController {
         return queryService.handle(new GetAdministratorByUserIdQuery(userId))
                 .map(entity -> ResponseEntity.ok(AdministratorResourceAssembler.toResourceFromEntity(entity)))
                 .orElseThrow(AdministratorNotFound::new);
+    }
+
+    private static Long parseUserId(Principal principal) {
+        try {
+            return Long.valueOf(principal.getName());
+        } catch (NumberFormatException exception) {
+            return -1L;
+        }
     }
 }

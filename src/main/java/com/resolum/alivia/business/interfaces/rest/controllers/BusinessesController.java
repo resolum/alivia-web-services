@@ -1,6 +1,9 @@
 package com.resolum.alivia.business.interfaces.rest.controllers;
 
 import com.resolum.alivia.business.domain.exceptions.BusinessNotFound;
+import com.resolum.alivia.business.domain.exceptions.UnauthorizedAdministratorException;
+import com.resolum.alivia.business.domain.model.queries.GetAdministratorByUserIdQuery;
+import com.resolum.alivia.business.domain.services.AdministratorQueryService;
 import com.resolum.alivia.business.domain.model.queries.GetBusinessByAdministratorIdQuery;
 import com.resolum.alivia.business.domain.model.queries.GetBusinessByIdQuery;
 import com.resolum.alivia.business.domain.services.BusinessCommandService;
@@ -16,21 +19,28 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+
+import java.security.Principal;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 @RestController
 @RequestMapping(value = "/api/v1/businesses", produces = APPLICATION_JSON_VALUE)
+@PreAuthorize("hasRole('ADMINISTRATOR')")
 @Tag(name = "Negocios", description = "Gestión del negocio central y su perfil corporativo")
 public class BusinessesController {
 
     private final BusinessCommandService commandService;
     private final BusinessQueryService queryService;
+    private final AdministratorQueryService administratorQueryService;
 
-    public BusinessesController(BusinessCommandService commandService, BusinessQueryService queryService) {
+    public BusinessesController(BusinessCommandService commandService, BusinessQueryService queryService,
+                                AdministratorQueryService administratorQueryService) {
         this.commandService = commandService;
         this.queryService = queryService;
+        this.administratorQueryService = administratorQueryService;
     }
 
     @PostMapping(consumes = APPLICATION_JSON_VALUE)
@@ -61,8 +71,11 @@ public class BusinessesController {
     })
     public ResponseEntity<BusinessResource> updateBusiness(
             @PathVariable Long businessId,
-            @Valid @RequestBody UpdateBusinessResource resource) {
-        var command = BusinessResourceAssembler.toCommandFromResource(businessId, resource);
+            @Valid @RequestBody UpdateBusinessResource resource,
+            Principal principal) {
+        // The administrator who changes the business is the caller; the administrator id of the body is not trusted.
+        var administrator = callerAdministrator(principal);
+        var command = BusinessResourceAssembler.toCommandFromResource(businessId, administrator.getId(), resource);
         commandService.handle(command);
         return queryService.handle(new GetBusinessByIdQuery(businessId))
                 .map(entity -> ResponseEntity.ok(BusinessResourceAssembler.toResourceFromEntity(entity)))
@@ -91,5 +104,17 @@ public class BusinessesController {
         return queryService.handle(new GetBusinessByAdministratorIdQuery(administratorId))
                 .map(entity -> ResponseEntity.ok(BusinessResourceAssembler.toResourceFromEntity(entity)))
                 .orElseThrow(BusinessNotFound::new);
+    }
+
+    private com.resolum.alivia.business.domain.model.aggregates.Administrator callerAdministrator(Principal principal) {
+        Long userId;
+        try {
+            userId = principal == null ? null : Long.valueOf(principal.getName());
+        } catch (NumberFormatException exception) {
+            userId = null;
+        }
+        if (userId == null) throw new UnauthorizedAdministratorException("The caller is not an administrator.");
+        return administratorQueryService.handle(new GetAdministratorByUserIdQuery(userId))
+                .orElseThrow(() -> new UnauthorizedAdministratorException("The caller is not an administrator."));
     }
 }
