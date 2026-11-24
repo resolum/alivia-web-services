@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
@@ -34,6 +35,7 @@ public class BusinessProfilesController {
         this.queryService = queryService;
     }
 
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
     @PostMapping(consumes = MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Crear perfil comercial (Multipart/form-data con archivo de logo/foto)")
@@ -64,6 +66,7 @@ public class BusinessProfilesController {
         return ResponseEntity.ok(BusinessProfileResourceFromEntityAssembler.toResourceFromEntity(profile));
     }
 
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
     @PutMapping(value = "/{profileId}", consumes = MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "Actualizar información comercial (Multipart/form-data con archivo de logo/foto)")
     @ApiResponses({

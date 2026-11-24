@@ -10,12 +10,16 @@ import com.resolum.alivia.profiles.interfaces.rest.resources.UpdateStaffProfileR
 import com.resolum.alivia.profiles.interfaces.rest.transform.CreateStaffProfileCommandFromResourceAssembler;
 import com.resolum.alivia.profiles.interfaces.rest.transform.StaffProfileResourceFromEntityAssembler;
 import com.resolum.alivia.profiles.interfaces.rest.transform.UpdateStaffProfileCommandFromResourceAssembler;
+import com.resolum.alivia.profiles.domain.services.ProfileAccessService;
+import com.resolum.alivia.profiles.interfaces.rest.Caller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
@@ -28,12 +32,16 @@ public class StaffProfilesController {
 
     private final StaffProfileCommandService commandService;
     private final StaffProfileQueryService queryService;
+    private final ProfileAccessService accessService;
 
-    public StaffProfilesController(StaffProfileCommandService commandService, StaffProfileQueryService queryService) {
+    public StaffProfilesController(StaffProfileCommandService commandService, StaffProfileQueryService queryService,
+                                   ProfileAccessService accessService) {
         this.commandService = commandService;
         this.queryService = queryService;
+        this.accessService = accessService;
     }
 
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
     @PostMapping(consumes = MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Crear perfil de staff (Multipart/form-data con archivo de foto)")
@@ -57,7 +65,10 @@ public class StaffProfilesController {
             @ApiResponse(responseCode = "200", description = "Perfil encontrado"),
             @ApiResponse(responseCode = "404", description = "Perfil no encontrado")
     })
-    public ResponseEntity<StaffProfileResource> getStaffProfileById(@PathVariable Long profileId) {
+    public ResponseEntity<StaffProfileResource> getStaffProfileById(@PathVariable Long profileId,
+                                                                    Authentication authentication) {
+        accessService.assertCanAccessStaffProfile(profileId, Caller.userId(authentication),
+                Caller.isAdministrator(authentication));
         var query = new GetStaffProfileByIdQuery(profileId);
         var profile = queryService.handle(query)
                 .orElseThrow(() -> new StaffProfileNotFoundException(profileId));
@@ -73,7 +84,10 @@ public class StaffProfilesController {
     })
     public ResponseEntity<StaffProfileResource> updateStaffProfile(
             @PathVariable Long profileId,
-            @ModelAttribute UpdateStaffProfileResource resource) {
+            @ModelAttribute UpdateStaffProfileResource resource,
+            Authentication authentication) {
+        accessService.assertCanAccessStaffProfile(profileId, Caller.userId(authentication),
+                Caller.isAdministrator(authentication));
         var command = UpdateStaffProfileCommandFromResourceAssembler.toCommandFromResource(profileId, resource);
         var updatedId = commandService.handle(command);
         var profile = queryService.handle(new GetStaffProfileByIdQuery(updatedId));

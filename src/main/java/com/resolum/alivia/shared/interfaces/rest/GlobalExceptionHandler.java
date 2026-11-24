@@ -91,6 +91,7 @@ import com.resolum.alivia.profiles.domain.exceptions.DniNotEditableException;
 import com.resolum.alivia.profiles.domain.exceptions.EmailAddressAlreadyExistsException;
 import com.resolum.alivia.profiles.domain.exceptions.EmailNotEditableException;
 import com.resolum.alivia.profiles.domain.exceptions.HouseholdAccessDeniedException;
+import com.resolum.alivia.profiles.domain.exceptions.ProfileAccessDeniedException;
 import com.resolum.alivia.profiles.domain.exceptions.HouseholdNotFoundException;
 import com.resolum.alivia.profiles.domain.exceptions.LegalNameAlreadyExistsException;
 import com.resolum.alivia.profiles.domain.exceptions.OwnProfileNotFoundException;
@@ -307,6 +308,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HouseholdNotFoundException.class)
     public ProblemDetail handleHouseholdNotFound(HouseholdNotFoundException exception) {
         return problem(HttpStatus.NOT_FOUND, "household_not_found",
+                exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(ProfileAccessDeniedException.class)
+    public ProblemDetail handleProfileAccessDenied(ProfileAccessDeniedException exception) {
+        return problem(HttpStatus.FORBIDDEN, "profile_access_denied",
                 exception.getMessage(), List.of());
     }
 

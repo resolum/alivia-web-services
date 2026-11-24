@@ -33,6 +33,11 @@ public class AssistedPersonRepositoryImpl implements AssistedPersonRepository {
     }
 
     @Override
+    public List<AssistedPerson> findAllByPersonProfileId(Long personProfileId) {
+        return repository.findAllByPersonProfileId(personProfileId);
+    }
+
+    @Override
     public List<AssistedPerson> findAll() {
         return repository.findAll();
     }

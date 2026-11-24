@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.time.DayOfWeek;
@@ -52,6 +53,12 @@ class ProfileControllersTest {
     private StaffProfileQueryService staffQueryService;
     private MockMvc staffMvc;
 
+    /** The authenticated caller of the person and staff endpoints: the account 5, without the administrator role. */
+    private static final org.springframework.security.core.Authentication CALLER =
+            new org.springframework.security.authentication.TestingAuthenticationToken("5", "n/a", "ROLE_CAREGIVER");
+
+    private com.resolum.alivia.profiles.domain.services.ProfileAccessService access;
+
     @BeforeEach
     void setUp() {
         businessCmdService = mock(BusinessProfileCommandService.class);
@@ -65,15 +72,57 @@ class ProfileControllersTest {
 
         personCmdService = mock(PersonProfileCommandService.class);
         personQueryService = mock(PersonProfileQueryService.class);
+        access = mock(com.resolum.alivia.profiles.domain.services.ProfileAccessService.class);
         personMvc = MockMvcBuilders.standaloneSetup(
-                new PersonProfilesController(personCmdService, personQueryService)
-        ).setControllerAdvice(new GlobalExceptionHandler()).build();
+                new PersonProfilesController(personCmdService, personQueryService, access)
+        ).defaultRequest(MockMvcRequestBuilders.get("/").principal(CALLER))
+                .setControllerAdvice(new GlobalExceptionHandler()).build();
 
         staffCmdService = mock(StaffProfileCommandService.class);
         staffQueryService = mock(StaffProfileQueryService.class);
         staffMvc = MockMvcBuilders.standaloneSetup(
-                new StaffProfilesController(staffCmdService, staffQueryService)
-        ).setControllerAdvice(new GlobalExceptionHandler()).build();
+                new StaffProfilesController(staffCmdService, staffQueryService, access)
+        ).defaultRequest(MockMvcRequestBuilders.get("/").principal(CALLER))
+                .setControllerAdvice(new GlobalExceptionHandler()).build();
+    }
+
+    @Test
+    void personAndStaffProfilesAreRefusedToWhoHasNoAccess() throws Exception {
+        var denied = new com.resolum.alivia.profiles.domain.exceptions.ProfileAccessDeniedException("no");
+        org.mockito.Mockito.doThrow(denied).when(access).assertCanReadPersonProfile(7L, 5L, false);
+        org.mockito.Mockito.doThrow(denied).when(access).assertCanChangePersonProfile(7L, 5L, false);
+        org.mockito.Mockito.doThrow(denied).when(access).assertCanAccessStaffProfile(7L, 5L, false);
+
+        personMvc.perform(MockMvcRequestBuilders.get("/api/v1/person-profiles/7"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("profile_access_denied"));
+        personMvc.perform(MockMvcRequestBuilders.put("/api/v1/person-profiles/7")
+                        .contentType(MediaType.MULTIPART_FORM_DATA))
+                .andExpect(status().isForbidden());
+        staffMvc.perform(MockMvcRequestBuilders.get("/api/v1/staff-profiles/7"))
+                .andExpect(status().isForbidden());
+        staffMvc.perform(MockMvcRequestBuilders.put("/api/v1/staff-profiles/7")
+                        .contentType(MediaType.MULTIPART_FORM_DATA))
+                .andExpect(status().isForbidden());
+        org.mockito.Mockito.verifyNoInteractions(personCmdService, staffCmdService);
+    }
+
+    @Test
+    void creatingProfilesAndChangingTheBusinessProfileAreAdministratorOnly() throws Exception {
+        var admin = "hasRole('ADMINISTRATOR')";
+        for (var endpoint : java.util.List.of(
+                BusinessProfilesController.class.getMethod("createBusinessProfile",
+                        com.resolum.alivia.profiles.interfaces.rest.resources.CreateBusinessProfileResource.class),
+                BusinessProfilesController.class.getMethod("updateBusinessProfile", Long.class,
+                        com.resolum.alivia.profiles.interfaces.rest.resources.UpdateBusinessProfileResource.class),
+                StaffProfilesController.class.getMethod("createStaffProfile",
+                        com.resolum.alivia.profiles.interfaces.rest.resources.CreateStaffProfileResource.class),
+                PersonProfilesController.class.getMethod("createPersonProfile",
+                        com.resolum.alivia.profiles.interfaces.rest.resources.CreatePersonProfileResource.class))) {
+            var rule = endpoint.getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class);
+            org.junit.jupiter.api.Assertions.assertNotNull(rule, endpoint.getName());
+            org.junit.jupiter.api.Assertions.assertEquals(admin, rule.value(), endpoint.getName());
+        }
     }
 
     // --- BusinessProfilesController ---
@@ -514,13 +563,14 @@ class ProfileControllersTest {
         var repository = mock(PersonProfileRepository.class);
         when(repository.findById(99L)).thenReturn(Optional.empty());
         var realMvc = MockMvcBuilders.standaloneSetup(
-                        new PersonProfilesController(new PersonProfileCommandServiceImpl(repository), personQueryService))
+                        new PersonProfilesController(new PersonProfileCommandServiceImpl(repository), personQueryService, access))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
 
         var file = new MockMultipartFile("photo", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
 
         realMvc.perform(multipart("/api/v1/person-profiles/99")
+                        .principal(CALLER)
                         .file(file)
                         .with(request -> { request.setMethod("PUT"); return request; })
                         .param("firstName", "Juan")

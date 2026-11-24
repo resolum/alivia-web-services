@@ -9,4 +9,8 @@ import java.util.List;
 @Repository
 public interface AssistedPersonPersistenceRepository extends JpaRepository<AssistedPerson, Long> {
     List<AssistedPerson> findAllByRelativeId(Long relativeId);
+
+    @org.springframework.data.jpa.repository.Query("select p from AssistedPerson p where p.personProfileId.personProfileId = :personProfileId")
+    List<AssistedPerson> findAllByPersonProfileId(@org.springframework.data.repository.query.Param("personProfileId") Long personProfileId);
+
 }

@@ -67,6 +67,9 @@ public interface AssistanceAccessService {
     /** The assisted persons the user is the relative in charge of, or is an active caregiver of. */
     List<AssistedPerson> readableBy(Long userId);
 
+    /** Whether the user may read the assisted person. */
+    boolean canRead(AssistedPerson assistedPerson, Long userId);
+
     /** Whether the user may operate on the assisted person; {@code false} when it does not exist. */
     boolean canOperate(AssistedPerson assistedPerson, Long userId);
 

@@ -232,7 +232,9 @@ public class AssistanceAccessServiceImpl implements AssistanceAccessService {
         return externalHouseholdsService.canManage(householdId, userId);
     }
 
-    private boolean canRead(AssistedPerson person, Long userId) {
+    @Override
+    @Transactional(readOnly = true)
+    public boolean canRead(AssistedPerson person, Long userId) {
         if (person == null || userId == null) return false;
         return canOperate(person, userId) || externalHouseholdsService.canRead(person.getHouseholdId(), userId);
     }
