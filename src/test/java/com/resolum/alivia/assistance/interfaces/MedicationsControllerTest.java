@@ -12,18 +12,14 @@ import com.resolum.alivia.assistance.domain.model.commands.DeactivateActivityAss
 import com.resolum.alivia.assistance.domain.model.commands.DeactivateCareActivityCommand;
 import com.resolum.alivia.assistance.domain.model.commands.UpdateActivityAssignmentCommand;
 import com.resolum.alivia.assistance.domain.model.commands.UpdateCareActivityCommand;
-import com.resolum.alivia.assistance.domain.model.queries.GetAllAssistedPersonsQuery;
-import com.resolum.alivia.assistance.domain.model.queries.GetAssistedPersonByIdQuery;
-import com.resolum.alivia.assistance.domain.model.queries.GetAssistedPersonsByRelativeIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetCareActivitiesByAssistedPersonIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetCareActivityByIdQuery;
-import com.resolum.alivia.assistance.domain.model.queries.GetRelativeByUserIdQuery;
 import com.resolum.alivia.assistance.domain.model.valueobjects.CareActivityType;
 import com.resolum.alivia.assistance.domain.model.valueobjects.Schedule;
-import com.resolum.alivia.assistance.domain.services.AssistedPersonQueryService;
+import com.resolum.alivia.assistance.domain.exceptions.CareActivityNotFoundException;
+import com.resolum.alivia.assistance.domain.services.AssistanceAccessService;
 import com.resolum.alivia.assistance.domain.services.CareActivityCommandService;
 import com.resolum.alivia.assistance.domain.services.CareActivityQueryService;
-import com.resolum.alivia.assistance.domain.services.RelativeQueryService;
 import com.resolum.alivia.assistance.interfaces.rest.controllers.MedicationsController;
 import com.resolum.alivia.assistance.interfaces.rest.resources.AssignMedicationResponsibleRequestResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.ScheduleMedicationRequestResource;
@@ -59,8 +55,7 @@ class MedicationsControllerTest {
 
     private CareActivityCommandService commandService;
     private CareActivityQueryService queryService;
-    private RelativeQueryService relativeQueryService;
-    private AssistedPersonQueryService assistedPersonQueryService;
+    private AssistanceAccessService access;
     private ExternalIamService externalIamService;
     private ExternalProfilesService externalProfilesService;
     private MedicationsController controller;
@@ -73,23 +68,25 @@ class MedicationsControllerTest {
     void setUp() {
         commandService = mock(CareActivityCommandService.class);
         queryService = mock(CareActivityQueryService.class);
-        relativeQueryService = mock(RelativeQueryService.class);
-        assistedPersonQueryService = mock(AssistedPersonQueryService.class);
+        access = mock(AssistanceAccessService.class);
         externalIamService = mock(ExternalIamService.class);
         externalProfilesService = mock(ExternalProfilesService.class);
 
         controller = new MedicationsController(
-                commandService, queryService, relativeQueryService, assistedPersonQueryService,
+                commandService, queryService, access,
                 externalIamService, externalProfilesService);
 
         relative = relative(10L);
         person = assistedPerson(20L, relative);
         caregiver = caregiver(30L, 99L, person);
 
-        when(relativeQueryService.handle(any(GetRelativeByUserIdQuery.class))).thenReturn(Optional.of(relative));
-        when(assistedPersonQueryService.handle(any(GetAssistedPersonsByRelativeIdQuery.class))).thenReturn(List.of(person));
-        when(assistedPersonQueryService.handle(any(GetAssistedPersonByIdQuery.class))).thenReturn(Optional.of(person));
-        when(assistedPersonQueryService.handle(any(GetAllAssistedPersonsQuery.class))).thenReturn(List.of(person));
+        when(access.readableBy(any())).thenReturn(List.of(person));
+        when(access.requireOperate(any(), any())).thenReturn(person);
+        when(access.requireOperateActivity(any(), any())).thenAnswer(invocation -> {
+            Long id = invocation.getArgument(0);
+            return queryService.handle(new GetCareActivityByIdQuery(id))
+                    .orElseThrow(() -> new CareActivityNotFoundException(id));
+        });
     }
 
     private CareActivity medicationActivity(Long id, String title, String dose, Set<DayOfWeek> days, LocalTime start) {
@@ -147,14 +144,14 @@ class MedicationsControllerTest {
     @Test
     void updateMedicationReconcilesAssignmentsAndHandlesNotFound() {
         when(queryService.handle(new GetCareActivityByIdQuery(999L))).thenReturn(Optional.empty());
-        var notFound = controller.updateMedication(999L, principal("bad"),
-                new UpdateMedicationRequestResource("100mg", List.of("10:00"), "weekly", "2026-11-16", ""));
-        assertThat(notFound.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> controller.updateMedication(999L, principal("1"),
+                new UpdateMedicationRequestResource("100mg", List.of("10:00"), "weekly", "2026-11-16", "")))
+                .isInstanceOf(CareActivityNotFoundException.class);
 
         CareActivity existing = medicationActivity(7L, "Enalapril", "10mg", EnumSet.allOf(DayOfWeek.class), LocalTime.of(8, 0));
         when(queryService.handle(new GetCareActivityByIdQuery(7L))).thenReturn(Optional.of(existing));
 
-        var ok = controller.updateMedication(7L, null,
+        var ok = controller.updateMedication(7L, principal("1"),
                 new UpdateMedicationRequestResource("20mg", List.of("08:00", "20:00"), "weekly", "", ""));
 
         assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -175,8 +172,8 @@ class MedicationsControllerTest {
     @Test
     void suspendMedicationDeactivatesAndReturnsSuspension() {
         when(queryService.handle(new GetCareActivityByIdQuery(404L))).thenReturn(Optional.empty());
-        assertThat(controller.suspendMedication(404L, principal("1"), null).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> controller.suspendMedication(404L, principal("1"), null))
+                .isInstanceOf(CareActivityNotFoundException.class);
 
         CareActivity med = medicationActivity(8L, "Omeprazol", "20mg", EnumSet.of(DayOfWeek.MONDAY), LocalTime.of(7, 0));
         med.deactivate();
@@ -193,8 +190,8 @@ class MedicationsControllerTest {
     @Test
     void assignMedicationResponsibleUpdatesOrCreatesAssignment() {
         when(queryService.handle(new GetCareActivityByIdQuery(404L))).thenReturn(Optional.empty());
-        assertThat(controller.assignMedicationResponsible(404L, principal("1"),
-                new AssignMedicationResponsibleRequestResource(30L)).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> controller.assignMedicationResponsible(404L, principal("1"),
+                new AssignMedicationResponsibleRequestResource(30L))).isInstanceOf(CareActivityNotFoundException.class);
 
         CareActivity noAssignments = new CareActivity(person, CareActivityType.MEDICATION, "Vitamina D", "1000UI");
         ReflectionTestUtils.setField(noAssignments, "id", 11L);

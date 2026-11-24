@@ -4,20 +4,21 @@ import com.resolum.alivia.assistance.application.internal.outboundservices.acl.E
 import com.resolum.alivia.assistance.domain.model.aggregates.AssistedPerson;
 import com.resolum.alivia.assistance.domain.model.commands.CreateAssistedPersonCommand;
 import com.resolum.alivia.assistance.domain.model.commands.UpdateAssistedPersonCommand;
-import com.resolum.alivia.assistance.domain.model.queries.GetAllAssistedPersonsQuery;
+import com.resolum.alivia.assistance.domain.exceptions.AssistanceAccessDeniedException;
 import com.resolum.alivia.assistance.domain.model.queries.GetAssistedPersonByIdQuery;
-import com.resolum.alivia.assistance.domain.model.queries.GetAssistedPersonsByRelativeIdQuery;
-import com.resolum.alivia.assistance.domain.model.queries.GetAssistedPersonsByUserIdQuery;
+import com.resolum.alivia.assistance.domain.model.queries.GetRelativeByUserIdQuery;
 import com.resolum.alivia.assistance.domain.model.valueobjects.Kinship;
 import com.resolum.alivia.assistance.domain.model.valueobjects.MobilityLevel;
+import com.resolum.alivia.assistance.domain.services.AssistanceAccessService;
 import com.resolum.alivia.assistance.domain.services.AssistedPersonCommandService;
 import com.resolum.alivia.assistance.domain.services.AssistedPersonQueryService;
+import com.resolum.alivia.assistance.domain.services.RelativeQueryService;
+import com.resolum.alivia.assistance.interfaces.rest.CallerIdentity;
 import com.resolum.alivia.assistance.interfaces.rest.resources.AssistedPersonResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.CreateAssistedPersonResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.UpdateAssistedPersonResource;
 import com.resolum.alivia.assistance.interfaces.rest.transform.AssistedPersonResourceAssembler;
 import com.resolum.alivia.profiles.interfaces.acl.ProfilesContextFacade;
-import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -36,13 +37,19 @@ public class AssistedPersonsController {
     private final AssistedPersonCommandService commandService;
     private final AssistedPersonQueryService queryService;
     private final ExternalProfilesService externalProfilesService;
+    private final AssistanceAccessService accessService;
+    private final RelativeQueryService relativeQueryService;
 
     public AssistedPersonsController(AssistedPersonCommandService commandService,
                                    AssistedPersonQueryService queryService,
-                                   ExternalProfilesService externalProfilesService) {
+                                   ExternalProfilesService externalProfilesService,
+                                   AssistanceAccessService accessService,
+                                   RelativeQueryService relativeQueryService) {
         this.commandService = commandService;
         this.queryService = queryService;
         this.externalProfilesService = externalProfilesService;
+        this.accessService = accessService;
+        this.relativeQueryService = relativeQueryService;
     }
 
     private AssistedPersonResource toResource(AssistedPerson entity) {
@@ -53,22 +60,23 @@ public class AssistedPersonsController {
         return AssistedPersonResourceAssembler.toResourceFromEntity(entity, profileData);
     }
 
-    private UserId userIdOf(Principal principal) {
-        if (principal == null) return null;
-        try {
-            return new UserId(Long.valueOf(principal.getName()));
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
     @PostMapping
     public ResponseEntity<AssistedPersonResource> createAssistedPerson(
             @RequestBody CreateAssistedPersonResource resource,
             Principal principal) {
-        UserId userId = userIdOf(principal);
+        Long userId = CallerIdentity.requireUserId(principal);
+        // Only a relative registers an assisted person, and always as itself: the relative id of the body is
+        // never trusted to say whose person it is.
+        var relative = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId))
+                .orElseThrow(() -> new AssistanceAccessDeniedException("Only a relative may register an assisted person."));
+        if (resource.relativeId() != null && !resource.relativeId().equals(relative.getId())) {
+            throw new AssistanceAccessDeniedException("The relative of the request is not the caller.");
+        }
+        if (resource.householdId() != null && !accessService.canManageHousehold(resource.householdId(), userId)) {
+            throw new AssistanceAccessDeniedException("The caller may not manage household " + resource.householdId() + ".");
+        }
         CreateAssistedPersonCommand command = new CreateAssistedPersonCommand(
-                resource.relativeId(),
+                relative.getId(),
                 resource.emailAddress(),
                 null, null,
                 resource.phoneNumber(),
@@ -82,7 +90,7 @@ public class AssistedPersonsController {
                 resource.emergencyContactName(),
                 resource.emergencyContactPhone(),
                 resource.consentGiven() != null ? resource.consentGiven() : true,
-                userId != null ? userId.userId() : null
+                userId
         );
         Long id = commandService.handle(command);
         return queryService.handle(new GetAssistedPersonByIdQuery(id))
@@ -94,10 +102,17 @@ public class AssistedPersonsController {
     @PutMapping("/{id}")
     public ResponseEntity<Long> updateAssistedPerson(
             @PathVariable Long id,
+            Principal principal,
             @RequestBody UpdateAssistedPersonResource resource) {
+        Long userId = CallerIdentity.requireUserId(principal);
+        var person = accessService.requireManage(id, userId);
+        if (resource.householdId() != null && !resource.householdId().equals(person.getHouseholdId())
+                && !accessService.canManageHousehold(resource.householdId(), userId)) {
+            throw new AssistanceAccessDeniedException("The caller may not manage household " + resource.householdId() + ".");
+        }
         UpdateAssistedPersonCommand command = new UpdateAssistedPersonCommand(
                 id,
-                resource.relativeId(),
+                person.getRelative().getId(),
                 null, null,
                 resource.phoneNumber(),
                 resource.firstName(),
@@ -114,38 +129,19 @@ public class AssistedPersonsController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<AssistedPersonResource> getAssistedPersonById(@PathVariable Long id) {
-        return queryService.handle(new GetAssistedPersonByIdQuery(id))
-                .map(this::toResource)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<AssistedPersonResource> getAssistedPersonById(@PathVariable Long id, Principal principal) {
+        var person = accessService.requireRead(id, CallerIdentity.requireUserId(principal));
+        return ResponseEntity.ok(toResource(person));
     }
 
     @GetMapping
     public ResponseEntity<List<AssistedPersonResource>> getAssistedPersons(
             Principal principal,
             @RequestParam(required = false) Long relativeId) {
-        if (relativeId != null) {
-            List<AssistedPersonResource> list = queryService.handle(new GetAssistedPersonsByRelativeIdQuery(relativeId))
-                    .stream()
-                    .map(this::toResource)
-                    .toList();
-            return ResponseEntity.ok(list);
-        }
-        if (principal != null) {
-            UserId userId = userIdOf(principal);
-            if (userId != null) {
-                List<AssistedPersonResource> list = queryService.handle(new GetAssistedPersonsByUserIdQuery(userId))
-                        .stream()
-                        .map(this::toResource)
-                        .toList();
-                if (!list.isEmpty()) {
-                    return ResponseEntity.ok(list);
-                }
-            }
-        }
-        List<AssistedPersonResource> list = queryService.handle(new GetAllAssistedPersonsQuery())
-                .stream()
+        // Only the persons the caller takes care of; a relativeId can narrow the list, never widen it.
+        List<AssistedPersonResource> list = accessService.readableBy(CallerIdentity.requireUserId(principal)).stream()
+                .filter(person -> relativeId == null
+                        || (person.getRelative() != null && relativeId.equals(person.getRelative().getId())))
                 .map(this::toResource)
                 .toList();
         return ResponseEntity.ok(list);

@@ -1,17 +1,16 @@
 package com.resolum.alivia.assistance.interfaces.rest.controllers;
 
-import com.resolum.alivia.assistance.domain.model.aggregates.Relative;
 import com.resolum.alivia.assistance.domain.model.commands.CancelActivityOccurrenceCommand;
 import com.resolum.alivia.assistance.domain.model.commands.CompleteActivityCommand;
 import com.resolum.alivia.assistance.domain.model.queries.*;
+import com.resolum.alivia.assistance.domain.services.AssistanceAccessService;
 import com.resolum.alivia.assistance.domain.services.ActivityLogCommandService;
 import com.resolum.alivia.assistance.domain.services.ActivityLogQueryService;
-import com.resolum.alivia.assistance.domain.services.RelativeQueryService;
+import com.resolum.alivia.assistance.interfaces.rest.CallerIdentity;
 import com.resolum.alivia.assistance.interfaces.rest.resources.ActivityLogResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.CancelActivityOccurrenceResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.CompleteActivityResource;
 import com.resolum.alivia.assistance.interfaces.rest.transform.ActivityLogResourceAssembler;
-import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -29,35 +28,29 @@ public class ActivityLogsController {
 
     private final ActivityLogCommandService commandService;
     private final ActivityLogQueryService queryService;
-    private final RelativeQueryService relativeQueryService;
+    private final AssistanceAccessService accessService;
 
     public ActivityLogsController(ActivityLogCommandService commandService,
                                   ActivityLogQueryService queryService,
-                                  RelativeQueryService relativeQueryService) {
+                                  AssistanceAccessService accessService) {
         this.commandService = commandService;
         this.queryService = queryService;
-        this.relativeQueryService = relativeQueryService;
+        this.accessService = accessService;
     }
 
     @PostMapping("/complete")
     public ResponseEntity<Long> completeActivity(
             Principal principal,
             @RequestBody CompleteActivityResource resource) {
-        Long caregiverUserId = resource.caregiverUserId();
-        if (caregiverUserId == null && principal != null) {
-            try {
-                caregiverUserId = Long.valueOf(principal.getName());
-            } catch (Exception ignored) {}
-        }
-        if (caregiverUserId == null) {
-            caregiverUserId = 1L;
-        }
+        Long userId = CallerIdentity.requireUserId(principal);
+        accessService.requireOperateOccurrence(resource.careActivityId(), resource.assignmentId(), userId);
 
+        // Who completes the activity is the caller; the caregiver user id of the body is not trusted.
         CompleteActivityCommand command = new CompleteActivityCommand(
                 resource.careActivityId(),
                 resource.assignmentId(),
                 resource.date(),
-                caregiverUserId,
+                userId,
                 resource.notes()
         );
         Long id = commandService.handle(command);
@@ -68,28 +61,14 @@ public class ActivityLogsController {
     public ResponseEntity<Long> cancelActivity(
             Principal principal,
             @RequestBody CancelActivityOccurrenceResource resource) {
-        Long relativeId = null;
-        if (principal != null) {
-            try {
-                Long userId = Long.valueOf(principal.getName());
-                var byUser = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId));
-                if (byUser.isPresent()) {
-                    relativeId = byUser.get().getId();
-                }
-            } catch (Exception ignored) {}
-        }
-        if (relativeId == null && resource.relativeId() != null) {
-            var byId = relativeQueryService.handle(new GetRelativeByIdQuery(resource.relativeId()));
-            if (byId.isPresent()) {
-                relativeId = resource.relativeId();
-            }
-        }
+        var activity = accessService.requireOperateOccurrence(
+                resource.careActivityId(), resource.assignmentId(), CallerIdentity.requireUserId(principal));
 
         CancelActivityOccurrenceCommand command = new CancelActivityOccurrenceCommand(
                 resource.careActivityId(),
                 resource.assignmentId(),
                 resource.date(),
-                relativeId
+                activity.getAssistedPerson().getRelative().getId()
         );
         Long id = commandService.handle(command);
         return new ResponseEntity<>(id, HttpStatus.CREATED);
@@ -98,8 +77,10 @@ public class ActivityLogsController {
     @GetMapping("/assisted-persons/{assistedPersonId}")
     public ResponseEntity<List<ActivityLogResource>> getActivityLogsByAssistedPersonId(
             @PathVariable Long assistedPersonId,
+            Principal principal,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        accessService.requireRead(assistedPersonId, CallerIdentity.requireUserId(principal));
         List<ActivityLogResource> logs = queryService.handle(new GetActivityLogsByAssistedPersonIdQuery(assistedPersonId, from, to))
                 .stream()
                 .map(ActivityLogResourceAssembler::toResourceFromEntity)
@@ -110,8 +91,10 @@ public class ActivityLogsController {
     @GetMapping("/caregivers/{caregiverId}")
     public ResponseEntity<List<ActivityLogResource>> getActivityLogsByCaregiverId(
             @PathVariable Long caregiverId,
+            Principal principal,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        accessService.requireReadCaregiver(caregiverId, CallerIdentity.requireUserId(principal));
         List<ActivityLogResource> logs = queryService.handle(new GetActivityLogsByCaregiverIdQuery(caregiverId, from, to))
                 .stream()
                 .map(ActivityLogResourceAssembler::toResourceFromEntity)

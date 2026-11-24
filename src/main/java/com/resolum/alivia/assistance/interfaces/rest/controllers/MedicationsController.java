@@ -12,19 +12,15 @@ import com.resolum.alivia.assistance.domain.model.commands.DeactivateCareActivit
 import com.resolum.alivia.assistance.domain.model.commands.UpdateActivityAssignmentCommand;
 import com.resolum.alivia.assistance.domain.model.commands.UpdateCareActivityCommand;
 import com.resolum.alivia.assistance.domain.model.entities.ActivityAssignment;
-import com.resolum.alivia.assistance.domain.model.queries.GetAllAssistedPersonsQuery;
-import com.resolum.alivia.assistance.domain.model.queries.GetAssistedPersonByIdQuery;
-import com.resolum.alivia.assistance.domain.model.queries.GetAssistedPersonsByRelativeIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetCareActivitiesByAssistedPersonIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetCareActivityByIdQuery;
-import com.resolum.alivia.assistance.domain.model.queries.GetRelativeByUserIdQuery;
 import com.resolum.alivia.assistance.domain.model.valueobjects.ActivityStatus;
 import com.resolum.alivia.assistance.domain.model.valueobjects.CareActivityType;
 import com.resolum.alivia.assistance.domain.model.valueobjects.ScheduleType;
-import com.resolum.alivia.assistance.domain.services.AssistedPersonQueryService;
+import com.resolum.alivia.assistance.domain.services.AssistanceAccessService;
 import com.resolum.alivia.assistance.domain.services.CareActivityCommandService;
 import com.resolum.alivia.assistance.domain.services.CareActivityQueryService;
-import com.resolum.alivia.assistance.domain.services.RelativeQueryService;
+import com.resolum.alivia.assistance.interfaces.rest.CallerIdentity;
 import com.resolum.alivia.assistance.interfaces.rest.resources.AssignMedicationResponsibleRequestResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.MedicationScheduleResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.MedicationScheduleResource.MedicationRevisionResource;
@@ -59,36 +55,32 @@ public class MedicationsController {
 
     private final CareActivityCommandService commandService;
     private final CareActivityQueryService queryService;
-    private final RelativeQueryService relativeQueryService;
-    private final AssistedPersonQueryService assistedPersonQueryService;
+    private final AssistanceAccessService accessService;
     private final ExternalIamService externalIamService;
     private final ExternalProfilesService externalProfilesService;
 
     public MedicationsController(CareActivityCommandService commandService,
                                  CareActivityQueryService queryService,
-                                 RelativeQueryService relativeQueryService,
-                                 AssistedPersonQueryService assistedPersonQueryService) {
-        this(commandService, queryService, relativeQueryService, assistedPersonQueryService, null, null);
+                                 AssistanceAccessService accessService) {
+        this(commandService, queryService, accessService, null, null);
     }
 
     @Autowired
     public MedicationsController(CareActivityCommandService commandService,
                                  CareActivityQueryService queryService,
-                                 RelativeQueryService relativeQueryService,
-                                 AssistedPersonQueryService assistedPersonQueryService,
+                                 AssistanceAccessService accessService,
                                  ExternalIamService externalIamService,
                                  ExternalProfilesService externalProfilesService) {
         this.commandService = commandService;
         this.queryService = queryService;
-        this.relativeQueryService = relativeQueryService;
-        this.assistedPersonQueryService = assistedPersonQueryService;
+        this.accessService = accessService;
         this.externalIamService = externalIamService;
         this.externalProfilesService = externalProfilesService;
     }
 
     @GetMapping("/medications")
     public ResponseEntity<List<MedicationScheduleResource>> listMedications(Principal principal) {
-        List<AssistedPerson> assistedPersons = resolveAssistedPersons(principal);
+        List<AssistedPerson> assistedPersons = accessService.readableBy(CallerIdentity.requireUserId(principal));
         List<CareActivity> medications = assistedPersons.stream()
                 .flatMap(person -> queryService.handle(new GetCareActivitiesByAssistedPersonIdQuery(person.getId())).stream())
                 .filter(activity -> activity.getType() == CareActivityType.MEDICATION)
@@ -106,11 +98,12 @@ public class MedicationsController {
             @PathVariable Long assistedPersonId,
             Principal principal,
             @RequestBody ScheduleMedicationRequestResource resource) {
-        Long relativeId = resolveRelativeId(principal);
-        Long targetAssistedPersonId = resolveTargetAssistedPersonId(
-                resource.assistedPersonId() != null ? resource.assistedPersonId() : assistedPersonId,
-                relativeId
-        );
+        Long userId = CallerIdentity.requireUserId(principal);
+        // The body can name another person than the path: both must be reachable by the caller.
+        accessService.requireOperate(assistedPersonId, userId);
+        Long targetAssistedPersonId = resource.assistedPersonId() != null ? resource.assistedPersonId() : assistedPersonId;
+        var person = accessService.requireOperate(targetAssistedPersonId, userId);
+        Long relativeId = person.getRelative().getId();
 
         Long activityId = commandService.handle(new CreateCareActivityCommand(
                 relativeId,
@@ -150,12 +143,8 @@ public class MedicationsController {
             @PathVariable Long scheduleId,
             Principal principal,
             @RequestBody UpdateMedicationRequestResource resource) {
-        Optional<CareActivity> existingOpt = queryService.handle(new GetCareActivityByIdQuery(scheduleId));
-        if (existingOpt.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-        CareActivity existing = existingOpt.get();
-        Long relativeId = resolveRelativeId(principal);
+        CareActivity existing = accessService.requireOperateActivity(scheduleId, CallerIdentity.requireUserId(principal));
+        Long relativeId = existing.getAssistedPerson().getRelative().getId();
 
         commandService.handle(new UpdateCareActivityCommand(
                 scheduleId,
@@ -228,11 +217,8 @@ public class MedicationsController {
             @PathVariable Long scheduleId,
             Principal principal,
             @RequestBody(required = false) SuspendMedicationRequestResource resource) {
-        if (queryService.handle(new GetCareActivityByIdQuery(scheduleId)).isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-        Long relativeId = resolveRelativeId(principal);
-        commandService.handle(new DeactivateCareActivityCommand(scheduleId, relativeId));
+        var target = accessService.requireOperateActivity(scheduleId, CallerIdentity.requireUserId(principal));
+        commandService.handle(new DeactivateCareActivityCommand(scheduleId, target.getAssistedPerson().getRelative().getId()));
 
         return queryService.handle(new GetCareActivityByIdQuery(scheduleId))
                 .map(activity -> ResponseEntity.ok(toResource(activity, resolveProfileNames(List.of(activity)))))
@@ -244,12 +230,8 @@ public class MedicationsController {
             @PathVariable Long scheduleId,
             Principal principal,
             @RequestBody AssignMedicationResponsibleRequestResource resource) {
-        Optional<CareActivity> existingOpt = queryService.handle(new GetCareActivityByIdQuery(scheduleId));
-        if (existingOpt.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-        CareActivity existing = existingOpt.get();
-        Long relativeId = resolveRelativeId(principal);
+        CareActivity existing = accessService.requireOperateActivity(scheduleId, CallerIdentity.requireUserId(principal));
+        Long relativeId = existing.getAssistedPerson().getRelative().getId();
 
         List<ActivityAssignment> activeAssignments = existing.getActivityAssignments().getActivityAssignments().stream()
                 .filter(a -> a.getStatus() == ActivityStatus.ACTIVE)
@@ -285,53 +267,6 @@ public class MedicationsController {
         return queryService.handle(new GetCareActivityByIdQuery(scheduleId))
                 .map(activity -> ResponseEntity.ok(toResource(activity, resolveProfileNames(List.of(activity)))))
                 .orElse(ResponseEntity.notFound().build());
-    }
-
-    private Long resolveRelativeId(Principal principal) {
-        if (principal != null) {
-            try {
-                Long userId = Long.valueOf(principal.getName());
-                var byUser = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId));
-                if (byUser.isPresent()) {
-                    return byUser.get().getId();
-                }
-            } catch (Exception ignored) {
-            }
-        }
-        var allAssisted = assistedPersonQueryService.handle(new GetAllAssistedPersonsQuery());
-        if (!allAssisted.isEmpty() && allAssisted.get(0).getRelative() != null) {
-            return allAssisted.get(0).getRelative().getId();
-        }
-        return 1L;
-    }
-
-    private List<AssistedPerson> resolveAssistedPersons(Principal principal) {
-        if (principal != null) {
-            try {
-                Long userId = Long.valueOf(principal.getName());
-                var byUser = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId));
-                if (byUser.isPresent()) {
-                    var persons = assistedPersonQueryService.handle(
-                            new GetAssistedPersonsByRelativeIdQuery(byUser.get().getId()));
-                    if (!persons.isEmpty()) {
-                        return persons;
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-        }
-        return assistedPersonQueryService.handle(new GetAllAssistedPersonsQuery());
-    }
-
-    private Long resolveTargetAssistedPersonId(Long requestedId, Long relativeId) {
-        if (requestedId != null && assistedPersonQueryService.handle(new GetAssistedPersonByIdQuery(requestedId)).isPresent()) {
-            return requestedId;
-        }
-        var persons = assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(relativeId));
-        if (persons.isEmpty()) {
-            persons = assistedPersonQueryService.handle(new GetAllAssistedPersonsQuery());
-        }
-        return persons.isEmpty() ? 1L : persons.get(0).getId();
     }
 
     private Map<UserId, String> resolveProfileNames(List<CareActivity> activities) {

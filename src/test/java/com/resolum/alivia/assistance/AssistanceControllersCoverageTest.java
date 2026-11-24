@@ -99,6 +99,12 @@ class AssistanceControllersCoverageTest {
             if (exception.getCause() instanceof NullPointerException) {
                 return;
             }
+            // The stubs grant nothing by default, and without an authenticated user the endpoints refuse the
+            // call instead of guessing one: a 403 still proves the endpoint is wired. Authorization itself is
+            // covered by the controller and access service tests.
+            if (exception.getCause() instanceof com.resolum.alivia.assistance.domain.exceptions.AssistanceAccessDeniedException) {
+                return;
+            }
             throw exception;
         }
 
