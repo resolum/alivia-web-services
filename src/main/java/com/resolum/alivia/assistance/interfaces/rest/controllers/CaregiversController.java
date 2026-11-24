@@ -12,6 +12,9 @@ import com.resolum.alivia.assistance.domain.model.queries.GetCaregiversByAssiste
 import com.resolum.alivia.assistance.domain.model.queries.GetCaregiversByUserIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetRelativeByUserIdQuery;
 import com.resolum.alivia.assistance.domain.services.AssistedPersonQueryService;
+import com.resolum.alivia.assistance.domain.exceptions.AssistanceAccessDeniedException;
+import com.resolum.alivia.assistance.domain.services.AssistanceAccessService;
+import com.resolum.alivia.assistance.interfaces.rest.CallerIdentity;
 import com.resolum.alivia.assistance.domain.services.CaregiverCommandService;
 import com.resolum.alivia.assistance.domain.services.CaregiverQueryService;
 import com.resolum.alivia.assistance.domain.services.RelativeQueryService;
@@ -46,12 +49,14 @@ public class CaregiversController {
     private final AssistedPersonQueryService assistedPersonQueryService;
     private final ExternalIamService externalIamService;
     private final ExternalProfilesService externalProfilesService;
+    private final AssistanceAccessService accessService;
 
     public CaregiversController(CaregiverCommandService commandService,
                                 CaregiverQueryService queryService,
                                 RelativeQueryService relativeQueryService,
-                                AssistedPersonQueryService assistedPersonQueryService) {
-        this(commandService, queryService, relativeQueryService, assistedPersonQueryService, null, null);
+                                AssistedPersonQueryService assistedPersonQueryService,
+                                AssistanceAccessService accessService) {
+        this(commandService, queryService, relativeQueryService, assistedPersonQueryService, accessService, null, null);
     }
 
     @Autowired
@@ -59,6 +64,7 @@ public class CaregiversController {
                                 CaregiverQueryService queryService,
                                 RelativeQueryService relativeQueryService,
                                 AssistedPersonQueryService assistedPersonQueryService,
+                                AssistanceAccessService accessService,
                                 @Autowired(required = false) ExternalIamService externalIamService,
                                 @Autowired(required = false) ExternalProfilesService externalProfilesService) {
         this.commandService = commandService;
@@ -67,10 +73,12 @@ public class CaregiversController {
         this.assistedPersonQueryService = assistedPersonQueryService;
         this.externalIamService = externalIamService;
         this.externalProfilesService = externalProfilesService;
+        this.accessService = accessService;
     }
 
     @PostMapping
-    public ResponseEntity<Long> createCaregiver(@RequestBody CreateCaregiverResource resource) {
+    public ResponseEntity<Long> createCaregiver(@RequestBody CreateCaregiverResource resource, Principal principal) {
+        accessService.requireManage(resource.assistedPersonId(), CallerIdentity.requireUserId(principal));
         CreateCaregiverCommand command = new CreateCaregiverCommand(
                 resource.assistedPersonId(),
                 resource.caregiverUserId()
@@ -80,22 +88,11 @@ public class CaregiversController {
     }
 
     @PostMapping("/{id}/revoke")
-    public ResponseEntity<Long> revokeCaregiver(@PathVariable Long id,
-                                                @RequestParam(required = false) Long relativeId,
-                                                Principal principal) {
-        Long effectiveRelativeId = relativeId;
-        if (effectiveRelativeId == null && principal != null) {
-            try {
-                Long userId = Long.valueOf(principal.getName());
-                effectiveRelativeId = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId)).map(Relative::getId).orElse(1L);
-            } catch (Exception e) {
-                effectiveRelativeId = 1L;
-            }
-        }
-        if (effectiveRelativeId == null) {
-            effectiveRelativeId = 1L;
-        }
-        RevokeCaregiverAccessCommand command = new RevokeCaregiverAccessCommand(id, effectiveRelativeId);
+    public ResponseEntity<Long> revokeCaregiver(@PathVariable Long id, Principal principal) {
+        var caregiver = accessService.requireManageCaregiver(id, CallerIdentity.requireUserId(principal));
+        // Revoked on behalf of the relative in charge of the person; never a relative id sent by the client.
+        RevokeCaregiverAccessCommand command = new RevokeCaregiverAccessCommand(
+                id, caregiver.getAssistedPerson().getRelative().getId());
         Long resultId = commandService.handle(command);
         return ResponseEntity.ok(resultId);
     }
@@ -104,36 +101,24 @@ public class CaregiversController {
     public ResponseEntity<List<CaregiverResource>> getCaregivers(
             Principal principal,
             @RequestParam(required = false) Long assistedPersonId) {
+        Long userId = CallerIdentity.requireUserId(principal);
         if (assistedPersonId != null) {
+            accessService.requireRead(assistedPersonId, userId);
             List<Caregiver> entities = queryService.handle(new GetCaregiversByAssistedPersonIdQuery(assistedPersonId));
             return ResponseEntity.ok(enrichCaregivers(entities));
         }
-        if (principal != null) {
-            try {
-                Long userId = Long.valueOf(principal.getName());
-                var relativeOpt = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId));
-                if (relativeOpt.isPresent()) {
-                    var persons = assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(relativeOpt.get().getId()));
-                    List<Caregiver> all = new ArrayList<>();
-                    for (var person : persons) {
-                        all.addAll(queryService.handle(new GetCaregiversByAssistedPersonIdQuery(person.getId())));
-                    }
-                    return ResponseEntity.ok(enrichCaregivers(all));
-                }
-                List<Caregiver> list = queryService.handle(new GetCaregiversByUserIdQuery(userId));
-                if (!list.isEmpty()) {
-                    return ResponseEntity.ok(enrichCaregivers(list));
-                }
-            } catch (Exception e) {
-                log.warn("Could not find caregivers by principal {}: {}", principal.getName(), e.getMessage());
+        // Without a person: the caregivers of the persons the caller is in charge of or, for a caregiver, the
+        // caller's own records. Never the caregivers of persons the caller does not take care of.
+        var relativeOpt = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId));
+        if (relativeOpt.isPresent()) {
+            var persons = assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(relativeOpt.get().getId()));
+            List<Caregiver> all = new ArrayList<>();
+            for (var person : persons) {
+                all.addAll(queryService.handle(new GetCaregiversByAssistedPersonIdQuery(person.getId())));
             }
+            return ResponseEntity.ok(enrichCaregivers(all));
         }
-        var persons = assistedPersonQueryService.handle(new GetAllAssistedPersonsQuery());
-        List<Caregiver> all = new ArrayList<>();
-        for (var person : persons) {
-            all.addAll(queryService.handle(new GetCaregiversByAssistedPersonIdQuery(person.getId())));
-        }
-        return ResponseEntity.ok(enrichCaregivers(all));
+        return ResponseEntity.ok(enrichCaregivers(queryService.handle(new GetCaregiversByUserIdQuery(userId))));
     }
 
     private List<CaregiverResource> enrichCaregivers(List<Caregiver> entities) {
@@ -186,17 +171,17 @@ public class CaregiversController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<CaregiverResource> getCaregiverById(@PathVariable Long id) {
-        return queryService.handle(new GetCaregiversByUserIdQuery(id))
-                .stream()
-                .findFirst()
-                .map(CaregiverResourceAssembler::toResourceFromEntity)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<CaregiverResource> getCaregiverById(@PathVariable Long id, Principal principal) {
+        var caregiver = accessService.requireReadCaregiver(id, CallerIdentity.requireUserId(principal));
+        return ResponseEntity.ok(CaregiverResourceAssembler.toResourceFromEntity(caregiver));
     }
 
     @GetMapping("/user/{userId}")
-    public ResponseEntity<List<CaregiverResource>> getCaregiversByUserId(@PathVariable Long userId) {
+    public ResponseEntity<List<CaregiverResource>> getCaregiversByUserId(@PathVariable Long userId, Principal principal) {
+        // The caregiver records of an account are read by that account only.
+        if (!CallerIdentity.requireUserId(principal).equals(userId)) {
+            throw new AssistanceAccessDeniedException("The caregiver records of another user cannot be read.");
+        }
         List<CaregiverResource> list = queryService.handle(new GetCaregiversByUserIdQuery(userId))
                 .stream()
                 .map(CaregiverResourceAssembler::toResourceFromEntity)

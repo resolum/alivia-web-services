@@ -38,6 +38,7 @@ class AssistanceAccessServiceImplTest {
     private RelativeRepository relatives;
     private CaregiverRepository caregivers;
     private CareActivityRepository activities;
+    private com.resolum.alivia.assistance.domain.repositories.InvitationRepository invitations;
     private ExternalHouseholdsService households;
     private AssistanceAccessServiceImpl access;
     private AssistedPerson person;
@@ -48,9 +49,10 @@ class AssistanceAccessServiceImplTest {
         relatives = mock(RelativeRepository.class);
         caregivers = mock(CaregiverRepository.class);
         activities = mock(CareActivityRepository.class);
+        invitations = mock(com.resolum.alivia.assistance.domain.repositories.InvitationRepository.class);
         households = mock(ExternalHouseholdsService.class);
         access = new AssistanceAccessServiceImpl(people, relatives, caregivers, activities,
-                mock(CareShiftRepository.class), mock(HandoverRepository.class), households);
+                mock(CareShiftRepository.class), mock(HandoverRepository.class), invitations, households);
         var rel = relative(10L); // its user is RELATIVE_USER (see AssistanceFixtures)
         person = assistedPerson(20L, rel);
         when(people.findById(20L)).thenReturn(Optional.of(person));
@@ -125,5 +127,48 @@ class AssistanceAccessServiceImplTest {
         assertThat(access.readableBy(user)).containsExactly(person);
         assertThat(access.readableBy(OUTSIDER)).isEmpty();
         assertThat(access.readableBy(null)).isEmpty();
+    }
+
+    @Test
+    void onlyWhoManagesThePersonManagesItsCaregiversAndInvitations() {
+        var relativeUser = person.getRelative().getUserId().userId();
+        var caregiver = AssistanceFixtures.caregiver(30L, CAREGIVER_USER, person);
+        var invitation = AssistanceFixtures.invitation(40L, person, person.getRelative());
+        when(caregivers.findById(30L)).thenReturn(Optional.of(caregiver));
+        when(invitations.findById(40L)).thenReturn(Optional.of(invitation));
+
+        assertThat(access.requireManageCaregiver(30L, relativeUser)).isSameAs(caregiver);
+        assertThat(access.requireManageInvitation(40L, relativeUser)).isSameAs(invitation);
+        // The caregiver of the person operates but does not manage who else takes care of it.
+        assertThatThrownBy(() -> access.requireManageCaregiver(30L, CAREGIVER_USER))
+                .isInstanceOf(AssistanceAccessDeniedException.class);
+        assertThatThrownBy(() -> access.requireManageInvitation(40L, OUTSIDER))
+                .isInstanceOf(AssistanceAccessDeniedException.class);
+        when(caregivers.findById(99L)).thenReturn(Optional.empty());
+        when(invitations.findById(99L)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> access.requireManageCaregiver(99L, OUTSIDER))
+                .isInstanceOf(com.resolum.alivia.assistance.domain.exceptions.CaregiverNotFoundException.class);
+        assertThatThrownBy(() -> access.requireManageInvitation(99L, OUTSIDER))
+                .isInstanceOf(com.resolum.alivia.assistance.domain.exceptions.InvitationNotFoundException.class);
+    }
+
+    @Test
+    void aRelativeIsReadBySelfOrByWhoTakesCareOfOneOfItsPersonsAndEditedBySelfOnly() {
+        var rel = person.getRelative();
+        var relativeUser = rel.getUserId().userId();
+        when(relatives.findById(rel.getId())).thenReturn(Optional.of(rel));
+        when(relatives.findByUserId(new UserId(CAREGIVER_USER))).thenReturn(Optional.empty());
+        when(caregivers.findAllByUserId(new UserId(CAREGIVER_USER)))
+                .thenReturn(List.of(AssistanceFixtures.caregiver(30L, CAREGIVER_USER, person)));
+        when(relatives.findByUserId(new UserId(OUTSIDER))).thenReturn(Optional.empty());
+        when(caregivers.findAllByUserId(new UserId(OUTSIDER))).thenReturn(List.of());
+
+        assertThat(access.requireReadRelative(rel.getId(), relativeUser)).isSameAs(rel);
+        assertThat(access.requireReadRelative(rel.getId(), CAREGIVER_USER)).isSameAs(rel);
+        assertThatThrownBy(() -> access.requireReadRelative(rel.getId(), OUTSIDER))
+                .isInstanceOf(AssistanceAccessDeniedException.class);
+        assertThat(access.requireSelfRelative(rel.getId(), relativeUser)).isSameAs(rel);
+        assertThatThrownBy(() -> access.requireSelfRelative(rel.getId(), CAREGIVER_USER))
+                .isInstanceOf(AssistanceAccessDeniedException.class);
     }
 }

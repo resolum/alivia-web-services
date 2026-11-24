@@ -5,6 +5,8 @@ import com.resolum.alivia.assistance.domain.model.aggregates.CareActivity;
 import com.resolum.alivia.assistance.domain.model.aggregates.CareShift;
 import com.resolum.alivia.assistance.domain.model.aggregates.Caregiver;
 import com.resolum.alivia.assistance.domain.model.aggregates.Handover;
+import com.resolum.alivia.assistance.domain.model.aggregates.Invitation;
+import com.resolum.alivia.assistance.domain.model.aggregates.Relative;
 
 import java.util.List;
 
@@ -49,6 +51,18 @@ public interface AssistanceAccessService {
 
     /** The caregiver, when the user is that caregiver or may read the caregiver's assisted person. */
     Caregiver requireReadCaregiver(Long caregiverId, Long userId);
+
+    /** The caregiver, when the user may manage the caregiver's assisted person (to revoke the access). */
+    Caregiver requireManageCaregiver(Long caregiverId, Long userId);
+
+    /** The invitation, when the user may manage the assisted person it is for (to revoke or resend it). */
+    Invitation requireManageInvitation(Long invitationId, Long userId);
+
+    /** The relative, when the user is that relative or may read one of the persons the relative is in charge of. */
+    Relative requireReadRelative(Long relativeId, Long userId);
+
+    /** The relative, only when the user is that relative. */
+    Relative requireSelfRelative(Long relativeId, Long userId);
 
     /** The assisted persons the user is the relative in charge of, or is an active caregiver of. */
     List<AssistedPerson> readableBy(Long userId);

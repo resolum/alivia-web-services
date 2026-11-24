@@ -7,17 +7,22 @@ import com.resolum.alivia.assistance.domain.exceptions.CareActivityNotFoundExcep
 import com.resolum.alivia.assistance.domain.exceptions.CareShiftNotFoundException;
 import com.resolum.alivia.assistance.domain.exceptions.CaregiverNotFoundException;
 import com.resolum.alivia.assistance.domain.exceptions.HandoverNotFoundException;
+import com.resolum.alivia.assistance.domain.exceptions.InvitationNotFoundException;
+import com.resolum.alivia.assistance.domain.exceptions.RelativeNotFoundException;
 import com.resolum.alivia.assistance.domain.model.aggregates.AssistedPerson;
 import com.resolum.alivia.assistance.domain.model.aggregates.CareActivity;
 import com.resolum.alivia.assistance.domain.model.aggregates.CareShift;
 import com.resolum.alivia.assistance.domain.model.aggregates.Caregiver;
 import com.resolum.alivia.assistance.domain.model.aggregates.Handover;
+import com.resolum.alivia.assistance.domain.model.aggregates.Invitation;
+import com.resolum.alivia.assistance.domain.model.aggregates.Relative;
 import com.resolum.alivia.assistance.domain.model.valueobjects.CaregiverStatus;
 import com.resolum.alivia.assistance.domain.repositories.AssistedPersonRepository;
 import com.resolum.alivia.assistance.domain.repositories.CareActivityRepository;
 import com.resolum.alivia.assistance.domain.repositories.CareShiftRepository;
 import com.resolum.alivia.assistance.domain.repositories.CaregiverRepository;
 import com.resolum.alivia.assistance.domain.repositories.HandoverRepository;
+import com.resolum.alivia.assistance.domain.repositories.InvitationRepository;
 import com.resolum.alivia.assistance.domain.repositories.RelativeRepository;
 import com.resolum.alivia.assistance.domain.services.AssistanceAccessService;
 import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
@@ -43,6 +48,7 @@ public class AssistanceAccessServiceImpl implements AssistanceAccessService {
     private final CareActivityRepository careActivityRepository;
     private final CareShiftRepository careShiftRepository;
     private final HandoverRepository handoverRepository;
+    private final InvitationRepository invitationRepository;
     private final ExternalHouseholdsService externalHouseholdsService;
 
     public AssistanceAccessServiceImpl(AssistedPersonRepository assistedPersonRepository,
@@ -51,6 +57,7 @@ public class AssistanceAccessServiceImpl implements AssistanceAccessService {
                                        CareActivityRepository careActivityRepository,
                                        CareShiftRepository careShiftRepository,
                                        HandoverRepository handoverRepository,
+                                       InvitationRepository invitationRepository,
                                        ExternalHouseholdsService externalHouseholdsService) {
         this.assistedPersonRepository = assistedPersonRepository;
         this.relativeRepository = relativeRepository;
@@ -58,6 +65,7 @@ public class AssistanceAccessServiceImpl implements AssistanceAccessService {
         this.careActivityRepository = careActivityRepository;
         this.careShiftRepository = careShiftRepository;
         this.handoverRepository = handoverRepository;
+        this.invitationRepository = invitationRepository;
         this.externalHouseholdsService = externalHouseholdsService;
     }
 
@@ -151,6 +159,43 @@ public class AssistanceAccessServiceImpl implements AssistanceAccessService {
 
     @Override
     @Transactional(readOnly = true)
+    public Caregiver requireManageCaregiver(Long caregiverId, Long userId) {
+        var caregiver = caregiverRepository.findById(caregiverId)
+                .orElseThrow(() -> new CaregiverNotFoundException(caregiverId));
+        if (!canManage(caregiver.getAssistedPerson(), userId)) throw denied("manage", caregiver.getAssistedPerson());
+        return caregiver;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Invitation requireManageInvitation(Long invitationId, Long userId) {
+        var invitation = invitationRepository.findById(invitationId)
+                .orElseThrow(() -> new InvitationNotFoundException(invitationId));
+        if (!canManage(invitation.getAssistedPerson(), userId)) throw denied("manage", invitation.getAssistedPerson());
+        return invitation;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Relative requireReadRelative(Long relativeId, Long userId) {
+        var relative = findRelative(relativeId);
+        if (isUserOf(relative, userId)) return relative;
+        boolean caresForOneOfTheirPersons = readableBy(userId).stream()
+                .anyMatch(person -> person.getRelative() != null && Objects.equals(person.getRelative().getId(), relativeId));
+        if (!caresForOneOfTheirPersons) throw new AssistanceAccessDeniedException("The user may not read relative " + relativeId);
+        return relative;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Relative requireSelfRelative(Long relativeId, Long userId) {
+        var relative = findRelative(relativeId);
+        if (!isUserOf(relative, userId)) throw new AssistanceAccessDeniedException("The user is not relative " + relativeId);
+        return relative;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<AssistedPerson> readableBy(Long userId) {
         if (userId == null) return List.of();
         var own = relativeRepository.findByUserId(new UserId(userId))
@@ -195,6 +240,15 @@ public class AssistanceAccessServiceImpl implements AssistanceAccessService {
     private boolean isRelativeInCharge(AssistedPerson person, Long userId) {
         var relative = person.getRelative();
         return relative != null && relative.getUserId() != null && Objects.equals(relative.getUserId().userId(), userId);
+    }
+
+    private Relative findRelative(Long relativeId) {
+        if (relativeId == null) throw new RelativeNotFoundException(0L);
+        return relativeRepository.findById(relativeId).orElseThrow(() -> new RelativeNotFoundException(relativeId));
+    }
+
+    private static boolean isUserOf(Relative relative, Long userId) {
+        return userId != null && relative.getUserId() != null && Objects.equals(relative.getUserId().userId(), userId);
     }
 
     private boolean isActiveCaregiver(AssistedPerson person, Long userId) {
