@@ -18,7 +18,8 @@ import java.util.regex.Pattern;
  */
 public record EventAttributes(Map<String, Object> values) {
 
-    private static final Pattern KEY = Pattern.compile("[A-Za-z0-9_.-]{1,40}");
+    // No dots: MongoDB does not accept them in the field names of a map.
+    private static final Pattern KEY = Pattern.compile("[A-Za-z0-9_-]{1,40}");
     private static final int MAX_TEXT = 256;
     /** Keys, in lower case, that name audio or what was said. */
     private static final Set<String> FORBIDDEN = Set.of("audio", "pcm", "wav", "samples", "transcript");

@@ -56,6 +56,8 @@ class EventAttributesTest {
         assertThat(reasonOf(new HashMap<>(Map.of("ok", "x")) {{ put("nothing", null); }}))
                 .isEqualTo(RejectionReason.ATTRIBUTES_INVALID);
         assertThat(reasonOf(Map.of("has space", 1))).isEqualTo(RejectionReason.ATTRIBUTES_INVALID);
+        assertThat(reasonOf(Map.of("a.b", 1))).isEqualTo(RejectionReason.ATTRIBUTES_INVALID);
+        assertThat(reasonOf(Map.of("$set", 1))).isEqualTo(RejectionReason.ATTRIBUTES_INVALID);
         assertThat(reasonOf(Map.of("k".repeat(41), 1))).isEqualTo(RejectionReason.ATTRIBUTES_INVALID);
         assertThat(reasonOf(Map.of("text", "x".repeat(257)))).isEqualTo(RejectionReason.ATTRIBUTES_INVALID);
     }
