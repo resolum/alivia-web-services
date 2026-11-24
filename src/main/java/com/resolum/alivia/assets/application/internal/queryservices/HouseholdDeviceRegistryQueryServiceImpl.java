@@ -2,10 +2,13 @@ package com.resolum.alivia.assets.application.internal.queryservices;
 
 import com.resolum.alivia.assets.domain.model.aggregates.HouseholdDeviceRegistry;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByEdgeIdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetEdgeScopeByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeTableVersionByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetTableVersionByInstallationIdQuery;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeAccessTable;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeScopeView;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeTableVersion;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeType;
 import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryQueryService;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.HouseholdDeviceRegistryRepository;
 import org.springframework.stereotype.Service;
@@ -33,6 +36,23 @@ public class HouseholdDeviceRegistryQueryServiceImpl implements HouseholdDeviceR
         return registryRepository.findByAssignedEdgeId(query.edgeId())
                 .filter(HouseholdDeviceRegistry::isActive)
                 .map(HouseholdDeviceRegistry::table);
+    }
+
+    /** Same snapshot as the table: the registry and its entries are read together. */
+    @Override
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public Optional<EdgeScopeView> handle(GetEdgeScopeByEdgeIdQuery query) {
+        return registryRepository.findByAssignedEdgeId(query.edgeId())
+                .filter(HouseholdDeviceRegistry::isActive)
+                .map(registry -> new EdgeScopeView(query.edgeId(),
+                        registry.getMicrophoneEdge() != null && query.edgeId().equals(registry.getMicrophoneEdge().getId())
+                                ? EdgeType.MICROPHONE_EDGE : EdgeType.ACTUATOR_EDGE,
+                        registry.getInstallationId().installationId(), registry.getHouseholdId(),
+                        registry.activeAssignments().stream()
+                                .map(assignment -> new EdgeScopeView.ScopedDevice(assignment.getDevice().getId(),
+                                        assignment.getDevice().getAlias(), assignment.getDevice().getDeviceType(),
+                                        assignment.getDevice().getAssetStatus(), assignment.getRoomKey()))
+                                .toList()));
     }
 
     @Override

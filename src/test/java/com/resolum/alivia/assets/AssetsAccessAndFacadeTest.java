@@ -235,7 +235,7 @@ class AssetsAccessAndFacadeTest {
         var devices = mock(DeviceQueryService.class);
         var edges = mock(EdgeQueryService.class);
         var facade = new AssetsContextFacadeImpl(devices, mock(DeviceCommandService.class),
-                mock(EdgeCommandService.class), edges, mock(HouseholdDeviceRegistryCommandService.class), mock(DeviceAssignmentCommandService.class));
+                mock(EdgeCommandService.class), edges, mock(HouseholdDeviceRegistryCommandService.class), mock(DeviceAssignmentCommandService.class), mock(HouseholdDeviceRegistryQueryService.class));
         var device = new Device("AA:BB:CC:DD:EE:FF", "Luz", "LIGHT", 1L);
         ReflectionTestUtils.setField(device, "id", 7L);
         var edge = new Edge(1L, "AA:BB:CC:DD:EE:00", "ACTUATOR_EDGE");
@@ -268,7 +268,7 @@ class AssetsAccessAndFacadeTest {
         var registryService = mock(HouseholdDeviceRegistryCommandService.class);
         when(registryService.handle(any(RegisterInstallationCommand.class))).thenReturn(11L);
         var facade = new AssetsContextFacadeImpl(mock(DeviceQueryService.class), mock(DeviceCommandService.class),
-                mock(EdgeCommandService.class), mock(EdgeQueryService.class), registryService, mock(DeviceAssignmentCommandService.class));
+                mock(EdgeCommandService.class), mock(EdgeQueryService.class), registryService, mock(DeviceAssignmentCommandService.class), mock(HouseholdDeviceRegistryQueryService.class));
 
         assertEquals(11L, facade.registerInstallation(3L, 5L, 1L));
 
@@ -283,7 +283,7 @@ class AssetsAccessAndFacadeTest {
         ReflectionTestUtils.setField(assignment, "id", 21L);
         when(assignments.handle(any(AssignDeviceToInstallationCommand.class))).thenReturn(assignment);
         var facade = new AssetsContextFacadeImpl(mock(DeviceQueryService.class), mock(DeviceCommandService.class),
-                mock(EdgeCommandService.class), mock(EdgeQueryService.class), mock(HouseholdDeviceRegistryCommandService.class), assignments);
+                mock(EdgeCommandService.class), mock(EdgeQueryService.class), mock(HouseholdDeviceRegistryCommandService.class), assignments, mock(HouseholdDeviceRegistryQueryService.class));
 
         assertEquals(21L, facade.assignDevice(3L, 7L, "sala", "Luz", 6L));
         facade.unassignDevice(7L, "Fin de la visita", 6L);
