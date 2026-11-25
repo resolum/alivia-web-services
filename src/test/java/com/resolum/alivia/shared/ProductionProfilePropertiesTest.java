@@ -73,6 +73,18 @@ class ProductionProfilePropertiesTest {
     }
 
     @Test
+    void keepsMongoInTheHealthCheckBecauseTrackingNeedsIt() throws IOException {
+        // Decision P-7 was reverted when Tracking started to use MongoDB: no profile may switch its indicator off, and
+        // deploy.sh sets the environment variable to true so a leftover `false` in an App Service does not survive.
+        assertThat(PROD.getProperty("management.health.mongodb.enabled")).isNull();
+        try (InputStream base = new ClassPathResource("application.properties").getInputStream()) {
+            var properties = new Properties();
+            properties.load(base);
+            assertThat(properties.getProperty("management.health.mongodb.enabled")).isNull();
+        }
+    }
+
+    @Test
     void disablesDockerCompose() {
         assertThat(PROD.getProperty("spring.docker.compose.enabled")).isEqualTo("false");
     }

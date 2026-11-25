@@ -486,4 +486,20 @@ class EdgeDeviceStatesContractTest {
         assertThat(edgeStatuses.kept).isNull();
         assertThat(states.kept).isEmpty();
     }
+
+    private double states(String outcome) {
+        var counter = meters.find("tracking.device.states").tag("outcome", outcome).counter();
+        return counter == null ? 0 : counter.count();
+    }
+
+    @Test
+    void theReportsOfTheDevicesAreCountedByWhatWasDecided() throws Exception {
+        kept(11L, ConnectionStatus.CONNECTED, OperationalStatus.OK, "open", "2026-11-24T15:00:00Z");
+
+        report(fixture("e3-device-states.request.json"), 200);
+
+        assertThat(states("applied")).isEqualTo(1);
+        assertThat(states("stale")).isEqualTo(1);
+        assertThat(states("rejected")).isEqualTo(2);
+    }
 }

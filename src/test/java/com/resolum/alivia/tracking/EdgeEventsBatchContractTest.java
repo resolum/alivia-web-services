@@ -99,6 +99,7 @@ class EdgeEventsBatchContractTest {
     }
 
     private final InMemoryEvents store = new InMemoryEvents();
+    private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
     private final ExternalNotificationsService notifications = mock(ExternalNotificationsService.class);
     private final ExternalAssetsService assets = mock(ExternalAssetsService.class);
     private MockMvc mvc;
@@ -111,7 +112,7 @@ class EdgeEventsBatchContractTest {
         when(notifications.relativesOf(300L)).thenReturn(Set.of(8L));
         when(notifications.notifyOnce(anyLong(), anyString(), anyString(), anyString(), anyString())).thenReturn(true);
         var service = new RecordEdgeEventsCommandServiceImpl(assets, notifications, store, TrackingPolicy.defaults(),
-                Clock.fixed(NOW, ZoneOffset.UTC), new SimpleMeterRegistry());
+                Clock.fixed(NOW, ZoneOffset.UTC), meters);
         mvc = MockMvcBuilders.standaloneSetup(new EdgeEventsBatchController(service), new EdgeEventsController(service))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
@@ -310,5 +311,49 @@ class EdgeEventsBatchContractTest {
                 .andExpect(jsonPath("$.notified").value(1));
         verify(notifications).notifyOnce(8L, "HELP_REQUESTED", "edge-help-2", "Solicitud de asistencia",
                 "Tu familiar pidió ayuda desde casa.");
+    }
+
+    private double events(String outcome, String via) {
+        var counter = meters.find("tracking.events").tag("outcome", outcome).tag("via", via).counter();
+        return counter == null ? 0 : counter.count();
+    }
+
+    @Test
+    void everyEventOfABatchIsCountedByWhatBecameOfIt() throws Exception {
+        sync(fixture("e2-batch.request.json"), 200);
+
+        assertThat(events("accepted", "batch")).isEqualTo(5);
+        assertThat(events("rejected", "batch")).isEqualTo(1);
+        assertThat(events("duplicate", "batch")).isZero();
+
+        sync(fixture("e2-batch.request.json"), 200);
+
+        assertThat(events("accepted", "batch")).isEqualTo(5);
+        assertThat(events("duplicate", "batch")).isEqualTo(5);
+        assertThat(events("rejected", "batch")).isEqualTo(2);
+    }
+
+    @Test
+    void theSingleUrgentEndpointCountsItsOwnAcceptedAndDuplicateEvents() throws Exception {
+        var body = "{\"eventId\":\"help-9\",\"type\":\"HELP_REQUESTED\"}";
+
+        mvc.perform(post("/api/v1/edge/events").principal(EDGE).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isAccepted());
+        mvc.perform(post("/api/v1/edge/events").principal(EDGE).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isAccepted());
+
+        assertThat(events("accepted", "single")).isEqualTo(1);
+        assertThat(events("duplicate", "single")).isEqualTo(1);
+        assertThat(events("accepted", "batch")).isZero();
+    }
+
+    @Test
+    void anEventThatCannotBeKeptIsAStorageFailureNotARefusal() throws Exception {
+        store.failing = true;
+
+        sync(batchOf(urgent("h1", "HELP_REQUESTED", "")), 503);
+
+        assertThat(meters.get("tracking.storage.failures").tag("operation", "insert_event").counter().count()).isEqualTo(1.0);
+        assertThat(events("accepted", "batch") + events("duplicate", "batch") + events("rejected", "batch")).isZero();
     }
 }

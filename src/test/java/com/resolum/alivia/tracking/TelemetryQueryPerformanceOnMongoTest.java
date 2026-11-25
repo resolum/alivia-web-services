@@ -157,4 +157,27 @@ class TelemetryQueryPerformanceOnMongoTest {
         var examined = ((Document) plan.get("executionStats")).get("totalDocsExamined", Number.class).intValue();
         assertThat(examined).isLessThanOrEqualTo(80);
     }
+
+    /**
+     * What a reading costs, measured: the size of the documents of the collection divided by the readings, which is what
+     * the sizing of the cluster (M0 has 512 MB) and the retention (D-TR-6) rest on.
+     *
+     * <p>The indexes are not measured: right after a bulk insert MongoDB reports the size of its indexes and of the
+     * storage from the last checkpoint, which has not happened yet (it printed 12 KB for 100 000 readings), so those
+     * figures would say nothing. They are estimated in {@code docs/operations/tracking-mongodb.md}.</p>
+     */
+    @Test
+    void measuresWhatAReadingCostsInDocumentBytes() {
+        var stats = mongo.getDb().runCommand(new Document("collStats", "telemetry_samples"));
+        long count = ((Number) stats.get("count")).longValue();
+        long data = ((Number) stats.get("size")).longValue();
+        var raw = mongo.getCollection("telemetry_samples").find().first();
+
+        double perReading = (double) data / count;
+        System.out.printf("[M0] telemetry_samples, %d readings: %.0f bytes per document (%d bytes in all), fields: %s%n",
+                count, perReading, data, raw.keySet());
+
+        assertThat(count).isEqualTo((long) DEVICES * READINGS_PER_DEVICE);
+        assertThat(perReading).as("bytes per reading document").isLessThan(512);
+    }
 }

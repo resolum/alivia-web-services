@@ -80,7 +80,11 @@ public class ReportDeviceStatesCommandServiceImpl implements ReportDeviceStatesC
 
         var outcomes = new ArrayList<DeviceStateOutcome>(command.devices().size());
         for (var report : command.devices()) {
-            outcomes.add(apply(context, report, now));
+            var outcome = apply(context, report, now);
+            // What was finally decided, not what was first evaluated: a report that loses the race is stale.
+            meters.counter("tracking.device.states", "outcome", outcome.status().name().toLowerCase(java.util.Locale.ROOT))
+                    .increment();
+            outcomes.add(outcome);
         }
         recordHeartbeat(context, now, command.pendingEvents());
         return outcomes;

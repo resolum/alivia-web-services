@@ -196,7 +196,7 @@ settings = {s["name"]: s["value"] for s in json.load(open(sys.argv[1]))}
 assert settings["DB_PASSWORD"] == sys.argv[2], "DB_PASSWORD did not survive the JSON escaping"
 assert settings["PORT"] == "8080" and settings["WEBSITES_PORT"] == "8080"
 assert settings["SPRING_PROFILES_ACTIVE"] == "prod"
-assert settings["MANAGEMENT_HEALTH_MONGODB_ENABLED"] == "false"
+assert settings["MANAGEMENT_HEALTH_MONGODB_ENABLED"] == "true", "a stale false from before P-7 was reverted must be overwritten"
 assert settings["SERVER_FORWARD_HEADERS_STRATEGY"] == "framework"
 assert "IAM_EMAIL_PROVIDER" not in settings, "an unset optional variable must not be copied"
 PY

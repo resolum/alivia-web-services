@@ -41,7 +41,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * The history of a device over a real MongoDB with 10 000 events of several homes: every page is whole and in order,
+ * The history of a device over a real MongoDB with 8 700 events of several homes: every page is whole and in order,
  * the filters count right, a home never reads another's events, and the query goes through the index.
  */
 @DataMongoTest
@@ -76,7 +76,7 @@ class DeviceEventsOnMongoTest {
 
     /**
      * Home 200 has device 5 with 4 000 events, one every second, of which one in four is a state change and the rest
-     * command results; the rest of the 10 000 are other devices and other homes, among them device 5 itself in home 300,
+     * command results; the rest of the 8 700 are other devices and other homes, among them device 5 itself in home 300,
      * where it was before.
      */
     @BeforeAll
@@ -192,5 +192,21 @@ class DeviceEventsOnMongoTest {
                 .doesNotContain("\"stage\": \"SORT\"");
         var examined = ((Document) execution.get("executionStats")).get("totalDocsExamined", Number.class).intValue();
         assertThat(examined).isLessThanOrEqualTo(400);
+    }
+
+    /** What an event costs, measured in document bytes (the indexes are estimated: see the note of the telemetry test). */
+    @Test
+    void measuresWhatAnEventCostsInDocumentBytes() {
+        var stats = mongo.getDb().runCommand(new Document("collStats", "device_events"));
+        long count = ((Number) stats.get("count")).longValue();
+        long data = ((Number) stats.get("size")).longValue();
+        var raw = mongo.getCollection("device_events").find().first();
+
+        double perEvent = (double) data / count;
+        System.out.printf("[M0] device_events, %d events: %.0f bytes per document (%d bytes in all), fields: %s%n",
+                count, perEvent, data, raw.keySet());
+
+        assertThat(count).isEqualTo(8_700);
+        assertThat(perEvent).as("bytes per event document").isLessThan(1024);
     }
 }

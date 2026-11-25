@@ -80,14 +80,17 @@ readonly SECRET_VARS=(
   IAM_SUPER_ADMIN_PASSWORD RESEND_API_KEY FIREBASE_CREDENTIALS_JSON
 )
 
-# Owned by this script (Terraform does not define them). MongoDB is left out of /actuator/health while no code uses it,
-# so an Atlas outage cannot fail a deployment (decision P-7). The property is management.health.mongodb.enabled.
+# Owned by this script (Terraform does not define them). MongoDB is part of /actuator/health again: Tracking now reads and
+# writes it, so an Atlas outage that makes the application useless must not look healthy (decision P-7, reverted by the
+# Tracking context). The value is set to true, and not just left out, on purpose: `az webapp config appsettings set` only
+# adds or changes settings, so an App Service that already has `false` from before keeps it unless it is overwritten.
+# The property is management.health.mongodb.enabled.
 readonly FIXED_SETTINGS=(
   "SPRING_PROFILES_ACTIVE=prod"
   "PORT=8080"
   "WEBSITES_PORT=8080"
   "SERVER_FORWARD_HEADERS_STRATEGY=framework"
-  "MANAGEMENT_HEALTH_MONGODB_ENABLED=false"
+  "MANAGEMENT_HEALTH_MONGODB_ENABLED=true"
 )
 
 ENVIRONMENT=""

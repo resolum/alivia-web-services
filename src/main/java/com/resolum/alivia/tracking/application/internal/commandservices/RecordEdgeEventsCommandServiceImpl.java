@@ -64,9 +64,15 @@ public class RecordEdgeEventsCommandServiceImpl implements RecordEdgeEventsComma
     @Override
     public int handle(ReportUrgentEventCommand command) {
         var edge = reportingEdge(command.edgeId());
-        var urgent = tellTheFamily(edge, clock.instant(), command, false);
+        UrgentReport urgent;
         try {
-            events.insert(urgent.event());
+            urgent = tellTheFamily(edge, clock.instant(), command, false);
+        } catch (InvalidTrackingData invalid) {
+            counted("rejected", "single");
+            throw invalid;
+        }
+        try {
+            counted(events.insert(urgent.event()) == EventInsertion.INSERTED ? "accepted" : "duplicate", "single");
         } catch (RuntimeException failure) {
             countFailure();
             log.error("The event {} of the edge {} could not be kept; the relatives were told anyway.",
@@ -92,6 +98,7 @@ public class RecordEdgeEventsCommandServiceImpl implements RecordEdgeEventsComma
     private EventOutcome record(ReportingEdge edge, Instant receivedAt, ReportedEvent reported) {
         var eventId = reported.eventId();
         if (eventId == null || !DeviceEvent.EVENT_ID.matcher(eventId).matches()) {
+            counted("rejected", "batch");
             return EventOutcome.rejected(eventId, RejectionReason.INVALID_EVENT_ID);
         }
         var type = urgentTypeOf(reported.type());
@@ -99,6 +106,7 @@ public class RecordEdgeEventsCommandServiceImpl implements RecordEdgeEventsComma
             DeviceEvent event;
             if (type != null) {
                 if (reported.batteryPct() != null && (reported.batteryPct() < 0 || reported.batteryPct() > 100)) {
+                    counted("rejected", "batch");
                     return EventOutcome.rejected(eventId, RejectionReason.BATTERY_OUT_OF_RANGE);
                 }
                 // Urgent: told to the family and never refused for what it says about a device or the clock.
@@ -108,8 +116,14 @@ public class RecordEdgeEventsCommandServiceImpl implements RecordEdgeEventsComma
             } else {
                 event = DeviceEvent.fromEdge(edge.context(), reported, receivedAt, true, policy);
             }
-            return keep(event) == EventInsertion.INSERTED ? EventOutcome.accepted(eventId) : EventOutcome.duplicate(eventId);
+            if (keep(event) == EventInsertion.INSERTED) {
+                counted("accepted", "batch");
+                return EventOutcome.accepted(eventId);
+            }
+            counted("duplicate", "batch");
+            return EventOutcome.duplicate(eventId);
         } catch (InvalidTrackingData invalid) {
+            counted("rejected", "batch");
             return EventOutcome.rejected(eventId, invalid.reason());
         }
     }
@@ -162,6 +176,11 @@ public class RecordEdgeEventsCommandServiceImpl implements RecordEdgeEventsComma
         } catch (IllegalArgumentException unknown) {
             return null;
         }
+    }
+
+    /** What became of an event the edge reported: {@code accepted}, {@code duplicate} or {@code rejected}, and how it came. */
+    private void counted(String outcome, String via) {
+        meters.counter("tracking.events", "outcome", outcome, "via", via).increment();
     }
 
     private void countFailure() {
