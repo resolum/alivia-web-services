@@ -197,4 +197,21 @@ class RecordEdgeEventsOnMongoTest {
         }
         assertThat(mongo.count(new Query(), DeviceEventDocument.class)).isEqualTo(20);
     }
+
+    @Test
+    void aBatchWithAnEventAlreadyKeptAndOneRepeatedInsideItAnswersEachOneAndKeepsThemOnce() {
+        var first = new ReportedEvent("mix-a", "DEVICE_STATE_CHANGED", NOW.minusSeconds(100), 10L, null, null, null, null,
+                null, null, Map.of("state", "open"));
+        var second = new ReportedEvent("mix-b", "DEVICE_STATE_CHANGED", NOW.minusSeconds(90), 10L, null, null, null, null,
+                null, null, Map.of("state", "closed"));
+        var third = new ReportedEvent("mix-c", "DEVICE_STATE_CHANGED", NOW.minusSeconds(80), 10L, null, null, null, null,
+                null, null, Map.of("state", "open"));
+        service.handle(new ReportEventBatchCommand(3L, java.util.List.of(second)));
+
+        var outcomes = service.handle(new ReportEventBatchCommand(3L, java.util.List.of(first, second, third, first)));
+
+        assertThat(outcomes).extracting(EventOutcome::status).containsExactly(EventOutcome.Status.ACCEPTED,
+                EventOutcome.Status.DUPLICATE, EventOutcome.Status.ACCEPTED, EventOutcome.Status.DUPLICATE);
+        assertThat(mongo.count(new Query(), DeviceEventDocument.class)).isEqualTo(3);
+    }
 }

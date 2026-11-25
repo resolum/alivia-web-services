@@ -23,6 +23,13 @@ public interface EdgeStatusRepository {
      */
     boolean markOffline(Long edgeId, Instant seen, Instant offlineSince);
 
+    /**
+     * Forgets the status of an edge that is online and has not reported since {@code seen}: the one of an edge that left the
+     * installation, so that the first report it makes in another home is a first report and not a reconnection. Nothing is
+     * removed if the edge reported meanwhile.
+     */
+    boolean removeIfSilent(Long edgeId, Instant seen);
+
     /** The edges of the household that have reported at least once. */
     List<EdgeStatus> findAllByHouseholdId(Long householdId);
 

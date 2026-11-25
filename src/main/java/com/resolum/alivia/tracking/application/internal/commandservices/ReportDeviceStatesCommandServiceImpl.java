@@ -113,6 +113,12 @@ public class ReportDeviceStatesCommandServiceImpl implements ReportDeviceStatesC
                                      Map<Long, DeviceState> known) {
         var current = report.deviceId() == null ? null : known.get(report.deviceId());
         var update = DeviceState.evaluate(current, context, report, now, policy);
+        if (update.outcome() == StateOutcome.REJECTED) {
+            // TS-55: an invalid state does not replace the last reliable one and the anomaly is recorded. The reason is a
+            // code; what the edge sent (texts, diagnostics) is not copied into the log.
+            log.warn("The edge {} reported an invalid state for the device {}: {}.", context.edgeId(), report.deviceId(),
+                    update.reason() == null ? null : update.reason().code());
+        }
         if (update.outcome() != StateOutcome.APPLIED) {
             return new DeviceStateOutcome(report.deviceId(), update.outcome(), update.reason());
         }
@@ -132,18 +138,49 @@ public class ReportDeviceStatesCommandServiceImpl implements ReportDeviceStatesC
 
     private void recordHeartbeat(ReportingContext context, Instant now, int pending, String kind) {
         var before = guarded(() -> edgeStatuses.findByEdgeId(context.edgeId()).orElse(null));
-        if (before != null && before.link() == EdgeLink.OFFLINE) {
+        boolean told = false;
+        if (leftOffline(before, context)) {
             // The end of the outage, with an id made from the moment it started: however many reports of the edge arrive
             // at once, there is one reconnection.
-            var reconnected = DeviceEvent.byServer(
-                    "rc-edge-" + context.edgeId() + "-" + before.offlineSince().toEpochMilli(),
-                    EventType.EDGE_RECONNECTED, context.edgeId(), context.installationId(), context.householdId(),
-                    null, now, null);
-            guarded(() -> events.insert(reconnected));
-            tellTheFamilyItIsBack(context, reconnected.eventId(), kind);
+            reconnection(context, before, now, kind, true);
+            told = true;
         }
         var heartbeat = EdgeStatus.heartbeat(before, context, now, pending, kind);
-        guarded(() -> edgeStatuses.recordHeartbeat(heartbeat.status()));
+        var previous = guarded(() -> edgeStatuses.recordHeartbeat(heartbeat.status())).orElse(null);
+        // The status the heartbeat really replaced, which is atomic. The watcher may have marked the edge offline after it
+        // was read above: then this report is its reconnection too, and it is recorded here (recording it twice is the same
+        // event). The heartbeat is already kept, so a failure here is logged and does not turn the report into an error.
+        if (!told && leftOffline(previous, context)) {
+            reconnection(context, previous, now, kind, false);
+        }
+    }
+
+    /**
+     * Whether this report ends an outage: the edge was offline in the same installation. An edge that was offline in
+     * another one was moved, and its first report here is just a first report.
+     */
+    private static boolean leftOffline(EdgeStatus status, ReportingContext context) {
+        return status != null && status.link() == EdgeLink.OFFLINE
+                && Objects.equals(status.installationId(), context.installationId());
+    }
+
+    private void reconnection(ReportingContext context, EdgeStatus offline, Instant now, String kind, boolean beforeHeartbeat) {
+        var since = offline.offlineSince() == null ? offline.lastReportAt() : offline.offlineSince();
+        var reconnected = DeviceEvent.byServer("rc-edge-" + context.edgeId() + "-" + since.toEpochMilli(),
+                EventType.EDGE_RECONNECTED, context.edgeId(), context.installationId(), context.householdId(), null, now,
+                null);
+        if (beforeHeartbeat) {
+            guarded(() -> events.insert(reconnected));
+        } else {
+            try {
+                events.insert(reconnected);
+            } catch (RuntimeException failure) {
+                meters.counter("tracking.storage.failures", "operation", "report_states").increment();
+                log.error("The reconnection of the edge {} could not be recorded.", context.edgeId(), failure);
+                return;
+            }
+        }
+        tellTheFamilyItIsBack(context, reconnected.eventId(), kind);
     }
 
     /**

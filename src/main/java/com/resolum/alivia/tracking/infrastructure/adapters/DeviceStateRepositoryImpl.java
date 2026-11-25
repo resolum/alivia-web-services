@@ -41,6 +41,10 @@ public class DeviceStateRepositoryImpl implements DeviceStateRepository {
     public boolean saveUnlessOlder(DeviceState state) {
         // One upsert that matches the document only when the one kept was not observed later. When it was, the upsert
         // tries to insert the same id and the unique id refuses it: nothing is written and the report is stale.
+        //
+        // The same refusal also happens when the document does not exist yet and two reports of the device race to create
+        // it: the loser is refused by the winner's insert, not by a newer state. So after a refusal the upsert is tried once
+        // more: with the document there the condition decides, and a newer report replaces an older one that got in first.
         var query = new Query(where("_id").is(state.deviceId()).and("observedAt").lte(state.observedAt()));
         var update = new Update()
                 .set("edgeId", state.edgeId())
@@ -56,8 +60,13 @@ public class DeviceStateRepositoryImpl implements DeviceStateRepository {
         try {
             mongo.upsert(query, update, DeviceStateDocument.class);
             return true;
-        } catch (DuplicateKeyException newerStateKept) {
-            return false;
+        } catch (DuplicateKeyException refused) {
+            try {
+                mongo.upsert(query, update, DeviceStateDocument.class);
+                return true;
+            } catch (DuplicateKeyException newerStateKept) {
+                return false;
+            }
         }
     }
 }

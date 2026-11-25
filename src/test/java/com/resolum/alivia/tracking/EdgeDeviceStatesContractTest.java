@@ -27,6 +27,9 @@ import com.resolum.alivia.tracking.domain.repositories.EdgeStatusRepository;
 import com.resolum.alivia.tracking.domain.repositories.TelemetrySampleRepository;
 import com.resolum.alivia.tracking.interfaces.rest.controllers.EdgeDeviceStatesController;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessResourceFailureException;
@@ -98,7 +101,7 @@ class EdgeDeviceStatesContractTest {
         }
     }
 
-    private static final class InMemoryEdgeStatuses implements EdgeStatusRepository {
+    private static class InMemoryEdgeStatuses implements EdgeStatusRepository {
         EdgeStatus kept;
         boolean failing;
 
@@ -126,12 +129,19 @@ class EdgeDeviceStatesContractTest {
         }
 
         @Override
+        public boolean removeIfSilent(Long edgeId, Instant seen) {
+            if (kept == null || kept.link() != EdgeLink.ONLINE || !kept.lastReportAt().equals(seen)) return false;
+            kept = null;
+            return true;
+        }
+
+        @Override
         public List<EdgeStatus> findOnlineSilentSince(Instant limit) {
             throw new UnsupportedOperationException();
         }
     }
 
-    private static final class InMemoryEvents implements DeviceEventRepository {
+    private static class InMemoryEvents implements DeviceEventRepository {
         final Map<String, DeviceEvent> kept = new HashMap<>();
         boolean failing;
 
@@ -569,5 +579,112 @@ class EdgeDeviceStatesContractTest {
         report("{}", 200);
 
         assertThat(edgeStatuses.kept.kind()).isEqualTo("ACTUATOR");
+    }
+
+    // ---- the anomaly of an invalid state is recorded (TS-55 #3)
+
+    private List<String> warningsWhile(java.util.concurrent.Callable<?> action) throws Exception {
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(ReportDeviceStatesCommandServiceImpl.class);
+        var appender = new ListAppender<ILoggingEvent>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            action.call();
+            return appender.list.stream().filter(e -> e.getLevel() == Level.WARN).map(ILoggingEvent::getFormattedMessage).toList();
+        } finally {
+            logger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    void anInvalidStateIsRecordedInTheLogWithTheEdgeTheDeviceAndTheReasonAndNothingElse() throws Exception {
+        var warnings = warningsWhile(() -> report(reportOf(
+                device(10, "BROKEN", "OK", "closed", "2026-11-24T15:01:00Z"),
+                device(99, "CONNECTED", "OK", "closed", "2026-11-24T15:01:00Z"),
+                device(11, "CONNECTED", "OK", "open", "2026-11-24T15:01:00Z")), 200));
+
+        assertThat(warnings).containsExactly(
+                "The edge 3 reported an invalid state for the device 10: invalid_status.",
+                "The edge 3 reported an invalid state for the device 99: unknown_device.");
+    }
+
+    @Test
+    void aLateStateIsNotAnAnomalyAndLeavesNoWarning() throws Exception {
+        kept(10L, ConnectionStatus.CONNECTED, OperationalStatus.OK, "closed", "2026-11-24T15:03:00Z");
+
+        var warnings = warningsWhile(() -> report(reportOf(device(10, "CONNECTED", "OK", "open", "2026-11-24T15:01:00Z")), 200));
+
+        assertThat(warnings).isEmpty();
+    }
+
+    // ---- the reconnection that the watcher could hide (R-08)
+
+    private MockMvc mvcWith(EdgeStatusRepository statuses, DeviceEventRepository eventStore) {
+        var clock = Clock.fixed(NOW, ZoneOffset.UTC);
+        var recorder = new TelemetrySampleRecorder(samples, clock, Duration.ofMinutes(5), null, meters, Runnable::run);
+        var service = new ReportDeviceStatesCommandServiceImpl(assets, states, statuses, eventStore, recorder, notifications,
+                TrackingPolicy.defaults(), clock, meters);
+        return MockMvcBuilders.standaloneSetup(new EdgeDeviceStatesController(service))
+                .setControllerAdvice(new GlobalExceptionHandler()).build();
+    }
+
+    /** A store in which the watcher marks the edge offline after the report read it: it was online when read, offline when kept. */
+    private InMemoryEdgeStatuses racingWithTheWatcher(Instant silent) {
+        var online = new EdgeStatus(3L, 30L, 300L, silent.minusSeconds(120), EdgeLink.ONLINE, 0, null, "ACTUATOR");
+        var racing = new InMemoryEdgeStatuses() {
+            @Override
+            public Optional<EdgeStatus> findByEdgeId(Long edgeId) {
+                return Optional.of(online);
+            }
+        };
+        racing.kept = new EdgeStatus(3L, 30L, 300L, silent.minusSeconds(120), EdgeLink.OFFLINE, 0, silent, "ACTUATOR");
+        return racing;
+    }
+
+    @Test
+    void aWatcherThatMarksTheEdgeOfflineAfterItWasReadDoesNotHideTheReconnection() throws Exception {
+        org.mockito.Mockito.when(notifications.relativesOf(300L)).thenReturn(Set.of(8L));
+        var silent = Instant.parse("2026-11-24T14:00:00Z");
+        var racing = racingWithTheWatcher(silent);
+        mvc = mvcWith(racing, events);
+
+        report("{}", 200);
+
+        assertThat(events.types()).containsExactly(EventType.EDGE_RECONNECTED);
+        assertThat(racing.kept.link()).isEqualTo(EdgeLink.ONLINE);
+        org.mockito.Mockito.verify(notifications).notifyOnce(8L, "EDGE_RECONNECTED", "rc-edge-3-" + silent.toEpochMilli(),
+                "Casa conectada de nuevo", "El equipo de puertas, ventanas, cortinas y luces de la casa volvió a reportar.");
+    }
+
+    @Test
+    void ifThatReconnectionCannotBeRecordedTheHeartbeatIsAlreadyKeptAndTheReportIsStillAnswered() throws Exception {
+        var silent = Instant.parse("2026-11-24T14:00:00Z");
+        var racing = racingWithTheWatcher(silent);
+        var failingOnReconnection = new InMemoryEvents() {
+            @Override
+            public EventInsertion insert(DeviceEvent event) {
+                if (event.type() == EventType.EDGE_RECONNECTED) throw new DataAccessResourceFailureException("MongoDB is down");
+                return super.insert(event);
+            }
+        };
+        mvc = mvcWith(racing, failingOnReconnection);
+
+        report("{}", 200);
+
+        assertThat(racing.kept.link()).isEqualTo(EdgeLink.ONLINE);
+        assertThat(meters.get("tracking.storage.failures").tag("operation", "report_states").counter().count()).isEqualTo(1.0);
+    }
+
+    @Test
+    void anEdgeThatWasOfflineInAnotherInstallationReportsHereAsAFirstReportNotAsAReconnection() throws Exception {
+        var silent = Instant.parse("2026-11-24T14:00:00Z");
+        edgeStatuses.kept = new EdgeStatus(3L, 99L, 900L, silent.minusSeconds(120), EdgeLink.OFFLINE, 0, silent, "ACTUATOR");
+
+        report("{}", 200);
+
+        assertThat(events.kept).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(notifications);
+        assertThat(edgeStatuses.kept.installationId()).isEqualTo(30L);
+        assertThat(edgeStatuses.kept.link()).isEqualTo(EdgeLink.ONLINE);
     }
 }

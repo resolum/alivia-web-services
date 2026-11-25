@@ -152,12 +152,12 @@ class RecordEdgeEventsCommandServiceTest {
     }
 
     @Test
-    void aFailureToKeepTheEventDoesNotHoldTheFamilyBackAndIsCounted() {
+    void aFailureToKeepTheEventTellsTheFamilyAnywayAndThenAsksTheEdgeToSendItAgain() {
         when(events.insert(any())).thenThrow(new DataAccessResourceFailureException("MongoDB is down"));
 
-        var notified = service.handle(report("help-1", EventType.HELP_REQUESTED, null, null, "ayuda"));
+        assertThatThrownBy(() -> service.handle(report("help-1", EventType.HELP_REQUESTED, null, null, "ayuda")))
+                .isInstanceOf(com.resolum.alivia.tracking.domain.exceptions.TrackingStorageUnavailable.class);
 
-        assertThat(notified).isEqualTo(1);
         verify(notifications).notifyOnce(8L, "HELP_REQUESTED", "edge-help-1", "Solicitud de asistencia",
                 "Tu familiar pidió ayuda desde casa: «ayuda».");
         assertThat(meters.counter("tracking.storage.failures", "operation", "insert_event").count()).isEqualTo(1.0);

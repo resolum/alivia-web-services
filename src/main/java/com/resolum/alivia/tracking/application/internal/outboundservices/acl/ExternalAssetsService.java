@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -66,6 +67,13 @@ public class ExternalAssetsService {
         return assetsContextFacade.fetchDevicesOfHousehold(householdId).stream()
                 .map(device -> new HomeDevice(device.deviceId(), device.alias(), device.type(), device.roomKey()))
                 .toList();
+    }
+
+    /** The edges assigned right now to the active installation of the household; empty when it has none. */
+    public Set<Long> fetchAssignedEdgeIds(Long householdId) {
+        if (householdId == null) return Set.of();
+        return assetsContextFacade.fetchEdgesOfHousehold(householdId).stream()
+                .map(AssetsContextFacade.AssignedEdge::edgeId).collect(Collectors.toUnmodifiableSet());
     }
 
     /** The household where the device is placed right now; empty when it is not placed in an active installation. */

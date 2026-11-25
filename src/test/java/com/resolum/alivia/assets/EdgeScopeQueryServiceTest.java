@@ -183,4 +183,36 @@ class EdgeScopeQueryServiceTest {
         assertEquals("Luz de la sala", microphone.devices().get(0).alias());
         assertTrue(facade.fetchEdgeScope(9L).isEmpty());
     }
+
+    @Test
+    void theEdgesOfAHouseholdAreTheTwoAssignedToItsActiveInstallation() {
+        when(registries.findActiveByHouseholdId(5L)).thenReturn(Optional.of(registry()));
+        when(registries.findActiveByHouseholdId(6L)).thenReturn(Optional.empty());
+        var onlyOne = HouseholdDeviceRegistry.open(3L, 7L, 1L);
+        onlyOne.placeEdge(edge(9L, "ACTUATOR_EDGE"));
+        when(registries.findActiveByHouseholdId(7L)).thenReturn(Optional.of(onlyOne));
+
+        var edges = service.handle(new com.resolum.alivia.assets.domain.model.queries.GetEdgesOfHouseholdQuery(5L));
+
+        assertEquals(2, edges.size());
+        assertTrue(edges.stream().anyMatch(e -> e.edgeId().equals(7L) && e.edgeType() == EdgeType.MICROPHONE_EDGE));
+        assertTrue(edges.stream().anyMatch(e -> e.edgeId().equals(8L) && e.edgeType() == EdgeType.ACTUATOR_EDGE));
+        assertEquals(1, service.handle(new com.resolum.alivia.assets.domain.model.queries.GetEdgesOfHouseholdQuery(7L)).size());
+        assertTrue(service.handle(new com.resolum.alivia.assets.domain.model.queries.GetEdgesOfHouseholdQuery(6L)).isEmpty());
+        assertTrue(service.handle(new com.resolum.alivia.assets.domain.model.queries.GetEdgesOfHouseholdQuery(null)).isEmpty());
+    }
+
+    @Test
+    void theFacadeAnswersTheEdgesOfAHouseholdWithTheKindsTheCredentialsUse() {
+        when(registries.findActiveByHouseholdId(5L)).thenReturn(Optional.of(registry()));
+        var facade = new AssetsContextFacadeImpl(mock(DeviceQueryService.class), mock(DeviceCommandService.class),
+                mock(EdgeCommandService.class), mock(EdgeQueryService.class),
+                mock(HouseholdDeviceRegistryCommandService.class), mock(DeviceAssignmentCommandService.class), service);
+
+        var edges = facade.fetchEdgesOfHousehold(5L);
+
+        assertEquals(2, edges.size());
+        assertTrue(edges.stream().anyMatch(e -> e.edgeId().equals(7L) && e.edgeKind().equals("MICROPHONE")));
+        assertTrue(edges.stream().anyMatch(e -> e.edgeId().equals(8L) && e.edgeKind().equals("ACTUATOR")));
+    }
 }

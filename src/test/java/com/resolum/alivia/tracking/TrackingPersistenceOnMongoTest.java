@@ -437,4 +437,86 @@ class TrackingPersistenceOnMongoTest {
                 .append("faults", java.util.List.of()));
         assertThat(states.findByDeviceId(77L).orElseThrow().currentState()).isEqualTo("open");
     }
+
+    // ---- the bulk insertion of a batch
+
+    @Test
+    void aBatchIsInsertedInOneWriteAndEachEventIsToldKeptOrDuplicateInOrder() {
+        var context = new ReportingContext(1L, 10L, 100L, Set.of(1L));
+        var a = event(context, "bulk-a", 1L, T0);
+        var b = event(context, "bulk-b", 1L, T0.plusSeconds(1));
+        var c = event(context, "bulk-c", 1L, T0.plusSeconds(2));
+        events.insert(b);
+
+        // b was kept before, and a is repeated inside the batch itself.
+        var result = events.insertAll(List.of(a, b, c, a));
+
+        assertThat(result).containsExactly(EventInsertion.INSERTED, EventInsertion.DUPLICATE, EventInsertion.INSERTED,
+                EventInsertion.DUPLICATE);
+        assertThat(mongo.count(new Query(), DeviceEventDocument.class)).isEqualTo(3);
+        assertThat(events.insertAll(List.of())).isEmpty();
+    }
+
+    @Test
+    void aHundredEventsAreKeptTogetherAndAllOfThemAgainAreAllDuplicates() {
+        var context = new ReportingContext(1L, 10L, 100L, Set.of(1L));
+        var batch = new ArrayList<DeviceEvent>();
+        for (int i = 0; i < 100; i++) batch.add(event(context, "hundred-" + i, 1L, T0.plusSeconds(i)));
+
+        var first = events.insertAll(batch);
+        var second = events.insertAll(batch);
+
+        assertThat(first).hasSize(100).containsOnly(EventInsertion.INSERTED);
+        assertThat(second).hasSize(100).containsOnly(EventInsertion.DUPLICATE);
+        assertThat(mongo.count(new Query(), DeviceEventDocument.class)).isEqualTo(100);
+    }
+
+    // ---- the status of an edge that left
+
+    @Test
+    void theStatusOfASilentEdgeIsForgottenOnlyIfItHasNotReportedSince() {
+        edges.recordHeartbeat(new EdgeStatus(3L, 30L, 300L, T0, EdgeLink.ONLINE, 0, null, "ACTUATOR"));
+        edges.recordHeartbeat(new EdgeStatus(4L, 40L, 400L, T0, EdgeLink.ONLINE, 0, null, "ACTUATOR"));
+        edges.markOffline(4L, T0, T0.plusSeconds(200));
+
+        // It reported again after the watcher read it: it is not removed.
+        assertThat(edges.removeIfSilent(3L, T0.minusSeconds(60))).isFalse();
+        // An edge already marked offline is not "online and silent" any more.
+        assertThat(edges.removeIfSilent(4L, T0)).isFalse();
+        assertThat(edges.removeIfSilent(3L, T0)).isTrue();
+        assertThat(edges.removeIfSilent(3L, T0)).isFalse();
+
+        assertThat(edges.findByEdgeId(3L)).isEmpty();
+        assertThat(edges.findByEdgeId(4L)).isPresent();
+    }
+
+    // ---- two first reports of one device that race
+
+    @Test
+    void whenTwoFirstReportsOfADeviceRaceTheNewerAlwaysWins() throws Exception {
+        var pool = Executors.newFixedThreadPool(2);
+        int lost = 0;
+        try {
+            for (int i = 0; i < 500; i++) {
+                long device = 5000 + i;
+                var go = new CountDownLatch(1);
+                var older = pool.submit(() -> {
+                    go.await();
+                    return states.saveUnlessOlder(state(device, T0, "older"));
+                });
+                var newer = pool.submit(() -> {
+                    go.await();
+                    return states.saveUnlessOlder(state(device, T0.plusSeconds(30), "newer"));
+                });
+                go.countDown();
+                older.get();
+                assertThat(newer.get()).as("the newer report is kept, round " + i).isTrue();
+                if (!"newer".equals(states.findByDeviceId(device).orElseThrow().currentState())) lost++;
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        // Before the refusal was retried this was lost in about half of the rounds.
+        assertThat(lost).isZero();
+    }
 }

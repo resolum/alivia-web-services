@@ -26,6 +26,16 @@ public record HomeLinkSummary(HomeLink link, Set<Long> silentEdgeIds, Instant of
         silentEdgeIds = silentEdgeIds == null ? Set.of() : Set.copyOf(silentEdgeIds);
     }
 
+    /**
+     * Only the edges the home has now count: the status of one that was replaced or taken out of the installation stays in
+     * the database, but it is no longer part of the home, and its silence says nothing about it.
+     *
+     * @param assigned the edges assigned now to the active installation of the home, as Assets says
+     */
+    public static HomeLinkSummary of(List<EdgeStatus> edges, Set<Long> assigned) {
+        return of(edges.stream().filter(edge -> assigned.contains(edge.edgeId())).toList());
+    }
+
     public static HomeLinkSummary of(List<EdgeStatus> edges) {
         var silent = edges.stream().filter(edge -> edge.link() == EdgeLink.OFFLINE).toList();
         var link = edges.isEmpty() ? HomeLink.UNKNOWN : silent.isEmpty() ? HomeLink.ONLINE : HomeLink.OFFLINE;

@@ -55,7 +55,7 @@ public class DeviceEventsQueryServiceImpl implements DeviceEventsQueryService {
         } catch (RuntimeException failure) {
             meters.counter("tracking.storage.failures", "operation", "read_device_events").increment();
             log.error("The events of the device {} could not be read.", query.deviceId(), failure);
-            throw new TrackingStorageUnavailable(failure);
+            throw TrackingStorageUnavailable.forRead(failure);
         }
         return new DeviceEventsPageView(query.deviceId(), window.from(), window.to(), window.page(), window.size(),
                 found.total(), found.items());

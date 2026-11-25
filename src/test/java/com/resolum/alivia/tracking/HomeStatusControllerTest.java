@@ -71,6 +71,8 @@ class HomeStatusControllerTest {
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
         when(access.requireReadableHouseholdOfPerson(7L, 2L)).thenReturn(30L);
+        when(facade.fetchEdgesOfHousehold(30L)).thenReturn(List.of(new AssetsContextFacade.AssignedEdge(2L, "MICROPHONE"),
+                new AssetsContextFacade.AssignedEdge(3L, "ACTUATOR")));
         when(facade.fetchDevicesOfHousehold(30L)).thenReturn(List.of(
                 new ScopedDevice(10L, "Puerta principal", "DOOR", "IN_USE", "entrada"),
                 new ScopedDevice(11L, "Luz de la sala", "LIGHT", "IN_USE", "sala"),
@@ -154,6 +156,7 @@ class HomeStatusControllerTest {
         mvc.perform(get(PATH).principal(USER))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Retry-After", "5"))
-                .andExpect(jsonPath("$.code").value("tracking_storage_unavailable"));
+                .andExpect(jsonPath("$.code").value("tracking_storage_unavailable"))
+                .andExpect(jsonPath("$.detail").value("The information is not available now. Try again in a moment."));
     }
 }

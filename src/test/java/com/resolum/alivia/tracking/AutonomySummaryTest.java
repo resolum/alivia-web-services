@@ -1,6 +1,8 @@
 package com.resolum.alivia.tracking;
 
+import com.resolum.alivia.assets.interfaces.acl.AssetsContextFacade;
 import com.resolum.alivia.tracking.application.acl.TrackingContextFacadeImpl;
+import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService;
 import com.resolum.alivia.tracking.application.internal.queryservices.AutonomyQueryServiceImpl;
 import com.resolum.alivia.tracking.domain.exceptions.TrackingStorageUnavailable;
 import com.resolum.alivia.tracking.domain.model.aggregates.EdgeStatus;
@@ -43,12 +45,16 @@ class AutonomySummaryTest {
     private final DeviceEventRepository events = mock(DeviceEventRepository.class);
     private final EdgeStatusRepository edges = mock(EdgeStatusRepository.class);
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
+    private final AssetsContextFacade assetsFacade = mock(AssetsContextFacade.class);
     private final TrackingContextFacade facade = new TrackingContextFacadeImpl(
-            new AutonomyQueryServiceImpl(events, edges, meters));
+            new AutonomyQueryServiceImpl(events, edges, new ExternalAssetsService(assetsFacade), meters));
 
     @BeforeEach
     void noEvents() {
         when(edges.findAllByHouseholdId(HOME)).thenReturn(List.of());
+        // The home has the edges 2 and 3.
+        when(assetsFacade.fetchEdgesOfHousehold(HOME)).thenReturn(List.of(
+                new AssetsContextFacade.AssignedEdge(2L, "MICROPHONE"), new AssetsContextFacade.AssignedEdge(3L, "ACTUATOR")));
     }
 
     private void givenFacts(CommandFact... facts) {
@@ -145,5 +151,29 @@ class AutonomySummaryTest {
         assertThatThrownBy(() -> facade.summarizeAutonomy(HOME, null, null, TO)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> facade.summarizeAutonomy(HOME, null, TO, FROM)).isInstanceOf(IllegalArgumentException.class);
         assertThat(new GetAutonomySummaryQuery(HOME, null, FROM, FROM).from()).isEqualTo(FROM);
+    }
+
+    @Test
+    void anEdgeThatLeftTheHomeDoesNotMakeTheLinkOfTheHomeOfflineNorGivePendingEvents() {
+        when(edges.findAllByHouseholdId(HOME)).thenReturn(List.of(
+                new EdgeStatus(9L, 39L, HOME, T, EdgeLink.OFFLINE, 5, T.plusSeconds(200)),
+                new EdgeStatus(3L, 33L, HOME, T.plusSeconds(60), EdgeLink.ONLINE, 0, null)));
+
+        var summary = facade.summarizeAutonomy(HOME, null, FROM, TO);
+
+        assertThat(summary.edgeLink()).isEqualTo("ONLINE");
+        assertThat(summary.lastUpdatedAt()).isEqualTo(T.plusSeconds(60));
+        assertThat(summary.mayHavePendingEvents()).isFalse();
+    }
+
+    @Test
+    void aHomeThatHasNoEdgeAnymoreIsUnknownWhateverIsLeftInTheDatabase() {
+        when(assetsFacade.fetchEdgesOfHousehold(HOME)).thenReturn(List.of());
+        when(edges.findAllByHouseholdId(HOME)).thenReturn(List.of(new EdgeStatus(9L, 39L, HOME, T, EdgeLink.OFFLINE, 0, T)));
+
+        var summary = facade.summarizeAutonomy(HOME, null, FROM, TO);
+
+        assertThat(summary.edgeLink()).isEqualTo("UNKNOWN");
+        assertThat(summary.lastUpdatedAt()).isNull();
     }
 }

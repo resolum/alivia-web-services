@@ -53,7 +53,7 @@ public class DeviceTelemetryQueryServiceImpl implements DeviceTelemetryQueryServ
         } catch (RuntimeException failure) {
             meters.counter("tracking.storage.failures", "operation", "read_device_telemetry").increment();
             log.error("The telemetry of the device {} could not be read.", query.deviceId(), failure);
-            throw new TrackingStorageUnavailable(failure);
+            throw TrackingStorageUnavailable.forRead(failure);
         }
         return new DeviceTelemetryPageView(query.deviceId(), window.from(), window.to(), window.page(), window.size(),
                 found.total(), found.items());

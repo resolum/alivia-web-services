@@ -1,5 +1,7 @@
 package com.resolum.alivia.tracking;
 
+import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService;
+import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService.ReportingEdge;
 import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalNotificationsService;
 import com.resolum.alivia.tracking.application.internal.tasks.EdgeLinkWatcher;
 import com.resolum.alivia.tracking.domain.model.aggregates.DeviceEvent;
@@ -8,6 +10,7 @@ import com.resolum.alivia.tracking.domain.model.valueobjects.EdgeLink;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventInsertion;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventPage;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventType;
+import com.resolum.alivia.tracking.domain.model.valueobjects.ReportingContext;
 import com.resolum.alivia.tracking.domain.repositories.DeviceEventRepository;
 import com.resolum.alivia.tracking.domain.repositories.EdgeStatusRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -98,6 +101,14 @@ class EdgeLinkWatcherTest {
         }
 
         @Override
+        public boolean removeIfSilent(Long edgeId, Instant seen) {
+            var current = kept.get(edgeId);
+            if (current == null || current.link() != EdgeLink.ONLINE || !current.lastReportAt().equals(seen)) return false;
+            kept.remove(edgeId);
+            return true;
+        }
+
+        @Override
         public List<EdgeStatus> findOnlineSilentSince(Instant limit) {
             if (staleListing != null) return staleListing;
             return kept.values().stream()
@@ -147,17 +158,25 @@ class EdgeLinkWatcherTest {
     private final InMemoryEdges edges = new InMemoryEdges();
     private final InMemoryEvents events = new InMemoryEvents();
     private final ExternalNotificationsService notifications = mock(ExternalNotificationsService.class);
+    private final ExternalAssetsService assets = mock(ExternalAssetsService.class);
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
 
     @BeforeEach
     void relatives() {
+        // By default an edge belongs to the home its status says it belongs to.
+        when(assets.fetchReportingEdge(anyLong())).thenAnswer(call -> {
+            Long id = call.getArgument(0);
+            var status = edges.kept.get(id);
+            return status == null ? Optional.empty() : Optional.of(new ReportingEdge(
+                    new ReportingContext(id, status.installationId(), status.householdId(), Set.of()), "ACTUATOR", Map.of()));
+        });
         when(notifications.relativesOf(300L)).thenReturn(Set.of(8L));
         when(notifications.relativesOf(301L)).thenReturn(Set.of(9L));
         when(notifications.notifyOnce(anyLong(), anyString(), anyString(), anyString(), anyString())).thenReturn(true);
     }
 
     private EdgeLinkWatcher watcher(Duration grace) {
-        return new EdgeLinkWatcher(edges, events, notifications, clock, meters, AFTER, grace);
+        return new EdgeLinkWatcher(edges, events, assets, notifications, clock, meters, AFTER, grace);
     }
 
     private void online(long edgeId, long householdId, Instant lastReport) {
@@ -339,7 +358,7 @@ class EdgeLinkWatcherTest {
                 throw new IllegalStateException("MongoDB is down");
             }
         };
-        var watcher = new EdgeLinkWatcher(broken, events, notifications, clock, meters, AFTER, Duration.ZERO);
+        var watcher = new EdgeLinkWatcher(broken, events, assets, notifications, clock, meters, AFTER, Duration.ZERO);
 
         watcher.run();
 
@@ -348,9 +367,9 @@ class EdgeLinkWatcherTest {
 
     @Test
     void anInvalidConfigurationIsRefused() {
-        assertThatThrownBy(() -> new EdgeLinkWatcher(edges, events, notifications, clock, meters, Duration.ZERO, Duration.ZERO))
+        assertThatThrownBy(() -> new EdgeLinkWatcher(edges, events, assets, notifications, clock, meters, Duration.ZERO, Duration.ZERO))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new EdgeLinkWatcher(edges, events, notifications, clock, meters, AFTER, Duration.ofSeconds(-1)))
+        assertThatThrownBy(() -> new EdgeLinkWatcher(edges, events, assets, notifications, clock, meters, AFTER, Duration.ofSeconds(-1)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -379,5 +398,57 @@ class EdgeLinkWatcherTest {
     @Test
     void aStatusKeptBeforeTheKindWasRecordedGetsTheGeneralMessage() {
         assertThat(disconnectedBodyFor(null)).startsWith("Un equipo de la casa dejó de reportar");
+    }
+
+    @Test
+    void anEdgeThatLeftTheInstallationIsNotAnnouncedAndItsStatusIsForgotten() {
+        online(3L, 300L, T0);
+        when(assets.fetchReportingEdge(3L)).thenReturn(Optional.empty());
+        var watcher = watcher(Duration.ZERO);
+        clock.now.set(T0.plus(AFTER).plusSeconds(1));
+
+        assertThat(watcher.markSilentEdges()).isZero();
+
+        assertThat(edges.kept).doesNotContainKey(3L);
+        assertThat(events.kept).isEmpty();
+        verify(notifications, never()).notifyOnce(anyLong(), anyString(), anyString(), anyString(), anyString());
+        assertThat(meters.get("tracking.link.retired").counter().count()).isEqualTo(1.0);
+        // Nothing is left to look at: a second run does not ask Assets again.
+        org.mockito.Mockito.clearInvocations(assets);
+        assertThat(watcher.markSilentEdges()).isZero();
+        verify(assets, never()).fetchReportingEdge(anyLong());
+    }
+
+    @Test
+    void anEdgeThatNowBelongsToAnotherHomeIsNotAnnouncedToTheOldOne() {
+        online(3L, 300L, T0);
+        when(assets.fetchReportingEdge(3L)).thenReturn(Optional.of(new ReportingEdge(
+                new ReportingContext(3L, 77L, 777L, Set.of()), "ACTUATOR", Map.of())));
+        clock.now.set(T0.plus(AFTER).plusSeconds(1));
+
+        assertThat(watcher(Duration.ZERO).markSilentEdges()).isZero();
+
+        assertThat(edges.kept).doesNotContainKey(3L);
+        verify(notifications, never()).notifyOnce(anyLong(), anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void ifAssetsCannotBeAskedTheEdgeIsLeftAsItIsAndTheNextRunTriesAgain() {
+        online(3L, 300L, T0);
+        when(assets.fetchReportingEdge(3L)).thenThrow(new IllegalStateException("PostgreSQL is down"));
+        var watcher = watcher(Duration.ZERO);
+        clock.now.set(T0.plus(AFTER).plusSeconds(1));
+
+        assertThat(watcher.markSilentEdges()).isZero();
+
+        assertThat(edges.kept.get(3L).link()).isEqualTo(EdgeLink.ONLINE);
+        assertThat(meters.get("tracking.link.failures").tag("stage", "edge").counter().count()).isEqualTo(1.0);
+
+        // doReturn, because calling the stubbed method inside when(...) would throw again.
+        org.mockito.Mockito.doReturn(Optional.of(new ReportingEdge(
+                new ReportingContext(3L, 33L, 300L, Set.of()), "ACTUATOR", Map.of()))).when(assets).fetchReportingEdge(3L);
+        clock.now.set(T0.plus(AFTER).plusSeconds(31));
+        assertThat(watcher.markSilentEdges()).isEqualTo(1);
+        assertThat(edges.kept.get(3L).link()).isEqualTo(EdgeLink.OFFLINE);
     }
 }

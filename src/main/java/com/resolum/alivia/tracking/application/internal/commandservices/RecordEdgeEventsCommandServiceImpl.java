@@ -32,9 +32,13 @@ import java.util.Locale;
  * Implementation of {@link RecordEdgeEventsCommandService}.
  *
  * <p>The family is told before the event is kept, with {@code notifyOnce} on the id the edge gave it: a resend after a
- * network loss notifies nobody twice. A single urgent report whose event cannot be kept still answers, since the family
- * has already been told; the failure is logged as an error and counted so it is seen and not silent. A batch is stricter:
- * it is answered only for what is really kept, so an edge never forgets an event that was not saved.</p>
+ * network loss notifies nobody twice. Nothing is acknowledged that was not kept, a single urgent report included: if the
+ * event cannot be saved the answer is {@code 503} <em>after</em> the family was told, and the edge sends it again, which
+ * is safe because the notice is recognised and the event is saved by the retry. So an edge never forgets an event that
+ * was not saved.</p>
+ *
+ * <p>A batch is saved in one bulk write, not one event per round trip: the edge and the database may be in different
+ * regions.</p>
  */
 @Slf4j
 @Service
@@ -75,8 +79,9 @@ public class RecordEdgeEventsCommandServiceImpl implements RecordEdgeEventsComma
             counted(events.insert(urgent.event()) == EventInsertion.INSERTED ? "accepted" : "duplicate", "single");
         } catch (RuntimeException failure) {
             countFailure();
-            log.error("The event {} of the edge {} could not be kept; the relatives were told anyway.",
+            log.error("The event {} of the edge {} could not be kept; the relatives were told and the edge must send it again.",
                     urgent.event().eventId(), urgent.event().edgeId(), failure);
+            throw new TrackingStorageUnavailable(failure);
         }
         return urgent.notified();
     }
@@ -88,52 +93,75 @@ public class RecordEdgeEventsCommandServiceImpl implements RecordEdgeEventsComma
         }
         var edge = reportingEdge(command.edgeId());
         var receivedAt = clock.instant();
-        var outcomes = new ArrayList<EventOutcome>(command.events().size());
-        for (var reported : command.events()) {
-            outcomes.add(record(edge, receivedAt, reported));
+
+        // First every event is checked and the family is told of the urgent ones, in order; then what is valid is saved
+        // together, in one write.
+        var outcomes = new EventOutcome[command.events().size()];
+        var toKeep = new ArrayList<DeviceEvent>();
+        var places = new ArrayList<Integer>();
+        for (int i = 0; i < outcomes.length; i++) {
+            var prepared = prepare(edge, receivedAt, command.events().get(i));
+            if (prepared.rejected() != null) {
+                outcomes[i] = prepared.rejected();
+                counted("rejected", "batch");
+            } else {
+                toKeep.add(prepared.event());
+                places.add(i);
+            }
         }
-        return outcomes;
+        var insertions = keep(toKeep);
+        for (int j = 0; j < places.size(); j++) {
+            var eventId = toKeep.get(j).eventId();
+            if (insertions.get(j) == EventInsertion.INSERTED) {
+                outcomes[places.get(j)] = EventOutcome.accepted(eventId);
+                counted("accepted", "batch");
+            } else {
+                outcomes[places.get(j)] = EventOutcome.duplicate(eventId);
+                counted("duplicate", "batch");
+            }
+        }
+        return List.of(outcomes);
     }
 
-    private EventOutcome record(ReportingEdge edge, Instant receivedAt, ReportedEvent reported) {
+    /** What an event of a batch is before it is saved: refused with a reason, or the event to keep. */
+    private record Prepared(EventOutcome rejected, DeviceEvent event) {
+        static Prepared refused(String eventId, RejectionReason reason) {
+            return new Prepared(EventOutcome.rejected(eventId, reason), null);
+        }
+
+        static Prepared toKeep(DeviceEvent event) {
+            return new Prepared(null, event);
+        }
+    }
+
+    private Prepared prepare(ReportingEdge edge, Instant receivedAt, ReportedEvent reported) {
         var eventId = reported.eventId();
         if (eventId == null || !DeviceEvent.EVENT_ID.matcher(eventId).matches()) {
-            counted("rejected", "batch");
-            return EventOutcome.rejected(eventId, RejectionReason.INVALID_EVENT_ID);
+            return Prepared.refused(eventId, RejectionReason.INVALID_EVENT_ID);
         }
         var type = urgentTypeOf(reported.type());
         try {
-            DeviceEvent event;
             if (type != null) {
                 if (reported.batteryPct() != null && (reported.batteryPct() < 0 || reported.batteryPct() > 100)) {
-                    counted("rejected", "batch");
-                    return EventOutcome.rejected(eventId, RejectionReason.BATTERY_OUT_OF_RANGE);
+                    return Prepared.refused(eventId, RejectionReason.BATTERY_OUT_OF_RANGE);
                 }
                 // Urgent: told to the family and never refused for what it says about a device or the clock.
-                event = tellTheFamily(edge, receivedAt, new ReportUrgentEventCommand(edge.context().edgeId(), eventId,
-                        type, reported.deviceId(), reported.batteryPct(), reported.detail(), reported.occurredAt()),
-                        true).event();
-            } else {
-                event = DeviceEvent.fromEdge(edge.context(), reported, receivedAt, true, policy);
+                return Prepared.toKeep(tellTheFamily(edge, receivedAt, new ReportUrgentEventCommand(edge.context().edgeId(),
+                        eventId, type, reported.deviceId(), reported.batteryPct(), reported.detail(), reported.occurredAt()),
+                        true).event());
             }
-            if (keep(event) == EventInsertion.INSERTED) {
-                counted("accepted", "batch");
-                return EventOutcome.accepted(eventId);
-            }
-            counted("duplicate", "batch");
-            return EventOutcome.duplicate(eventId);
+            return Prepared.toKeep(DeviceEvent.fromEdge(edge.context(), reported, receivedAt, true, policy));
         } catch (InvalidTrackingData invalid) {
-            counted("rejected", "batch");
-            return EventOutcome.rejected(eventId, invalid.reason());
+            return Prepared.refused(eventId, invalid.reason());
         }
     }
 
-    private EventInsertion keep(DeviceEvent event) {
+    private List<EventInsertion> keep(List<DeviceEvent> batch) {
         try {
-            return events.insert(event);
+            return events.insertAll(batch);
         } catch (RuntimeException failure) {
             countFailure();
-            log.error("The event {} of the edge {} could not be kept.", event.eventId(), event.edgeId(), failure);
+            log.error("{} events of an edge could not be kept.", batch.size(), failure);
             throw new TrackingStorageUnavailable(failure);
         }
     }

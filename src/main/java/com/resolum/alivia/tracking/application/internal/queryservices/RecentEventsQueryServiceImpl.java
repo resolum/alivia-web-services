@@ -47,7 +47,7 @@ public class RecentEventsQueryServiceImpl implements RecentEventsQueryService {
         } catch (RuntimeException failure) {
             meters.counter("tracking.storage.failures", "operation", "read_recent_events").increment();
             log.error("The recent events of the household {} could not be read.", householdId, failure);
-            throw new TrackingStorageUnavailable(failure);
+            throw TrackingStorageUnavailable.forRead(failure);
         }
     }
 }

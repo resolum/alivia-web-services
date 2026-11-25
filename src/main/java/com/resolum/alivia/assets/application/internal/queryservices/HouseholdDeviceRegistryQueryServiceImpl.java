@@ -3,10 +3,12 @@ package com.resolum.alivia.assets.application.internal.queryservices;
 import com.resolum.alivia.assets.domain.model.aggregates.HouseholdDeviceRegistry;
 import com.resolum.alivia.assets.domain.model.queries.GetDevicesOfHouseholdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByEdgeIdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetEdgesOfHouseholdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetHouseholdOfDeviceQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeScopeByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeTableVersionByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetTableVersionByInstallationIdQuery;
+import com.resolum.alivia.assets.domain.model.valueobjects.AssignedEdge;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeAccessTable;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeScopeView;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeTableVersion;
@@ -70,6 +72,22 @@ public class HouseholdDeviceRegistryQueryServiceImpl implements HouseholdDeviceR
                                 assignment.getDevice().getAssetStatus(), assignment.getRoomKey()))
                         .toList())
                 .orElse(List.of());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AssignedEdge> handle(GetEdgesOfHouseholdQuery query) {
+        if (query.householdId() == null) return List.of();
+        return registryRepository.findActiveByHouseholdId(query.householdId()).map(registry -> {
+            var edges = new java.util.ArrayList<AssignedEdge>(2);
+            if (registry.getMicrophoneEdge() != null) {
+                edges.add(new AssignedEdge(registry.getMicrophoneEdge().getId(), EdgeType.MICROPHONE_EDGE));
+            }
+            if (registry.getActuatorEdge() != null) {
+                edges.add(new AssignedEdge(registry.getActuatorEdge().getId(), EdgeType.ACTUATOR_EDGE));
+            }
+            return List.copyOf(edges);
+        }).orElse(List.of());
     }
 
     @Override

@@ -202,6 +202,7 @@ package "domain.repositories (puertos)" #FFF4E5 {
 
   interface DeviceEventRepository {
     + insert(DeviceEvent) : EventInsertion
+    + insertAll(List<DeviceEvent>) : List<EventInsertion>
     + findByDevice(householdId, deviceId, from, to, EventType, page, size) : EventPage
     + findRecentByHousehold(householdId, limit) : List<DeviceEvent>
     + forEachCommandFact(householdId, deviceId, from, to, Consumer<CommandFact>)
@@ -218,6 +219,7 @@ package "domain.repositories (puertos)" #FFF4E5 {
     + findAllByHouseholdId(Long) : List<EdgeStatus>
     + recordHeartbeat(EdgeStatus) : Optional<EdgeStatus>
     + markOffline(edgeId, seen, offlineSince) : boolean
+    + removeIfSilent(edgeId, seen) : boolean
     + findOnlineSilentSince(Instant) : List<EdgeStatus>
   }
 

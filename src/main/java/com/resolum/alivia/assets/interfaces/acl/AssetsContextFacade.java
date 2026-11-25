@@ -75,6 +75,20 @@ public interface AssetsContextFacade {
      */
     Optional<Long> fetchHouseholdOfDevice(Long deviceId);
 
+    /**
+     * The edge services assigned right now to the active installation of the household, as primitives; empty when it has
+     * none. An edge that was replaced or taken out of the installation is not in the answer. Authorization is not decided
+     * here.
+     */
+    List<AssignedEdge> fetchEdgesOfHousehold(Long householdId);
+
+    /**
+     * @param edgeId   the edge
+     * @param edgeKind {@code MICROPHONE} or {@code ACTUATOR}
+     */
+    record AssignedEdge(Long edgeId, String edgeKind) {
+    }
+
     Long fetchEdgeCountByBusinessId(Long businessId);
     Long fetchDeviceCountByBusinessId(Long businessId);
 }

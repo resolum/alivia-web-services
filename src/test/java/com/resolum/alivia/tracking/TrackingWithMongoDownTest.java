@@ -98,12 +98,12 @@ class TrackingWithMongoDownTest {
     }
 
     @Test
-    void aRequestForHelpReachesTheFamilyAndIsAnsweredEvenThoughItCannotBeKept() {
+    void aRequestForHelpReachesTheFamilyAndThenTheEdgeIsToldToSendItAgainBecauseItCannotBeKept() {
         long started = System.nanoTime();
 
-        int told = events().handle(new ReportUrgentEventCommand(3L, "help-1", EventType.HELP_REQUESTED, null, null, "ayuda", null));
+        assertThatThrownBy(() -> events().handle(new ReportUrgentEventCommand(3L, "help-1", EventType.HELP_REQUESTED, null,
+                null, "ayuda", null))).isInstanceOf(TrackingStorageUnavailable.class);
 
-        assertThat(told).isEqualTo(1);
         verify(notifications).notifyOnce(8L, "HELP_REQUESTED", "edge-help-1", "Solicitud de asistencia",
                 "Tu familiar pidió ayuda desde casa: «ayuda».");
         assertThat(failures("insert_event")).isEqualTo(1.0);
@@ -180,8 +180,8 @@ class TrackingWithMongoDownTest {
         });
         long started = System.nanoTime();
 
-        events().handle(new ReportUrgentEventCommand(3L, "help-live", EventType.HELP_REQUESTED, null, null, null,
-                NOW.minusSeconds(10)));
+        assertThatThrownBy(() -> events().handle(new ReportUrgentEventCommand(3L, "help-live", EventType.HELP_REQUESTED, null,
+                null, null, NOW.minusSeconds(10)))).isInstanceOf(TrackingStorageUnavailable.class);
 
         // The family is told before the database is touched, so the delay of the failed write is not in front of the notice.
         assertThat((told[0] - started) / 1_000_000).as("ms until the family was told").isLessThan(300);

@@ -71,6 +71,7 @@ class HomeStatusOnMongoTest {
         mongo.remove(new Query(), DeviceStateDocument.class);
         mongo.remove(new Query(), EdgeStatusDocument.class);
         when(access.requireReadableHouseholdOfPerson(7L, 2L)).thenReturn(30L);
+        when(facade.fetchEdgesOfHousehold(30L)).thenReturn(List.of(new AssetsContextFacade.AssignedEdge(3L, "ACTUATOR")));
         when(facade.fetchDevicesOfHousehold(30L)).thenReturn(List.of(
                 new ScopedDevice(10L, "Puerta", "DOOR", "IN_USE", "entrada"),
                 new ScopedDevice(11L, "Luz", "LIGHT", "IN_USE", "sala"),
@@ -133,5 +134,22 @@ class HomeStatusOnMongoTest {
         var plan = mongo.getDb().getCollection("edge_statuses")
                 .find(new Document("householdId", 30L)).explain();
         assertThat(plan.toJson()).contains("IXSCAN").doesNotContain("COLLSCAN");
+    }
+
+    @Test
+    void theStatusOfAnEdgeThatLeftTheHomeDoesNotCountAndItsDevicesAreStale() {
+        // Edge 9 was replaced by edge 3 in this home: its old status is silent for good and its device state is kept.
+        edges.recordHeartbeat(new EdgeStatus(9L, 39L, 30L, T, EdgeLink.ONLINE, 5, null));
+        edges.markOffline(9L, T, T.plusSeconds(200));
+        states.saveUnlessOlder(state(11L, 9L, 30L, "off"));
+
+        var view = service().handle(new GetHomeStatusByAssistedPersonQuery(7L, 2L));
+
+        assertThat(view.link()).isEqualTo(HomeLink.ONLINE);
+        assertThat(view.offlineSince()).isNull();
+        assertThat(view.devices().get(0).stale()).isFalse();
+        // The light still shows what the old edge last said, marked as not being updated.
+        assertThat(view.devices().get(1).currentState()).isEqualTo("off");
+        assertThat(view.devices().get(1).stale()).isTrue();
     }
 }

@@ -20,6 +20,17 @@ public interface DeviceEventRepository {
      */
     EventInsertion insert(DeviceEvent event);
 
+    /**
+     * Keeps every event that is not already kept, in one write, and says for each one, in the same order, whether it was
+     * kept or was a duplicate. A failure that is not a duplicate is thrown: some of the events may then have been kept, and
+     * the caller sends all of them again, which is safe because the ones kept are recognised.
+     */
+    default java.util.List<EventInsertion> insertAll(java.util.List<DeviceEvent> events) {
+        var result = new java.util.ArrayList<EventInsertion>(events.size());
+        for (var event : events) result.add(insert(event));
+        return result;
+    }
+
     Optional<DeviceEvent> findByEdgeAndEventId(Long edgeId, String eventId);
 
     /**

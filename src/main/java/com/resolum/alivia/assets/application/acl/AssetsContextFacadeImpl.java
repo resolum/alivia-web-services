@@ -14,6 +14,7 @@ import com.resolum.alivia.assets.domain.services.DeviceCommandService;
 import com.resolum.alivia.assets.domain.services.DeviceAssignmentCommandService;
 import com.resolum.alivia.assets.domain.model.queries.GetDevicesOfHouseholdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeScopeByEdgeIdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetEdgesOfHouseholdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetHouseholdOfDeviceQuery;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeType;
 import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryCommandService;
@@ -96,6 +97,14 @@ public class AssetsContextFacadeImpl implements AssetsContextFacade {
         return householdDeviceRegistryQueryService.handle(new GetDevicesOfHouseholdQuery(householdId)).stream()
                 .map(device -> new ScopedDevice(device.deviceId(), device.alias(), device.type().name(),
                         device.status().name(), device.roomKey()))
+                .toList();
+    }
+
+    @Override
+    public List<AssignedEdge> fetchEdgesOfHousehold(Long householdId) {
+        return householdDeviceRegistryQueryService.handle(new GetEdgesOfHouseholdQuery(householdId)).stream()
+                .map(edge -> new AssignedEdge(edge.edgeId(),
+                        edge.edgeType() == EdgeType.MICROPHONE_EDGE ? "MICROPHONE" : "ACTUATOR"))
                 .toList();
     }
 

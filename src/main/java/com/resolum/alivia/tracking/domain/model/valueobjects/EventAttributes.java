@@ -21,8 +21,14 @@ public record EventAttributes(Map<String, Object> values) {
     // No dots: MongoDB does not accept them in the field names of a map.
     private static final Pattern KEY = Pattern.compile("[A-Za-z0-9_-]{1,40}");
     private static final int MAX_TEXT = 256;
-    /** Keys, in lower case, that name audio or what was said. */
+    /** Keys, in lower case, that are exactly the name of audio or of what was said. */
     private static final Set<String> FORBIDDEN = Set.of("audio", "pcm", "wav", "samples", "transcript");
+    /**
+     * Pieces of a key, in lower case, that name audio or what was said wherever they are: {@code audio_base64},
+     * {@code rawAudio} and {@code transcription} are refused as well as {@code audio}. A denylist can only be a guard: what
+     * the edge sends in a free text is its responsibility.
+     */
+    private static final Set<String> FORBIDDEN_PIECES = Set.of("audio", "transcri", "speech", "utterance", "pcm", "recording");
 
     public EventAttributes {
         values = values == null ? Map.of() : Map.copyOf(values);
@@ -51,7 +57,8 @@ public record EventAttributes(Map<String, Object> values) {
             if (key == null || !KEY.matcher(key).matches()) {
                 throw new InvalidTrackingData(RejectionReason.ATTRIBUTES_INVALID, "Invalid attribute name.");
             }
-            if (FORBIDDEN.contains(key.toLowerCase(Locale.ROOT))) {
+            var lower = key.toLowerCase(Locale.ROOT);
+            if (FORBIDDEN.contains(lower) || FORBIDDEN_PIECES.stream().anyMatch(lower::contains)) {
                 throw new InvalidTrackingData(RejectionReason.FORBIDDEN_ATTRIBUTE,
                         "The attribute " + key + " may not be reported.");
             }

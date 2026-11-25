@@ -163,6 +163,7 @@ class DeviceEventsControllerTest {
 
         mvc.perform(get(PATH).principal(USER)).andExpect(status().isServiceUnavailable())
                 .andExpect(header().string("Retry-After", "5"))
-                .andExpect(jsonPath("$.code").value("tracking_storage_unavailable"));
+                .andExpect(jsonPath("$.code").value("tracking_storage_unavailable"))
+                .andExpect(jsonPath("$.detail").value("The information is not available now. Try again in a moment."));
     }
 }

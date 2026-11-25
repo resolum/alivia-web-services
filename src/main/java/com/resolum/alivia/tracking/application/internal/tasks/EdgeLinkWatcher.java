@@ -1,6 +1,7 @@
 package com.resolum.alivia.tracking.application.internal.tasks;
 
 import com.resolum.alivia.tracking.application.internal.commandservices.EdgeLinkMessages;
+import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService;
 import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalNotificationsService;
 import com.resolum.alivia.tracking.domain.model.aggregates.DeviceEvent;
 import com.resolum.alivia.tracking.domain.model.aggregates.EdgeStatus;
@@ -37,13 +38,14 @@ public class EdgeLinkWatcher {
 
     private final EdgeStatusRepository edges;
     private final DeviceEventRepository events;
+    private final ExternalAssetsService assets;
     private final ExternalNotificationsService notifications;
     private final Clock clock;
     private final MeterRegistry meters;
     private final Duration offlineAfter;
     private final Instant graceEndsAt;
 
-    public EdgeLinkWatcher(EdgeStatusRepository edges, DeviceEventRepository events,
+    public EdgeLinkWatcher(EdgeStatusRepository edges, DeviceEventRepository events, ExternalAssetsService assets,
                            ExternalNotificationsService notifications, Clock clock, MeterRegistry meters,
                            @Value("${alivia.tracking.edge-offline-after:PT3M}") Duration offlineAfter,
                            @Value("${alivia.tracking.link-startup-grace:PT2M}") Duration startupGrace) {
@@ -55,6 +57,7 @@ public class EdgeLinkWatcher {
         }
         this.edges = edges;
         this.events = events;
+        this.assets = assets;
         this.notifications = notifications;
         this.clock = clock;
         this.meters = meters;
@@ -98,6 +101,19 @@ public class EdgeLinkWatcher {
         // Read again: it may have reported since it was listed, or another instance may have marked it.
         var current = edges.findByEdgeId(edgeId).orElse(null);
         if (current == null || current.markedOffline(now, offlineAfter).isEmpty()) return false;
+
+        // An edge that was replaced, or taken out of the installation, falls silent for good: it is not a loss of connection
+        // of the home and nobody is told. Its status is forgotten, so it is not looked at again and, if the edge is placed in
+        // another home, its first report there is a first report.
+        var assigned = assets.fetchReportingEdge(edgeId);
+        if (assigned.isEmpty() || !java.util.Objects.equals(assigned.get().context().householdId(), current.householdId())) {
+            if (edges.removeIfSilent(edgeId, current.lastReportAt())) {
+                meters.counter("tracking.link.retired").increment();
+                log.info("The edge {} is no longer assigned to the household {}: its status was forgotten.", edgeId,
+                        current.householdId());
+            }
+            return false;
+        }
 
         var lastReport = current.lastReportAt();
         var eventId = "dc-edge-" + edgeId + "-" + lastReport.toEpochMilli();

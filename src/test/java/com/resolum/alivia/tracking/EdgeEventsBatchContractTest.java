@@ -67,6 +67,13 @@ class EdgeEventsBatchContractTest {
     private static final class InMemoryEvents implements DeviceEventRepository {
         final Map<String, DeviceEvent> kept = new HashMap<>();
         boolean failing;
+        int bulkWrites;
+
+        @Override
+        public List<EventInsertion> insertAll(List<DeviceEvent> batch) {
+            bulkWrites++;
+            return DeviceEventRepository.super.insertAll(batch);
+        }
 
         @Override
         public EventInsertion insert(DeviceEvent event) {
@@ -303,15 +310,24 @@ class EdgeEventsBatchContractTest {
     }
 
     @Test
-    void theSingleUrgentEndpointStillAnswersWhenTheStoreIsDown() throws Exception {
+    void theSingleUrgentEndpointTellsTheFamilyAndAsksTheEdgeToSendItAgainWhenTheStoreIsDown() throws Exception {
         store.failing = true;
+        var body = "{\"eventId\":\"help-2\",\"type\":\"HELP_REQUESTED\"}";
 
-        mvc.perform(post("/api/v1/edge/events").principal(EDGE).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"eventId\":\"help-2\",\"type\":\"HELP_REQUESTED\"}"))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.notified").value(1));
+        mvc.perform(post("/api/v1/edge/events").principal(EDGE).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(header().string("Retry-After", "5"))
+                .andExpect(jsonPath("$.code").value("tracking_storage_unavailable"))
+                .andExpect(jsonPath("$.detail").value("The events could not be kept now. Send them again."));
         verify(notifications).notifyOnce(8L, "HELP_REQUESTED", "edge-help-2", "Solicitud de asistencia",
                 "Tu familiar pidió ayuda desde casa.");
+
+        // The edge sends it again once the store is back: it is kept now and Communications already has the notice.
+        store.failing = false;
+        when(notifications.notifyOnce(anyLong(), anyString(), anyString(), anyString(), anyString())).thenReturn(false);
+        mvc.perform(post("/api/v1/edge/events").principal(EDGE).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.notified").value(0));
+        assertThat(store.findByEdgeAndEventId(3L, "help-2")).isPresent();
     }
 
     private double events(String outcome, String via) {
@@ -444,5 +460,21 @@ class EdgeEventsBatchContractTest {
                 .andExpect(status().isAccepted());
 
         verify(notifications).notifyOnce(8L, "HELP_REQUEST_DELAYED", "edge-h-single", "Pedido de ayuda con retraso", LATE_BODY);
+    }
+
+    @Test
+    void aBatchIsKeptInOneWriteNotOnePerEvent() throws Exception {
+        sync(fixture("e2-batch.request.json"), 200);
+
+        // Five valid events of six: the rejected one never reaches the store.
+        assertThat(store.bulkWrites).isEqualTo(1);
+        assertThat(store.kept).hasSize(5);
+    }
+
+    @Test
+    void aBatchWithNothingValidWritesNothing() throws Exception {
+        sync(batchOf("{\"type\":\"COMMAND_RESULT\"}", "{\"eventId\":\"x\",\"type\":\"EDGE_DISCONNECTED\"}"), 200);
+
+        assertThat(store.kept).isEmpty();
     }
 }

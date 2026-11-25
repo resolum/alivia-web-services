@@ -111,4 +111,21 @@ class EventAttributesTest {
         assertThat(new TrackingPolicy(1, 1, 1, Duration.ZERO, Duration.ZERO, 5).helpDelayedAfter())
                 .isEqualTo(Duration.ofMinutes(5));
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"audio", "AUDIO", "audio_base64", "rawAudio", "microphone-audio",
+            "transcript", "transcription", "Transcript_text", "speechText", "utterance", "last_utterance", "pcm", "pcm16",
+            "recording", "recording_id", "wav", "samples"})
+    void aKeyThatNamesAudioOrWhatWasSaidIsRefusedWhereverTheWordIs(String key) {
+        assertThatThrownBy(() -> EventAttributes.of(Map.of(key, "x"), TrackingPolicy.defaults()))
+                .isInstanceOfSatisfying(InvalidTrackingData.class,
+                        e -> assertThat(e.reason()).isEqualTo(RejectionReason.FORBIDDEN_ATTRIBUTE));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"rssi", "freeHeap", "uptime_s", "battery-mv", "micLevel",
+            "wavelength", "state", "previous"})
+    void theDiagnosticsOfADeviceAreNotRefused(String key) {
+        assertThat(EventAttributes.of(Map.of(key, 1), TrackingPolicy.defaults()).values()).containsKey(key);
+    }
 }

@@ -67,17 +67,20 @@ public class HomeStatusQueryServiceImpl implements HomeStatusQueryService {
                 .collect(Collectors.toMap(DeviceState::deviceId, state -> state, (first, second) -> first));
         var edges = read(() -> edgeStatuses.findAllByHouseholdId(householdId));
 
-        var home = HomeLinkSummary.of(edges);
+        // An edge that is no longer assigned to the home does not count: the state of its devices stays as the last known
+        // one, marked stale because nobody updates it, and its silence is not the silence of the home.
+        var assigned = assets.fetchAssignedEdgeIds(householdId);
+        var home = HomeLinkSummary.of(edges, assigned);
         var views = devices.stream()
-                .map(device -> view(device, stateOf.get(device.deviceId()), home.silentEdgeIds())).toList();
+                .map(device -> view(device, stateOf.get(device.deviceId()), home.silentEdgeIds(), assigned)).toList();
         var lastUpdatedAt = Stream.concat(Stream.ofNullable(home.lastReportAt()),
-                        stateOf.values().stream().map(DeviceState::updatedAt))
+                        stateOf.values().stream().filter(state -> assigned.contains(state.edgeId())).map(DeviceState::updatedAt))
                 .filter(Objects::nonNull).max(Comparator.naturalOrder()).orElse(null);
         return new HomeStatusView(householdId, home.link(), home.offlineSince(), lastUpdatedAt,
                 home.mayHavePendingEvents(), views);
     }
 
-    private static DeviceStatusView view(HomeDevice device, DeviceState state, Set<Long> silentEdges) {
+    private static DeviceStatusView view(HomeDevice device, DeviceState state, Set<Long> silentEdges, Set<Long> assigned) {
         if (state == null) {
             return new DeviceStatusView(device.deviceId(), device.alias(), device.type(), device.roomKey(),
                     ConnectionStatus.UNKNOWN, null, null, null, null, null, null, List.of(), false);
@@ -85,7 +88,7 @@ public class HomeStatusQueryServiceImpl implements HomeStatusQueryService {
         return new DeviceStatusView(device.deviceId(), device.alias(), device.type(), device.roomKey(),
                 state.connectionStatus(), state.operationalStatus(), state.currentState(), state.batteryPct(),
                 state.lastCommunicationAt(), state.observedAt(), state.updatedAt(), state.faults(),
-                silentEdges.contains(state.edgeId()));
+                silentEdges.contains(state.edgeId()) || !assigned.contains(state.edgeId()));
     }
 
     /** A read that fails is not an empty home: the caller is told the data is not available. */
@@ -95,7 +98,7 @@ public class HomeStatusQueryServiceImpl implements HomeStatusQueryService {
         } catch (RuntimeException failure) {
             meters.counter("tracking.storage.failures", "operation", "read_home_status").increment();
             log.error("The state of a home could not be read.", failure);
-            throw new TrackingStorageUnavailable(failure);
+            throw TrackingStorageUnavailable.forRead(failure);
         }
     }
 }

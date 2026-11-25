@@ -59,6 +59,9 @@ class HomeStatusQueryServiceTest {
                 new ScopedDevice(11L, "Luz", "LIGHT", "IN_USE", "sala")));
         when(states.findAllByDeviceIds(anyCollection())).thenReturn(List.of());
         when(edges.findAllByHouseholdId(HOME)).thenReturn(List.of());
+        // The home has the edges 2 and 3.
+        when(facade.fetchEdgesOfHousehold(HOME)).thenReturn(List.of(new AssetsContextFacade.AssignedEdge(2L, "MICROPHONE"),
+                new AssetsContextFacade.AssignedEdge(3L, "ACTUATOR")));
     }
 
     private static DeviceState state(long device, long edge, long household, ConnectionStatus connection,
@@ -198,5 +201,47 @@ class HomeStatusQueryServiceTest {
         assertThatThrownBy(this::ask).isInstanceOf(TrackingStorageUnavailable.class);
         assertThat(meters.get("tracking.storage.failures").tag("operation", "read_home_status").counter().count())
                 .isEqualTo(1.0);
+    }
+
+    @Test
+    void theStatusOfAnEdgeThatLeftTheHomeDoesNotMakeTheHomeOfflineAndItsDevicesAreStale() {
+        // The edge 9 was replaced: its status is still in the database, silent for good.
+        when(states.findAllByDeviceIds(anyCollection())).thenReturn(List.of(
+                state(10L, 9L, HOME, ConnectionStatus.CONNECTED, OperationalStatus.OK, "closed", 78, T),
+                state(11L, 3L, HOME, ConnectionStatus.CONNECTED, OperationalStatus.OK, "on", null, T.plusSeconds(60))));
+        when(edges.findAllByHouseholdId(HOME)).thenReturn(List.of(
+                edge(9L, T, EdgeLink.OFFLINE, 0, T.plusSeconds(200)),
+                edge(3L, T.plusSeconds(120), EdgeLink.ONLINE, 0, null)));
+
+        var view = ask();
+
+        assertThat(view.link()).isEqualTo(HomeLink.ONLINE);
+        assertThat(view.offlineSince()).isNull();
+        assertThat(view.mayHavePendingEvents()).isFalse();
+        // Neither the old edge's report nor the state it left count as news about the home.
+        assertThat(view.lastUpdatedAt()).isEqualTo(T.plusSeconds(120));
+        // What the old edge last said about the door is still shown, as the last known state, and nobody updates it.
+        assertThat(view.devices().get(0).stale()).isTrue();
+        assertThat(view.devices().get(0).currentState()).isEqualTo("closed");
+        assertThat(view.devices().get(1).stale()).isFalse();
+    }
+
+    @Test
+    void aHomeWhoseOnlyStatusesAreOfEdgesThatLeftIsUnknownNotOffline() {
+        when(edges.findAllByHouseholdId(HOME)).thenReturn(List.of(edge(9L, T, EdgeLink.OFFLINE, 3, T.plusSeconds(200))));
+
+        var view = ask();
+
+        assertThat(view.link()).isEqualTo(HomeLink.UNKNOWN);
+        assertThat(view.offlineSince()).isNull();
+        assertThat(view.lastUpdatedAt()).isNull();
+        assertThat(view.mayHavePendingEvents()).isFalse();
+    }
+
+    @Test
+    void theEdgesOfTheHomeAreAskedToAssetsEveryTime() {
+        ask();
+
+        org.mockito.Mockito.verify(facade).fetchEdgesOfHousehold(HOME);
     }
 }

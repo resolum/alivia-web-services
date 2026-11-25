@@ -76,4 +76,16 @@ class ExternalAssetsServiceTest {
         assertThat(service.fetchHouseholdOfDevice(null)).isEmpty();
         verify(facade, never()).fetchHouseholdOfDevice(null);
     }
+
+    @Test
+    void theEdgesOfAHomeAreTheOnesAssetsHasAssignedToItNow() {
+        when(facade.fetchEdgesOfHousehold(5L)).thenReturn(List.of(new AssetsContextFacade.AssignedEdge(7L, "MICROPHONE"),
+                new AssetsContextFacade.AssignedEdge(8L, "ACTUATOR")));
+        when(facade.fetchEdgesOfHousehold(6L)).thenReturn(List.of());
+
+        assertThat(service.fetchAssignedEdgeIds(5L)).containsExactlyInAnyOrder(7L, 8L);
+        assertThat(service.fetchAssignedEdgeIds(6L)).isEmpty();
+        assertThat(service.fetchAssignedEdgeIds(null)).isEmpty();
+        verify(facade, never()).fetchEdgesOfHousehold(null);
+    }
 }

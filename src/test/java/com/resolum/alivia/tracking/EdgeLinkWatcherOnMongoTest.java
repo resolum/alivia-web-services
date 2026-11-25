@@ -2,11 +2,13 @@ package com.resolum.alivia.tracking;
 
 import com.resolum.alivia.integration.MongoContainerSupport;
 import com.resolum.alivia.shared.infrastructure.persistence.mongo.MongoTypeMappingConfiguration;
+import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService;
 import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalNotificationsService;
 import com.resolum.alivia.tracking.application.internal.tasks.EdgeLinkWatcher;
 import com.resolum.alivia.tracking.domain.model.aggregates.EdgeStatus;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EdgeLink;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventType;
+import com.resolum.alivia.tracking.domain.model.valueobjects.ReportingContext;
 import com.resolum.alivia.tracking.infrastructure.adapters.DeviceEventRepositoryImpl;
 import com.resolum.alivia.tracking.infrastructure.adapters.EdgeStatusRepositoryImpl;
 import com.resolum.alivia.tracking.infrastructure.persistence.mongo.documents.DeviceEventDocument;
@@ -63,6 +65,8 @@ class EdgeLinkWatcherOnMongoTest {
 
     @MockitoBean
     private ExternalNotificationsService notifications;
+    @MockitoBean
+    private ExternalAssetsService assets;
     @Autowired
     private EdgeStatusRepositoryImpl edges;
     @Autowired
@@ -75,6 +79,12 @@ class EdgeLinkWatcherOnMongoTest {
         mongo.remove(new Query(), DeviceEventDocument.class);
         mongo.remove(new Query(), EdgeStatusDocument.class);
         when(notifications.relativesOf(anyLong())).thenReturn(Set.of(8L));
+        // Every edge of the test is in the home its status says (installation 30 + edge, household 300 + edge).
+        when(assets.fetchReportingEdge(anyLong())).thenAnswer(call -> {
+            Long id = call.getArgument(0);
+            return java.util.Optional.of(new ExternalAssetsService.ReportingEdge(
+                    new ReportingContext(id, 30 + id, 300 + id, Set.of()), "ACTUATOR", java.util.Map.of()));
+        });
         when(notifications.notifyOnce(anyLong(), anyString(), anyString(), anyString(), anyString())).thenReturn(true);
         for (long edge = 1; edge <= 10; edge++) {
             edges.recordHeartbeat(new EdgeStatus(edge, 30 + edge, 300 + edge, T0, EdgeLink.ONLINE, 0, null));
@@ -82,7 +92,7 @@ class EdgeLinkWatcherOnMongoTest {
     }
 
     private EdgeLinkWatcher watcherAt(Instant now, Duration grace) {
-        return new EdgeLinkWatcher(edges, events, notifications, Clock.fixed(now, ZoneOffset.UTC),
+        return new EdgeLinkWatcher(edges, events, assets, notifications, Clock.fixed(now, ZoneOffset.UTC),
                 new SimpleMeterRegistry(), AFTER, grace);
     }
 
@@ -153,8 +163,23 @@ class EdgeLinkWatcherOnMongoTest {
         assertThat(mongo.count(new Query(), DeviceEventDocument.class)).isZero();
 
         // Once the grace has passed, the same stored reports show who is silent.
-        var afterGrace = new EdgeLinkWatcher(edges, events, notifications,
+        var afterGrace = new EdgeLinkWatcher(edges, events, assets, notifications,
                 Clock.fixed(LATER.plus(Duration.ofMinutes(2)), ZoneOffset.UTC), new SimpleMeterRegistry(), AFTER, Duration.ZERO);
         assertThat(afterGrace.markSilentEdges()).isEqualTo(10);
+    }
+
+    @Test
+    void theEdgesThatLeftTheirHomeAreForgottenAndNotAnnouncedAndTheOthersAre() {
+        // The edge 5 was replaced: Assets no longer has it in any installation.
+        when(assets.fetchReportingEdge(5L)).thenReturn(java.util.Optional.empty());
+
+        int marked = watcherAt(LATER, Duration.ZERO).markSilentEdges();
+
+        assertThat(marked).isEqualTo(9);
+        assertThat(edges.findByEdgeId(5L)).isEmpty();
+        assertThat(mongo.count(new Query(), DeviceEventDocument.class)).isEqualTo(9);
+        assertThat(mongo.findAll(DeviceEventDocument.class)).noneMatch(d -> d.toDomain().edgeId() == 5L);
+        // Nothing is left of it to look at: the next run does nothing.
+        assertThat(watcherAt(LATER.plusSeconds(30), Duration.ZERO).markSilentEdges()).isZero();
     }
 }

@@ -65,6 +65,13 @@ public class EdgeStatusRepositoryImpl implements EdgeStatusRepository {
     }
 
     @Override
+    public boolean removeIfSilent(Long edgeId, Instant seen) {
+        var query = new Query(where("_id").is(edgeId).and("link").is(EdgeLink.ONLINE.name())
+                .and("lastReportAt").is(seen.truncatedTo(ChronoUnit.MILLIS)));
+        return mongo.remove(query, EdgeStatusDocument.class).getDeletedCount() > 0;
+    }
+
+    @Override
     public List<EdgeStatus> findAllByHouseholdId(Long householdId) {
         if (householdId == null) return List.of();
         return mongo.find(new Query(where("householdId").is(householdId)), EdgeStatusDocument.class).stream()

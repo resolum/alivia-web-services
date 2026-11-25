@@ -8,12 +8,16 @@ import com.resolum.alivia.tracking.domain.model.valueobjects.EventType;
 import com.resolum.alivia.tracking.domain.repositories.DeviceEventRepository;
 import com.resolum.alivia.tracking.infrastructure.persistence.mongo.documents.DeviceEventDocument;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.mongodb.BulkOperationException;
+import org.springframework.data.mongodb.core.BulkOperations;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -41,6 +45,26 @@ public class DeviceEventRepositoryImpl implements DeviceEventRepository {
             // The only unique index is (edge, event id): this edge already reported this event.
             return EventInsertion.DUPLICATE;
         }
+    }
+
+    /** Duplicate key, as MongoDB numbers it. */
+    private static final int DUPLICATE_KEY = 11000;
+
+    @Override
+    public List<EventInsertion> insertAll(List<DeviceEvent> batch) {
+        if (batch.isEmpty()) return List.of();
+        var result = new ArrayList<>(Collections.nCopies(batch.size(), EventInsertion.INSERTED));
+        var documents = batch.stream().map(DeviceEventDocument::from).toList();
+        try {
+            // Unordered: an event already kept does not stop the ones after it.
+            mongo.bulkOps(BulkOperations.BulkMode.UNORDERED, DeviceEventDocument.class).insert(documents).execute();
+        } catch (BulkOperationException failure) {
+            for (var error : failure.getErrors()) {
+                if (error.getCode() != DUPLICATE_KEY) throw failure;
+                result.set(error.getIndex(), EventInsertion.DUPLICATE);
+            }
+        }
+        return result;
     }
 
     @Override

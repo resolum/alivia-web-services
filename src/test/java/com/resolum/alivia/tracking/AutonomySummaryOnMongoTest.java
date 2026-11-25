@@ -1,8 +1,10 @@
 package com.resolum.alivia.tracking;
 
+import com.resolum.alivia.assets.interfaces.acl.AssetsContextFacade;
 import com.resolum.alivia.integration.MongoContainerSupport;
 import com.resolum.alivia.shared.infrastructure.persistence.mongo.MongoTypeMappingConfiguration;
 import com.resolum.alivia.tracking.application.acl.TrackingContextFacadeImpl;
+import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService;
 import com.resolum.alivia.tracking.application.internal.queryservices.AutonomyQueryServiceImpl;
 import com.resolum.alivia.tracking.domain.model.aggregates.DeviceEvent;
 import com.resolum.alivia.tracking.domain.model.aggregates.EdgeStatus;
@@ -29,6 +31,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -66,7 +69,11 @@ class AutonomySummaryOnMongoTest {
     private EdgeStatusRepositoryImpl edges;
 
     private TrackingContextFacade facade() {
-        return new TrackingContextFacadeImpl(new AutonomyQueryServiceImpl(events, edges, new SimpleMeterRegistry()));
+        var assetsFacade = org.mockito.Mockito.mock(AssetsContextFacade.class);
+        org.mockito.Mockito.when(assetsFacade.fetchEdgesOfHousehold(300L))
+                .thenReturn(List.of(new AssetsContextFacade.AssignedEdge(3L, "ACTUATOR")));
+        return new TrackingContextFacadeImpl(new AutonomyQueryServiceImpl(events, edges,
+                new ExternalAssetsService(assetsFacade), new SimpleMeterRegistry()));
     }
 
     @BeforeEach
