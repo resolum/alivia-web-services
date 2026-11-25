@@ -97,6 +97,7 @@ import com.resolum.alivia.tracking.domain.exceptions.AssistedPersonWithoutHouseh
 import com.resolum.alivia.tracking.domain.exceptions.BatchTooLarge;
 import com.resolum.alivia.tracking.domain.exceptions.DeviceNotAccessible;
 import com.resolum.alivia.tracking.domain.exceptions.EdgeNotInInstallation;
+import com.resolum.alivia.tracking.domain.exceptions.InvalidHistoryQuery;
 import com.resolum.alivia.tracking.domain.exceptions.InvalidTrackingData;
 import com.resolum.alivia.tracking.domain.exceptions.TrackingStorageUnavailable;
 import com.resolum.alivia.profiles.domain.exceptions.HouseholdNotFoundException;
@@ -321,6 +322,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(EdgeNotInInstallation.class)
     public ProblemDetail handleEdgeNotInInstallation(EdgeNotInInstallation exception) {
         return problem(HttpStatus.NOT_FOUND, "edge_without_installation", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InvalidHistoryQuery.class)
+    public ProblemDetail handleInvalidHistoryQuery(InvalidHistoryQuery exception) {
+        return problem(HttpStatus.BAD_REQUEST, exception.code(), exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(AssistedPersonNotAccessible.class)

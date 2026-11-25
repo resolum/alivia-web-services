@@ -1,5 +1,6 @@
 package com.resolum.alivia.tracking.infrastructure.configuration;
 
+import com.resolum.alivia.tracking.domain.model.valueobjects.HistoryPolicy;
 import com.resolum.alivia.tracking.domain.model.valueobjects.TrackingPolicy;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -26,6 +27,15 @@ public class TrackingConfiguration {
             @Value("${alivia.tracking.max-batch-size:100}") int maxBatchSize) {
         return new TrackingPolicy(maxAttributeKeys, maxAttributeBytes, maxDetail, clockTolerance, syncedAfter,
                 maxBatchSize);
+    }
+
+    /** The limits of the history a user may read; the defaults are the ones proposed in the plan (D-TR-9, to confirm). */
+    @Bean
+    public HistoryPolicy historyPolicy(
+            @Value("${alivia.tracking.history-max-range:P31D}") Duration maxRange,
+            @Value("${alivia.tracking.history-default-page-size:20}") int defaultPageSize,
+            @Value("${alivia.tracking.history-max-page-size:100}") int maxPageSize) {
+        return new HistoryPolicy(maxRange, defaultPageSize, maxPageSize);
     }
 
     /**

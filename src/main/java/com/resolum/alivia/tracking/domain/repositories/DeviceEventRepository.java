@@ -2,6 +2,8 @@ package com.resolum.alivia.tracking.domain.repositories;
 
 import com.resolum.alivia.tracking.domain.model.aggregates.DeviceEvent;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventInsertion;
+import com.resolum.alivia.tracking.domain.model.valueobjects.EventPage;
+import com.resolum.alivia.tracking.domain.model.valueobjects.EventType;
 
 import java.time.Instant;
 import java.util.List;
@@ -18,8 +20,14 @@ public interface DeviceEventRepository {
 
     Optional<DeviceEvent> findByEdgeAndEventId(Long edgeId, String eventId);
 
-    /** The events of a device of a household in the period ({@code from} included, {@code to} excluded), newest first. */
-    List<DeviceEvent> findByDevice(Long householdId, Long deviceId, Instant from, Instant to, int page, int size);
+    /**
+     * A page of the events of a device of a household in the period ({@code from} included, {@code to} excluded), newest
+     * first, with how many there are in all.
+     *
+     * @param type only the events of this type; {@code null} for every type
+     * @param page the number of the page, from 0
+     */
+    EventPage findByDevice(Long householdId, Long deviceId, Instant from, Instant to, EventType type, int page, int size);
 
     /** The latest events of a household, newest first. */
     List<DeviceEvent> findRecentByHousehold(Long householdId, int limit);

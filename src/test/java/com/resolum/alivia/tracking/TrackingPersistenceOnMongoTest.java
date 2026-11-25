@@ -204,18 +204,19 @@ class TrackingPersistenceOnMongoTest {
         }
         mongo.insert(all, DeviceEventDocument.class);
 
-        var first = events.findByDevice(200L, 5L, T0, T0.plusSeconds(100), 0, 30);
-        var second = events.findByDevice(200L, 5L, T0, T0.plusSeconds(100), 1, 30);
+        var first = events.findByDevice(200L, 5L, T0, T0.plusSeconds(100), null, 0, 30);
+        var second = events.findByDevice(200L, 5L, T0, T0.plusSeconds(100), null, 1, 30);
 
-        assertThat(first).hasSize(30);
-        assertThat(first).allMatch(e -> e.householdId() == 200L && e.deviceId() == 5L);
-        assertThat(first.get(0).occurredAt()).isEqualTo(T0.plusSeconds(99));
-        assertThat(second.get(0).occurredAt()).isEqualTo(T0.plusSeconds(69));
+        assertThat(first.items()).hasSize(30);
+        assertThat(first.total()).isEqualTo(100);
+        assertThat(first.items()).allMatch(e -> e.householdId() == 200L && e.deviceId() == 5L);
+        assertThat(first.items().get(0).occurredAt()).isEqualTo(T0.plusSeconds(99));
+        assertThat(second.items().get(0).occurredAt()).isEqualTo(T0.plusSeconds(69));
         // The end of the period is excluded, the start included.
-        assertThat(events.findByDevice(200L, 5L, T0.plusSeconds(10), T0.plusSeconds(20), 0, 50)).hasSize(10);
+        assertThat(events.findByDevice(200L, 5L, T0.plusSeconds(10), T0.plusSeconds(20), null, 0, 50).items()).hasSize(10);
         assertThat(events.findRecentByHousehold(200L, 5)).hasSize(5).allMatch(e -> e.householdId() == 200L);
         // The history of a household never shows the events of another.
-        assertThat(events.findByDevice(999L, 5L, T0, T0.plusSeconds(100), 0, 30)).isEmpty();
+        assertThat(events.findByDevice(999L, 5L, T0, T0.plusSeconds(100), null, 0, 30).items()).isEmpty();
 
         var plan = mongo.getCollection("device_events")
                 .find(new Document("householdId", 200L).append("deviceId", 5L)

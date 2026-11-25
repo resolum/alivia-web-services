@@ -2,6 +2,8 @@ package com.resolum.alivia.tracking.infrastructure.adapters;
 
 import com.resolum.alivia.tracking.domain.model.aggregates.DeviceEvent;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventInsertion;
+import com.resolum.alivia.tracking.domain.model.valueobjects.EventPage;
+import com.resolum.alivia.tracking.domain.model.valueobjects.EventType;
 import com.resolum.alivia.tracking.domain.repositories.DeviceEventRepository;
 import com.resolum.alivia.tracking.infrastructure.persistence.mongo.documents.DeviceEventDocument;
 import org.springframework.dao.DuplicateKeyException;
@@ -46,15 +48,20 @@ public class DeviceEventRepositoryImpl implements DeviceEventRepository {
     }
 
     @Override
-    public List<DeviceEvent> findByDevice(Long householdId, Long deviceId, Instant from, Instant to, int page, int size) {
+    public EventPage findByDevice(Long householdId, Long deviceId, Instant from, Instant to, EventType type, int page,
+                                  int size) {
         if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
             throw new IllegalArgumentException("The page must be 0 or more and the size between 1 and " + MAX_PAGE_SIZE + ".");
         }
-        var query = new Query(where("householdId").is(householdId).and("deviceId").is(deviceId)
-                .and("occurredAt").gte(from).lt(to))
-                .with(Sort.by(Sort.Direction.DESC, "occurredAt"))
-                .skip((long) page * size).limit(size);
-        return mongo.find(query, DeviceEventDocument.class).stream().map(DeviceEventDocument::toDomain).toList();
+        var criteria = where("householdId").is(householdId).and("deviceId").is(deviceId)
+                .and("occurredAt").gte(from).lt(to);
+        if (type != null) criteria = criteria.and("type").is(type.name());
+        var query = new Query(criteria);
+        long total = mongo.count(query, DeviceEventDocument.class);
+        if (total == 0 || (long) page * size >= total) return new EventPage(List.of(), total);
+        var items = mongo.find(query.with(Sort.by(Sort.Direction.DESC, "occurredAt")).skip((long) page * size).limit(size),
+                DeviceEventDocument.class).stream().map(DeviceEventDocument::toDomain).toList();
+        return new EventPage(items, total);
     }
 
     @Override

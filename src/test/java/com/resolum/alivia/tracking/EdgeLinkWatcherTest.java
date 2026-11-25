@@ -6,6 +6,7 @@ import com.resolum.alivia.tracking.domain.model.aggregates.DeviceEvent;
 import com.resolum.alivia.tracking.domain.model.aggregates.EdgeStatus;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EdgeLink;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventInsertion;
+import com.resolum.alivia.tracking.domain.model.valueobjects.EventPage;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventType;
 import com.resolum.alivia.tracking.domain.repositories.DeviceEventRepository;
 import com.resolum.alivia.tracking.domain.repositories.EdgeStatusRepository;
@@ -121,7 +122,7 @@ class EdgeLinkWatcherTest {
         }
 
         @Override
-        public List<DeviceEvent> findByDevice(Long householdId, Long deviceId, Instant from, Instant to, int page, int size) {
+        public EventPage findByDevice(Long householdId, Long deviceId, Instant from, Instant to, EventType type, int page, int size) {
             throw new UnsupportedOperationException();
         }
 
