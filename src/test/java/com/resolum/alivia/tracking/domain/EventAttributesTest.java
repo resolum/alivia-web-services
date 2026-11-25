@@ -96,4 +96,19 @@ class EventAttributesTest {
         assertThatThrownBy(() -> new TrackingPolicy(1, 1, 1, Duration.ZERO, Duration.ZERO, 0))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void theDelayOfARequestForHelpAndTheZoneHaveDefaultsAndAreChecked() {
+        var defaults = TrackingPolicy.defaults();
+
+        assertThat(defaults.helpDelayedAfter()).isEqualTo(Duration.ofMinutes(5));
+        assertThat(defaults.zone().getId()).isEqualTo("America/Lima");
+        assertThatThrownBy(() -> new TrackingPolicy(1, 1, 1, Duration.ZERO, Duration.ZERO, 1, Duration.ofSeconds(-1),
+                java.time.ZoneId.of("UTC"))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new TrackingPolicy(1, 1, 1, Duration.ZERO, Duration.ZERO, 1, Duration.ZERO, null))
+                .isInstanceOf(IllegalArgumentException.class);
+        // The older constructors keep the defaults.
+        assertThat(new TrackingPolicy(1, 1, 1, Duration.ZERO, Duration.ZERO, 5).helpDelayedAfter())
+                .isEqualTo(Duration.ofMinutes(5));
+    }
 }

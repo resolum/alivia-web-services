@@ -155,4 +155,35 @@ class TrackingWithMongoDownTest {
         assertThat(failures("report_states")).isEqualTo(1.0);
         assertThat((System.nanoTime() - started) / 1_000_000).as("ms").isLessThan(5000);
     }
+
+    @Test
+    void aDelayedRequestForHelpStillReachesTheFamilyWhenTheDatabaseDoesNotAnswerTheCheck() {
+        var batch = new ReportEventBatchCommand(3L, List.of(new ReportedEvent("help-late", "HELP_REQUESTED",
+                NOW.minus(Duration.ofHours(3)), null, null, null, null, null, null, "ayuda", null)));
+        long started = System.nanoTime();
+
+        assertThatThrownBy(() -> events().handle(batch)).isInstanceOf(TrackingStorageUnavailable.class);
+
+        verify(notifications).notifyOnce(8L, "HELP_REQUEST_DELAYED", "edge-help-late", "Pedido de ayuda con retraso",
+                "Tu familiar pidió ayuda a las 07:05, pero el aviso llegó con retraso porque la casa estuvo sin conexión. Dijo: «ayuda».");
+        assertThat(failures("check_event")).isEqualTo(1.0);
+        // The wait of the check is the configured one, not the thirty seconds of the driver.
+        assertThat((System.nanoTime() - started) / 1_000_000).as("ms").isLessThan(5000);
+    }
+
+    @Test
+    void aLiveRequestForHelpDoesNotWaitForTheDatabaseBeforeTellingTheFamily() {
+        var told = new long[1];
+        when(notifications.notifyOnce(anyLong(), anyString(), anyString(), anyString(), anyString())).thenAnswer(call -> {
+            told[0] = System.nanoTime();
+            return true;
+        });
+        long started = System.nanoTime();
+
+        events().handle(new ReportUrgentEventCommand(3L, "help-live", EventType.HELP_REQUESTED, null, null, null,
+                NOW.minusSeconds(10)));
+
+        // The family is told before the database is touched, so the delay of the failed write is not in front of the notice.
+        assertThat((told[0] - started) / 1_000_000).as("ms until the family was told").isLessThan(300);
+    }
 }

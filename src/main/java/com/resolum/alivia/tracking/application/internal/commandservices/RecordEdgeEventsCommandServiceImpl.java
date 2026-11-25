@@ -152,7 +152,17 @@ public class RecordEdgeEventsCommandServiceImpl implements RecordEdgeEventsComma
                 null, null, command.batteryPct(), cut(command.detail(), policy.maxDetail()), null);
         var event = DeviceEvent.fromEdge(context, reported, receivedAt, viaBatch, policy);
 
-        var message = EdgeEventMessages.of(event, deviceId == null ? null : edge.deviceAliases().get(deviceId));
+        // A request for help that arrives long after it was made is told as such. If that very event is already kept, the
+        // family was told when it was kept (the notice goes before the write), so it is not told again: the type changes with
+        // the delay, and Communications would not recognise the notice as the one it already has. Looking is only done for a
+        // late one, which is not urgent, so a database that does not answer never delays the notice of a live request.
+        boolean delayed = command.type() == EventType.HELP_REQUESTED && command.occurredAt() != null
+                && command.occurredAt().isBefore(receivedAt.minus(policy.helpDelayedAfter()));
+        if (delayed && alreadyKept(event)) {
+            return new UrgentReport(event, 0);
+        }
+        var message = delayed ? EdgeEventMessages.helpRequestDelayed(event, policy.zone())
+                : EdgeEventMessages.of(event, deviceId == null ? null : edge.deviceAliases().get(deviceId));
         int notified = 0;
         for (Long userId : notifications.relativesOf(context.householdId())) {
             if (notifications.notifyOnce(userId, message.type(), SOURCE_PREFIX + event.eventId(), message.title(),
@@ -161,6 +171,18 @@ public class RecordEdgeEventsCommandServiceImpl implements RecordEdgeEventsComma
             }
         }
         return new UrgentReport(event, notified);
+    }
+
+    private boolean alreadyKept(DeviceEvent event) {
+        try {
+            return events.findByEdgeAndEventId(event.edgeId(), event.eventId()).isPresent();
+        } catch (RuntimeException failure) {
+            // Not knowing is not a reason to stay silent about a request for help.
+            meters.counter("tracking.storage.failures", "operation", "check_event").increment();
+            log.warn("It could not be checked whether the event {} of the edge {} is already kept.", event.eventId(),
+                    event.edgeId(), failure);
+            return false;
+        }
     }
 
     private ReportingEdge reportingEdge(Long edgeId) {

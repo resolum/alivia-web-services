@@ -28,7 +28,7 @@ import java.util.Map;
         // an earlier version (household_device_time, without the id) is not used any more and can be dropped.
         @CompoundIndex(name = "household_device_time_id",
                 def = "{'householdId': 1, 'deviceId': 1, 'occurredAt': -1, '_id': -1}"),
-        @CompoundIndex(name = "household_time", def = "{'householdId': 1, 'occurredAt': -1}")
+        @CompoundIndex(name = "household_time_id", def = "{'householdId': 1, 'occurredAt': -1, '_id': -1}")
 })
 public class DeviceEventDocument {
 

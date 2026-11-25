@@ -12,6 +12,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.time.ZoneId;
 
 /** The limits of what an edge may report, from {@code alivia.tracking.*}; the defaults are the ones of the edge contract. */
 @Configuration
@@ -24,9 +25,11 @@ public class TrackingConfiguration {
             @Value("${alivia.tracking.max-detail:200}") int maxDetail,
             @Value("${alivia.tracking.clock-tolerance:PT5M}") Duration clockTolerance,
             @Value("${alivia.tracking.synced-after:PT60S}") Duration syncedAfter,
-            @Value("${alivia.tracking.max-batch-size:100}") int maxBatchSize) {
+            @Value("${alivia.tracking.max-batch-size:100}") int maxBatchSize,
+            @Value("${alivia.tracking.help-delayed-after:PT5M}") Duration helpDelayedAfter,
+            @Value("${alivia.tracking.zone:America/Lima}") String zone) {
         return new TrackingPolicy(maxAttributeKeys, maxAttributeBytes, maxDetail, clockTolerance, syncedAfter,
-                maxBatchSize);
+                maxBatchSize, helpDelayedAfter, ZoneId.of(zone.strip()));
     }
 
     /** The limits of the history a user may read; the defaults are the ones proposed in the plan (D-TR-9, to confirm). */
@@ -39,16 +42,22 @@ public class TrackingConfiguration {
     }
 
     /**
-     * Writes the diagnostics readings in the background. With no {@code alivia.tracking.samples-retention} the readings
-     * are not given an expiration, so none is deleted: the retention is a decision that deletes data (D-TR-6).
+     * Writes the diagnostics readings in the background. They expire after 7 days (decision D-TR-6, 2026-11-24): the
+     * free cluster would fill in weeks without it. {@code alivia.tracking.samples-retention} changes the period, and
+     * {@code none} keeps the readings for ever. The events do not expire.
      */
     @Bean
     public TelemetrySampleRecorder telemetrySampleRecorder(
             TelemetrySampleRepository samples, Clock clock, MeterRegistry meters,
             @Value("${alivia.tracking.sample-interval:PT5M}") Duration interval,
-            @Value("${alivia.tracking.samples-retention:}") String retention,
+            @Value("${alivia.tracking.samples-retention:P7D}") String retention,
             @Value("${alivia.tracking.sample-queue-size:1000}") int queueSize) {
         return new TelemetrySampleRecorder(samples, clock, interval,
-                retention.isBlank() ? null : Duration.parse(retention.strip()), queueSize, meters);
+                keepsForEver(retention) ? null : Duration.parse(retention.strip()), queueSize, meters);
+    }
+
+    /** An empty value or {@code none} means the readings are not given an expiration. */
+    private static boolean keepsForEver(String retention) {
+        return retention == null || retention.isBlank() || "none".equalsIgnoreCase(retention.strip());
     }
 }

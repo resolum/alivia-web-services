@@ -88,7 +88,7 @@ public class DeviceEventRepositoryImpl implements DeviceEventRepository {
             throw new IllegalArgumentException("The limit must be between 1 and " + MAX_PAGE_SIZE + ".");
         }
         var query = new Query(where("householdId").is(householdId))
-                .with(Sort.by(Sort.Direction.DESC, "occurredAt")).limit(limit);
+                .with(Sort.by(Sort.Direction.DESC, "occurredAt", "id")).limit(limit);
         return mongo.find(query, DeviceEventDocument.class).stream().map(DeviceEventDocument::toDomain).toList();
     }
 }

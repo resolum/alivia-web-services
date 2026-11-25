@@ -170,6 +170,8 @@ package "domain.model.valueobjects" #F3F8EE {
     + Duration clockTolerance
     + Duration syncedAfter
     + int maxBatchSize
+    + Duration helpDelayedAfter
+    + ZoneId zone
   }
 
   class HistoryPolicy <<record>> {
@@ -246,6 +248,9 @@ package "domain.services" #EAF2FB {
   interface DeviceTelemetryQueryService {
     + handle(GetDeviceTelemetryQuery) : DeviceTelemetryPageView
   }
+  interface RecentEventsQueryService {
+    + handle(GetRecentEventsByAssistedPersonQuery) : RecentEventsView
+  }
   interface AutonomyQueryService {
     + handle(GetAutonomySummaryQuery) : AutonomySummaryView
   }
@@ -265,6 +270,7 @@ package "application.internal" #FDEFEF {
   class HomeStatusQueryServiceImpl
   class DeviceEventsQueryServiceImpl
   class DeviceTelemetryQueryServiceImpl
+  class RecentEventsQueryServiceImpl
   class AutonomyQueryServiceImpl
 
   package "outboundservices.acl" #FFFFFF {
@@ -283,8 +289,8 @@ package "infrastructure (MongoDB)" #F1EFFB {
 
   class "device_events" as DeviceEventDocument <<collection>> {
     unique (edgeId, eventId)
-    (householdId, deviceId, occurredAt desc)
-    (householdId, occurredAt desc)
+    (householdId, deviceId, occurredAt desc, _id desc)
+    (householdId, occurredAt desc, _id desc)
   }
   class "device_states" as DeviceStateDocument <<collection>> {
     _id = deviceId
@@ -310,6 +316,7 @@ package "interfaces" #EEF7F0 {
     class HomeStatusController <<GET /assisted-persons/{id}/devices/status>>
     class DeviceEventsController <<GET /devices/{id}/events>>
     class DeviceTelemetryController <<GET /devices/{id}/telemetry>>
+    class RecentEventsController <<GET /assisted-persons/{id}/events/recent>>
   }
 
   package "acl" #FFFFFF {
@@ -352,6 +359,10 @@ HomeStatusQueryServiceImpl ..|> HomeStatusQueryService
 DeviceEventsQueryServiceImpl ..|> DeviceEventsQueryService
 DeviceTelemetryQueryServiceImpl ..|> DeviceTelemetryQueryService
 AutonomyQueryServiceImpl ..|> AutonomyQueryService
+RecentEventsQueryServiceImpl ..|> RecentEventsQueryService
+RecentEventsQueryServiceImpl ..> TrackingAccessService
+RecentEventsQueryServiceImpl ..> DeviceEventRepository
+RecentEventsController ..> RecentEventsQueryService
 
 RecordEdgeEventsCommandServiceImpl ..> DeviceEventRepository
 RecordEdgeEventsCommandServiceImpl ..> ExternalAssetsService

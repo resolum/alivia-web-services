@@ -77,6 +77,7 @@ class EdgeEventsBatchContractTest {
 
         @Override
         public Optional<DeviceEvent> findByEdgeAndEventId(Long edgeId, String eventId) {
+            if (failing) throw new DataAccessResourceFailureException("MongoDB is down");
             return Optional.ofNullable(kept.get(edgeId + "/" + eventId));
         }
 
@@ -355,5 +356,93 @@ class EdgeEventsBatchContractTest {
 
         assertThat(meters.get("tracking.storage.failures").tag("operation", "insert_event").counter().count()).isEqualTo(1.0);
         assertThat(events("accepted", "batch") + events("duplicate", "batch") + events("rejected", "batch")).isZero();
+    }
+
+    // ---- a request for help that arrives late (D-TR-8)
+
+    private static String helpAt(String eventId, String occurredAt) {
+        return "{\"eventId\":\"" + eventId + "\",\"type\":\"HELP_REQUESTED\",\"occurredAt\":\"" + occurredAt
+                + "\",\"detail\":\"ayuda\"}";
+    }
+
+    private static final String LATE_BODY = "Tu familiar pidió ayuda a las 07:12, pero el aviso llegó con retraso porque la casa estuvo sin conexión. Dijo: «ayuda».";
+
+    @Test
+    void aRequestForHelpThatArrivesHoursLateIsToldAsDelayedWithTheRealHour() throws Exception {
+        sync(batchOf(helpAt("h-late", "2026-11-24T12:12:00Z")), 200);
+
+        verify(notifications).notifyOnce(8L, "HELP_REQUEST_DELAYED", "edge-h-late", "Pedido de ayuda con retraso", LATE_BODY);
+        verify(notifications, never()).notifyOnce(anyLong(), org.mockito.ArgumentMatchers.eq("HELP_REQUESTED"), anyString(),
+                anyString(), anyString());
+    }
+
+    @Test
+    void aRequestForHelpWithinTheDelayIsToldAsLiveAndTheLimitIsExact() throws Exception {
+        sync(batchOf(helpAt("h-1", "2026-11-24T15:00:00Z"), helpAt("h-2", "2026-11-24T14:59:59Z")), 200);
+
+        // Exactly five minutes late is still live; one second more is delayed.
+        verify(notifications).notifyOnce(8L, "HELP_REQUESTED", "edge-h-1", "Solicitud de asistencia",
+                "Tu familiar pidió ayuda desde casa: «ayuda».");
+        verify(notifications).notifyOnce(org.mockito.ArgumentMatchers.eq(8L), org.mockito.ArgumentMatchers.eq("HELP_REQUEST_DELAYED"),
+                org.mockito.ArgumentMatchers.eq("edge-h-2"), anyString(), anyString());
+    }
+
+    @Test
+    void aDelayedRequestFromAnotherDayNamesTheDay() throws Exception {
+        sync(batchOf(helpAt("h-old", "2026-11-23T14:00:00Z")), 200);
+
+        verify(notifications).notifyOnce(8L, "HELP_REQUEST_DELAYED", "edge-h-old", "Pedido de ayuda con retraso",
+                "Tu familiar pidió ayuda el 23/11 a las 09:00, pero el aviso llegó con retraso porque la casa estuvo sin conexión. Dijo: «ayuda».");
+    }
+
+    @Test
+    void sendingTheDelayedRequestAgainDoesNotTellTheFamilyAgain() throws Exception {
+        sync(batchOf(helpAt("h-late", "2026-11-24T12:12:00Z")), 200);
+
+        var again = JSON.readTree(sync(batchOf(helpAt("h-late", "2026-11-24T12:12:00Z")), 200)).get("results").get(0);
+
+        assertThat(again.get("status").asText()).isEqualTo("DUPLICATE");
+        verify(notifications, times(1)).notifyOnce(anyLong(), anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void aRequestTheFamilyAlreadyKnewAsLiveIsNotToldAgainWhenTheBatchBringsItLate() throws Exception {
+        // First it arrives as it happens, by the single endpoint, and is kept.
+        mvc.perform(post("/api/v1/edge/events").principal(EDGE).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventId\":\"h-live\",\"type\":\"HELP_REQUESTED\",\"occurredAt\":\"2026-11-24T14:59:50Z\"}"))
+                .andExpect(status().isAccepted());
+        // Then the edge, which never got the answer, sends it again hours later in a batch.
+        org.mockito.Mockito.clearInvocations(notifications);
+
+        var again = JSON.readTree(sync(batchOf(helpAt("h-live", "2026-11-24T14:59:50Z")), 200)).get("results").get(0);
+
+        assertThat(again.get("status").asText()).isEqualTo("DUPLICATE");
+        verify(notifications, never()).notifyOnce(anyLong(), anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void ifItCannotBeCheckedWhetherTheDelayedRequestIsKeptTheFamilyIsToldAnyway() throws Exception {
+        store.failing = true;
+
+        sync(batchOf(helpAt("h-late", "2026-11-24T12:12:00Z")), 503);
+
+        verify(notifications).notifyOnce(8L, "HELP_REQUEST_DELAYED", "edge-h-late", "Pedido de ayuda con retraso", LATE_BODY);
+        assertThat(meters.get("tracking.storage.failures").tag("operation", "check_event").counter().count()).isEqualTo(1.0);
+    }
+
+    @Test
+    void onlyARequestForHelpIsToldAsDelayedAnythingElseKeepsItsType() throws Exception {
+        sync(batchOf("{\"eventId\":\"l-late\",\"type\":\"LOW_BATTERY\",\"occurredAt\":\"2026-11-24T12:12:00Z\",\"deviceId\":13,\"batteryPct\":15}"), 200);
+
+        verify(notifications).notifyOnce(8L, "LOW_BATTERY", "edge-l-late", "Batería baja", "Luz de la sala tiene 15% de batería.");
+    }
+
+    @Test
+    void theSingleEndpointToldsALateRequestAsDelayedToo() throws Exception {
+        mvc.perform(post("/api/v1/edge/events").principal(EDGE).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventId\":\"h-single\",\"type\":\"HELP_REQUESTED\",\"occurredAt\":\"2026-11-24T12:12:00Z\",\"detail\":\"ayuda\"}"))
+                .andExpect(status().isAccepted());
+
+        verify(notifications).notifyOnce(8L, "HELP_REQUEST_DELAYED", "edge-h-single", "Pedido de ayuda con retraso", LATE_BODY);
     }
 }

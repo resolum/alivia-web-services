@@ -117,7 +117,7 @@ class TrackingPersistenceOnMongoTest {
     void theDocumentsDeclareTheIndexesTheQueriesNeed() {
         var eventIndexes = indexes(mongo, DeviceEventDocument.class);
         assertThat(eventIndexes).extracting(IndexInfo::getName)
-                .contains("edge_event_unique", "household_device_time_id", "household_time", "command");
+                .contains("edge_event_unique", "household_device_time_id", "household_time_id", "command");
         assertThat(eventIndexes.stream().filter(i -> i.getName().equals("edge_event_unique")).findFirst().orElseThrow()
                 .isUnique()).isTrue();
         assertThat(eventIndexes.stream().filter(i -> i.getName().equals("command")).findFirst().orElseThrow()

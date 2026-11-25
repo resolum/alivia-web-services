@@ -165,7 +165,7 @@ class ReportDeviceStatesOnMongoTest {
     }
 
     @Test
-    void theDiagnosticsAreKeptInTheBackgroundWithoutExpirationWhenNoRetentionIsSet() throws Exception {
+    void theDiagnosticsAreKeptInTheBackgroundAndExpireAfterSevenDaysByDefault() throws Exception {
         // The recorder remembers when each device was last sampled and the clock is fixed, so this test uses a device
         // no other test reports.
         var at = Instant.parse("2026-11-24T15:04:00Z");
@@ -178,7 +178,8 @@ class ReportDeviceStatesOnMongoTest {
         }
         var samples = mongo.findAll(TelemetrySampleDocument.class);
         assertThat(samples).hasSize(1);
-        assertThat(samples.get(0).toDomain().expiresAt()).isNull();
+        // Decision D-TR-6: seven days, counted from when the backend kept it (the clock of this test is NOW).
+        assertThat(samples.get(0).toDomain().expiresAt()).isEqualTo(NOW.plus(java.time.Duration.ofDays(7)));
     }
 
     private static void runAtOnce(int threads, Runnable task) throws Exception {
