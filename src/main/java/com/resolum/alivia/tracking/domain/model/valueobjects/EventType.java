@@ -39,6 +39,14 @@ public enum EventType {
         this.results = results;
     }
 
+    /**
+     * Whether the family is told at once: a request for help, a device that failed or a battery that runs out. Those
+     * reports are never refused for what they say about a device or about the clock of the edge.
+     */
+    public boolean isUrgent() {
+        return this == HELP_REQUESTED || this == DEVICE_FAILURE || this == LOW_BATTERY;
+    }
+
     /** Whether an edge may report it. */
     public boolean reportedByEdge() {
         return fromEdge;

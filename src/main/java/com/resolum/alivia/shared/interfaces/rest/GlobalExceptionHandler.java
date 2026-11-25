@@ -92,6 +92,8 @@ import com.resolum.alivia.profiles.domain.exceptions.EmailAddressAlreadyExistsEx
 import com.resolum.alivia.profiles.domain.exceptions.EmailNotEditableException;
 import com.resolum.alivia.profiles.domain.exceptions.HouseholdAccessDeniedException;
 import com.resolum.alivia.profiles.domain.exceptions.ProfileAccessDeniedException;
+import com.resolum.alivia.tracking.domain.exceptions.EdgeNotInInstallation;
+import com.resolum.alivia.tracking.domain.exceptions.InvalidTrackingData;
 import com.resolum.alivia.profiles.domain.exceptions.HouseholdNotFoundException;
 import com.resolum.alivia.profiles.domain.exceptions.LegalNameAlreadyExistsException;
 import com.resolum.alivia.profiles.domain.exceptions.OwnProfileNotFoundException;
@@ -309,6 +311,16 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleHouseholdNotFound(HouseholdNotFoundException exception) {
         return problem(HttpStatus.NOT_FOUND, "household_not_found",
                 exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(EdgeNotInInstallation.class)
+    public ProblemDetail handleEdgeNotInInstallation(EdgeNotInInstallation exception) {
+        return problem(HttpStatus.NOT_FOUND, "edge_without_installation", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InvalidTrackingData.class)
+    public ProblemDetail handleInvalidTrackingData(InvalidTrackingData exception) {
+        return problem(HttpStatus.BAD_REQUEST, exception.reason().code(), exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(ProfileAccessDeniedException.class)

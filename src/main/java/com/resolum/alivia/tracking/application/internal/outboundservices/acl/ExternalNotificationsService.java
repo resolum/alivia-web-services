@@ -1,4 +1,4 @@
-package com.resolum.alivia.assets.application.internal.outboundservices.acl;
+package com.resolum.alivia.tracking.application.internal.outboundservices.acl;
 
 import com.resolum.alivia.communications.interfaces.acl.NotificationsContextFacade;
 import com.resolum.alivia.profiles.interfaces.acl.HouseholdMembershipFacade;
@@ -6,9 +6,10 @@ import org.springframework.stereotype.Service;
 
 import java.util.Set;
 
-/** Assets' view of who is told about a home (Profiles) and how (Communications). */
-@Service("assetsExternalNotificationsService")
+/** Tracking's view of who is told about a home (Profiles) and how (Communications). */
+@Service("trackingExternalNotificationsService")
 public class ExternalNotificationsService {
+
     private final HouseholdMembershipFacade memberships;
     private final NotificationsContextFacade notifications;
 
