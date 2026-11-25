@@ -5,7 +5,10 @@ import com.resolum.alivia.tracking.application.internal.commandservices.RecordEd
 import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService;
 import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService.ReportingEdge;
 import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalNotificationsService;
+import com.resolum.alivia.tracking.domain.model.commands.ReportEventBatchCommand;
 import com.resolum.alivia.tracking.domain.model.commands.ReportUrgentEventCommand;
+import com.resolum.alivia.tracking.domain.model.valueobjects.EventOutcome;
+import com.resolum.alivia.tracking.domain.model.valueobjects.ReportedEvent;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventType;
 import com.resolum.alivia.tracking.domain.model.valueobjects.ReportingContext;
 import com.resolum.alivia.tracking.infrastructure.adapters.DeviceEventRepositoryImpl;
@@ -134,5 +137,61 @@ class RecordEdgeEventsOnMongoTest {
         }
 
         assertThat(mongo.count(new Query(), DeviceEventDocument.class)).isEqualTo(1);
+    }
+
+    private static ReportEventBatchCommand batchOfTwenty() {
+        var events = new java.util.ArrayList<ReportedEvent>();
+        for (int i = 0; i < 20; i++) {
+            events.add(new ReportedEvent("batch-" + i, "DEVICE_STATE_CHANGED", NOW.minusSeconds(300 - i), 10L, null, null,
+                    null, null, null, null, Map.of("state", i % 2 == 0 ? "open" : "closed")));
+        }
+        return new ReportEventBatchCommand(3L, events);
+    }
+
+    @Test
+    void aBatchIsKeptOnceInOrderAndSendingItAgainChangesNothing() {
+        var first = service.handle(batchOfTwenty());
+        var second = service.handle(batchOfTwenty());
+
+        assertThat(first).hasSize(20).allMatch(o -> o.status() == EventOutcome.Status.ACCEPTED);
+        assertThat(first.get(0).eventId()).isEqualTo("batch-0");
+        assertThat(first.get(19).eventId()).isEqualTo("batch-19");
+        assertThat(second).hasSize(20).allMatch(o -> o.status() == EventOutcome.Status.DUPLICATE);
+        assertThat(mongo.count(new Query(), DeviceEventDocument.class)).isEqualTo(20);
+        // They arrived minutes after they happened, so they are marked as executed locally.
+        assertThat(mongo.findAll(DeviceEventDocument.class)).allMatch(d -> d.toDomain().origin()
+                == com.resolum.alivia.tracking.domain.model.valueobjects.EventOrigin.SYNCED);
+    }
+
+    @Test
+    void theSameBatchSentTwiceAtOnceIsAcceptedOnceInTotal() throws Exception {
+        var pool = Executors.newFixedThreadPool(2);
+        try {
+            var ready = new CountDownLatch(2);
+            var go = new CountDownLatch(1);
+            var futures = new java.util.ArrayList<java.util.concurrent.Future<java.util.List<EventOutcome>>>();
+            for (int i = 0; i < 2; i++) {
+                futures.add(pool.submit(() -> {
+                    ready.countDown();
+                    go.await();
+                    return service.handle(batchOfTwenty());
+                }));
+            }
+            ready.await();
+            go.countDown();
+            long accepted = 0;
+            long duplicates = 0;
+            for (var future : futures) {
+                for (var outcome : future.get()) {
+                    if (outcome.status() == EventOutcome.Status.ACCEPTED) accepted++;
+                    if (outcome.status() == EventOutcome.Status.DUPLICATE) duplicates++;
+                }
+            }
+            assertThat(accepted).isEqualTo(20);
+            assertThat(duplicates).isEqualTo(20);
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(mongo.count(new Query(), DeviceEventDocument.class)).isEqualTo(20);
     }
 }

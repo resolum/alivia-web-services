@@ -17,7 +17,9 @@ public class TrackingConfiguration {
             @Value("${alivia.tracking.max-attribute-bytes:2048}") int maxAttributeBytes,
             @Value("${alivia.tracking.max-detail:200}") int maxDetail,
             @Value("${alivia.tracking.clock-tolerance:PT5M}") Duration clockTolerance,
-            @Value("${alivia.tracking.synced-after:PT60S}") Duration syncedAfter) {
-        return new TrackingPolicy(maxAttributeKeys, maxAttributeBytes, maxDetail, clockTolerance, syncedAfter);
+            @Value("${alivia.tracking.synced-after:PT60S}") Duration syncedAfter,
+            @Value("${alivia.tracking.max-batch-size:100}") int maxBatchSize) {
+        return new TrackingPolicy(maxAttributeKeys, maxAttributeBytes, maxDetail, clockTolerance, syncedAfter,
+                maxBatchSize);
     }
 }

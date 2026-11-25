@@ -50,7 +50,7 @@ class EdgeEventsControllerTest {
 
     @Test
     void theExampleOfTheContractIsAcceptedAndAnsweredWithTheNumberOfRelativesToldNow() throws Exception {
-        when(service.handle(any())).thenReturn(2);
+        when(service.handle(any(ReportUrgentEventCommand.class))).thenReturn(2);
 
         mvc.perform(post(PATH).principal(EDGE).contentType(MediaType.APPLICATION_JSON)
                         .content(fixture("e1-event.request.json")))
@@ -64,7 +64,7 @@ class EdgeEventsControllerTest {
 
     @Test
     void theReportOfAnEdgeThatDoesNotSendWhenItHappenedStillWorks() throws Exception {
-        when(service.handle(any())).thenReturn(1);
+        when(service.handle(any(ReportUrgentEventCommand.class))).thenReturn(1);
 
         mvc.perform(post(PATH).principal(EDGE).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"eventId\":\"help-9\",\"type\":\"help_requested\",\"detail\":\"ayuda\"}"))
@@ -104,7 +104,7 @@ class EdgeEventsControllerTest {
                 .andExpect(status().isForbidden());
         verifyNoInteractions(service);
 
-        when(service.handle(any())).thenThrow(new EdgeNotInInstallation(3L));
+        when(service.handle(any(ReportUrgentEventCommand.class))).thenThrow(new EdgeNotInInstallation(3L));
         mvc.perform(post(PATH).principal(EDGE).contentType(MediaType.APPLICATION_JSON)
                         .content(fixture("e1-event.request.json")))
                 .andExpect(status().isNotFound())

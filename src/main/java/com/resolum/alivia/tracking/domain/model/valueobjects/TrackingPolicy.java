@@ -11,12 +11,21 @@ import java.time.Duration;
  * @param maxDetail         characters of the description of an event
  * @param clockTolerance    how far in the future an edge clock may be
  * @param syncedAfter       delay from which an event received in a batch counts as executed locally
+ * @param maxBatchSize      events an edge may send in one batch
  */
 public record TrackingPolicy(int maxAttributeKeys, int maxAttributeBytes, int maxDetail, Duration clockTolerance,
-                             Duration syncedAfter) {
+                             Duration syncedAfter, int maxBatchSize) {
+
+    public static final int DEFAULT_MAX_BATCH_SIZE = 100;
+
+    /** A policy with the batch size of the edge contract. */
+    public TrackingPolicy(int maxAttributeKeys, int maxAttributeBytes, int maxDetail, Duration clockTolerance,
+                          Duration syncedAfter) {
+        this(maxAttributeKeys, maxAttributeBytes, maxDetail, clockTolerance, syncedAfter, DEFAULT_MAX_BATCH_SIZE);
+    }
 
     public TrackingPolicy {
-        if (maxAttributeKeys < 1 || maxAttributeBytes < 1 || maxDetail < 1) {
+        if (maxAttributeKeys < 1 || maxAttributeBytes < 1 || maxDetail < 1 || maxBatchSize < 1) {
             throw new IllegalArgumentException("The limits must be positive.");
         }
         if (clockTolerance == null || clockTolerance.isNegative() || syncedAfter == null || syncedAfter.isNegative()) {
@@ -25,6 +34,7 @@ public record TrackingPolicy(int maxAttributeKeys, int maxAttributeBytes, int ma
     }
 
     public static TrackingPolicy defaults() {
-        return new TrackingPolicy(20, 2048, 200, Duration.ofMinutes(5), Duration.ofSeconds(60));
+        return new TrackingPolicy(20, 2048, 200, Duration.ofMinutes(5), Duration.ofSeconds(60),
+                DEFAULT_MAX_BATCH_SIZE);
     }
 }

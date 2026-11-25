@@ -92,8 +92,10 @@ import com.resolum.alivia.profiles.domain.exceptions.EmailAddressAlreadyExistsEx
 import com.resolum.alivia.profiles.domain.exceptions.EmailNotEditableException;
 import com.resolum.alivia.profiles.domain.exceptions.HouseholdAccessDeniedException;
 import com.resolum.alivia.profiles.domain.exceptions.ProfileAccessDeniedException;
+import com.resolum.alivia.tracking.domain.exceptions.BatchTooLarge;
 import com.resolum.alivia.tracking.domain.exceptions.EdgeNotInInstallation;
 import com.resolum.alivia.tracking.domain.exceptions.InvalidTrackingData;
+import com.resolum.alivia.tracking.domain.exceptions.TrackingStorageUnavailable;
 import com.resolum.alivia.profiles.domain.exceptions.HouseholdNotFoundException;
 import com.resolum.alivia.profiles.domain.exceptions.LegalNameAlreadyExistsException;
 import com.resolum.alivia.profiles.domain.exceptions.OwnProfileNotFoundException;
@@ -316,6 +318,19 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(EdgeNotInInstallation.class)
     public ProblemDetail handleEdgeNotInInstallation(EdgeNotInInstallation exception) {
         return problem(HttpStatus.NOT_FOUND, "edge_without_installation", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(BatchTooLarge.class)
+    public ProblemDetail handleBatchTooLarge(BatchTooLarge exception) {
+        return problem(HttpStatus.BAD_REQUEST, "batch_too_large", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(TrackingStorageUnavailable.class)
+    public ResponseEntity<ProblemDetail> handleTrackingStorageUnavailable(TrackingStorageUnavailable exception) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, "5")
+                .body(problem(HttpStatus.SERVICE_UNAVAILABLE, "tracking_storage_unavailable",
+                        exception.getMessage(), List.of()));
     }
 
     @ExceptionHandler(InvalidTrackingData.class)

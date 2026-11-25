@@ -92,5 +92,8 @@ class EventAttributesTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(TrackingPolicy.defaults().clockTolerance()).isEqualTo(Duration.ofMinutes(5));
         assertThat(TrackingPolicy.defaults().maxAttributeBytes()).isEqualTo(2048);
+        assertThat(TrackingPolicy.defaults().maxBatchSize()).isEqualTo(100);
+        assertThatThrownBy(() -> new TrackingPolicy(1, 1, 1, Duration.ZERO, Duration.ZERO, 0))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }
