@@ -1,6 +1,7 @@
 package com.resolum.alivia.tracking.application.internal.commandservices;
 
 import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService;
+import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalNotificationsService;
 import com.resolum.alivia.tracking.domain.exceptions.BatchTooLarge;
 import com.resolum.alivia.tracking.domain.exceptions.EdgeNotInInstallation;
 import com.resolum.alivia.tracking.domain.exceptions.TrackingStorageUnavailable;
@@ -46,19 +47,22 @@ public class ReportDeviceStatesCommandServiceImpl implements ReportDeviceStatesC
     private final EdgeStatusRepository edgeStatuses;
     private final DeviceEventRepository events;
     private final TelemetrySampleRecorder samples;
+    private final ExternalNotificationsService notifications;
     private final TrackingPolicy policy;
     private final Clock clock;
     private final MeterRegistry meters;
 
     public ReportDeviceStatesCommandServiceImpl(ExternalAssetsService assets, DeviceStateRepository states,
                                                 EdgeStatusRepository edgeStatuses, DeviceEventRepository events,
-                                                TelemetrySampleRecorder samples, TrackingPolicy policy, Clock clock,
-                                                MeterRegistry meters) {
+                                                TelemetrySampleRecorder samples,
+                                                ExternalNotificationsService notifications, TrackingPolicy policy,
+                                                Clock clock, MeterRegistry meters) {
         this.assets = assets;
         this.states = states;
         this.edgeStatuses = edgeStatuses;
         this.events = events;
         this.samples = samples;
+        this.notifications = notifications;
         this.policy = policy;
         this.clock = clock;
         this.meters = meters;
@@ -107,15 +111,33 @@ public class ReportDeviceStatesCommandServiceImpl implements ReportDeviceStatesC
         var before = guarded(() -> edgeStatuses.findByEdgeId(context.edgeId()).orElse(null));
         if (before != null && before.link() == EdgeLink.OFFLINE) {
             // The end of the outage, with an id made from the moment it started: however many reports of the edge arrive
-            // at once, there is one reconnection. The notification to the family is Tracking's link watcher (T-3.1).
+            // at once, there is one reconnection.
             var reconnected = DeviceEvent.byServer(
                     "rc-edge-" + context.edgeId() + "-" + before.offlineSince().toEpochMilli(),
                     EventType.EDGE_RECONNECTED, context.edgeId(), context.installationId(), context.householdId(),
                     null, now, null);
             guarded(() -> events.insert(reconnected));
+            tellTheFamilyItIsBack(context, reconnected.eventId());
         }
         var heartbeat = EdgeStatus.heartbeat(before, context, now, pending);
         guarded(() -> edgeStatuses.recordHeartbeat(heartbeat.status()));
+    }
+
+    /**
+     * Tells the relatives that the edge is back. It is the good news and never holds the report: if it fails, the event is
+     * already in the history and the report is answered, which is worth more than the notice.
+     */
+    private void tellTheFamilyItIsBack(ReportingContext context, String eventId) {
+        try {
+            for (Long userId : notifications.relativesOf(context.householdId())) {
+                notifications.notifyOnce(userId, EdgeLinkMessages.RECONNECTED_TYPE, eventId,
+                        EdgeLinkMessages.RECONNECTED_TITLE, EdgeLinkMessages.RECONNECTED_BODY);
+            }
+        } catch (RuntimeException failure) {
+            meters.counter("tracking.link.failures", "stage", "reconnection_notice").increment();
+            log.warn("The relatives of the home {} could not be told that the edge {} is back.",
+                    context.householdId(), context.edgeId(), failure);
+        }
     }
 
     /** Runs a write; if the database fails the edge is not told that it was kept, and it sends the report again. */

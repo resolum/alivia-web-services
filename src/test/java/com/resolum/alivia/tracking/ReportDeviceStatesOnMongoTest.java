@@ -4,6 +4,7 @@ import com.resolum.alivia.integration.MongoContainerSupport;
 import com.resolum.alivia.tracking.application.internal.commandservices.ReportDeviceStatesCommandServiceImpl;
 import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService;
 import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService.ReportingEdge;
+import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalNotificationsService;
 import com.resolum.alivia.tracking.domain.model.commands.ReportDeviceStatesCommand;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EdgeLink;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventType;
@@ -87,6 +88,8 @@ class ReportDeviceStatesOnMongoTest {
 
     @MockitoBean
     private ExternalAssetsService assets;
+    @MockitoBean
+    private ExternalNotificationsService notifications;
     @Autowired
     private ReportDeviceStatesCommandServiceImpl service;
     @Autowired

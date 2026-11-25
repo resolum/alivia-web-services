@@ -7,6 +7,7 @@ import com.resolum.alivia.tracking.application.internal.commandservices.ReportDe
 import com.resolum.alivia.tracking.application.internal.commandservices.TelemetrySampleRecorder;
 import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService;
 import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService.ReportingEdge;
+import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalNotificationsService;
 import com.resolum.alivia.tracking.domain.model.aggregates.DeviceEvent;
 import com.resolum.alivia.tracking.domain.model.aggregates.DeviceState;
 import com.resolum.alivia.tracking.domain.model.aggregates.EdgeStatus;
@@ -169,13 +170,14 @@ class EdgeDeviceStatesContractTest {
     private final InMemorySamples samples = new InMemorySamples();
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
     private final ExternalAssetsService assets = org.mockito.Mockito.mock(ExternalAssetsService.class);
+    private final ExternalNotificationsService notifications = org.mockito.Mockito.mock(ExternalNotificationsService.class);
     private MockMvc mvc;
 
     private MockMvc mvcWith(java.util.concurrent.Executor sampleExecutor) {
         var clock = Clock.fixed(NOW, ZoneOffset.UTC);
         var recorder = new TelemetrySampleRecorder(samples, clock, Duration.ofMinutes(5), null, meters, sampleExecutor);
         var service = new ReportDeviceStatesCommandServiceImpl(assets, states, edgeStatuses, events, recorder,
-                TrackingPolicy.defaults(), clock, meters);
+                notifications, TrackingPolicy.defaults(), clock, meters);
         return MockMvcBuilders.standaloneSetup(new EdgeDeviceStatesController(service))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
@@ -340,7 +342,7 @@ class EdgeDeviceStatesContractTest {
         var clock = Clock.fixed(NOW, ZoneOffset.UTC);
         var service = new ReportDeviceStatesCommandServiceImpl(assets, failOnSave, edgeStatuses, events,
                 new TelemetrySampleRecorder(samples, clock, Duration.ofMinutes(5), null, meters, Runnable::run),
-                TrackingPolicy.defaults(), clock, meters);
+                notifications, TrackingPolicy.defaults(), clock, meters);
         mvc = MockMvcBuilders.standaloneSetup(new EdgeDeviceStatesController(service))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
 
@@ -363,6 +365,40 @@ class EdgeDeviceStatesContractTest {
         assertThat(events.types()).containsExactly(EventType.EDGE_RECONNECTED);
         assertThat(edgeStatuses.kept.link()).isEqualTo(EdgeLink.ONLINE);
         assertThat(edgeStatuses.kept.offlineSince()).isNull();
+    }
+
+    @Test
+    void theRelativesAreToldTheEdgeIsBackWithTheSourceOfTheEventSoTheyAreToldOnce() throws Exception {
+        org.mockito.Mockito.when(notifications.relativesOf(300L)).thenReturn(Set.of(8L));
+        var silent = Instant.parse("2026-11-24T14:00:00Z");
+        edgeStatuses.kept = new EdgeStatus(3L, 30L, 300L, silent.minusSeconds(120), EdgeLink.OFFLINE, 0, silent);
+
+        report("{}", 200);
+
+        var source = "rc-edge-3-" + silent.toEpochMilli();
+        org.mockito.Mockito.verify(notifications).notifyOnce(8L, "EDGE_RECONNECTED", source, "Casa conectada de nuevo",
+                "El equipo de la casa volvió a reportar.");
+        assertThat(events.kept.values().iterator().next().eventId()).isEqualTo(source);
+    }
+
+    @Test
+    void ifTheRelativesCannotBeToldTheReportIsAnsweredAnyway() throws Exception {
+        org.mockito.Mockito.when(notifications.relativesOf(300L)).thenThrow(new IllegalStateException("notifications are down"));
+        var silent = Instant.parse("2026-11-24T14:00:00Z");
+        edgeStatuses.kept = new EdgeStatus(3L, 30L, 300L, silent.minusSeconds(120), EdgeLink.OFFLINE, 0, silent);
+
+        report("{}", 200);
+
+        assertThat(edgeStatuses.kept.link()).isEqualTo(EdgeLink.ONLINE);
+        assertThat(events.types()).containsExactly(EventType.EDGE_RECONNECTED);
+        assertThat(meters.get("tracking.link.failures").tag("stage", "reconnection_notice").counter().count()).isEqualTo(1.0);
+    }
+
+    @Test
+    void anEdgeThatIsOnlineNeverNotifiesAReconnection() throws Exception {
+        report("{}", 200);
+
+        org.mockito.Mockito.verifyNoInteractions(notifications);
     }
 
     @Test
