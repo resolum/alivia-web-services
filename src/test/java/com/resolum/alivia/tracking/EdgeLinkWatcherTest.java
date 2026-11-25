@@ -87,7 +87,7 @@ class EdgeLinkWatcherTest {
             var current = kept.get(edgeId);
             if (current == null || current.link() != EdgeLink.ONLINE || !current.lastReportAt().equals(seen)) return false;
             kept.put(edgeId, new EdgeStatus(edgeId, current.installationId(), current.householdId(), seen,
-                    EdgeLink.OFFLINE, current.pendingEvents(), offlineSince));
+                    EdgeLink.OFFLINE, current.pendingEvents(), offlineSince, current.kind()));
             marks++;
             return true;
         }
@@ -352,5 +352,32 @@ class EdgeLinkWatcherTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new EdgeLinkWatcher(edges, events, notifications, clock, meters, AFTER, Duration.ofSeconds(-1)))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private String disconnectedBodyFor(String kind) {
+        edges.kept.put(3L, new EdgeStatus(3L, 33L, 300L, T0, EdgeLink.ONLINE, 0, null, kind));
+        clock.now.set(T0.plus(AFTER).plusSeconds(1));
+        watcher(Duration.ZERO).markSilentEdges();
+        var body = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(notifications).notifyOnce(eq(8L), eq("EDGE_DISCONNECTED"), anyString(), anyString(), body.capture());
+        return body.getValue();
+    }
+
+    @Test
+    void theFamilyIsToldWhichEquipmentWentSilent() {
+        assertThat(disconnectedBodyFor("MICROPHONE")).startsWith("El equipo de voz de la casa dejó de reportar")
+                .contains("pedido de ayuda").contains("pueden existir eventos pendientes");
+    }
+
+    @Test
+    void theActuatorsEquipmentIsNamedByWhatItMoves() {
+        assertThat(disconnectedBodyFor("ACTUATOR"))
+                .startsWith("El equipo de puertas, ventanas, cortinas y luces de la casa dejó de reportar")
+                .doesNotContain("pedido de ayuda");
+    }
+
+    @Test
+    void aStatusKeptBeforeTheKindWasRecordedGetsTheGeneralMessage() {
+        assertThat(disconnectedBodyFor(null)).startsWith("Un equipo de la casa dejó de reportar");
     }
 }

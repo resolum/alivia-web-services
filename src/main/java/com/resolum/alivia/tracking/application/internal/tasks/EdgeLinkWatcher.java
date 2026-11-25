@@ -105,7 +105,7 @@ public class EdgeLinkWatcher {
                 current.householdId(), null, now, "Sin reportes desde " + lastReport));
         for (Long userId : notifications.relativesOf(current.householdId())) {
             notifications.notifyOnce(userId, EdgeLinkMessages.DISCONNECTED_TYPE, eventId,
-                    EdgeLinkMessages.DISCONNECTED_TITLE, EdgeLinkMessages.DISCONNECTED_BODY);
+                    EdgeLinkMessages.DISCONNECTED_TITLE, EdgeLinkMessages.disconnectedBody(current.kind()));
         }
         boolean won = edges.markOffline(edgeId, lastReport, now);
         if (won) meters.counter("tracking.link.transitions", "to", "offline").increment();

@@ -21,14 +21,22 @@ import java.util.Optional;
  * @param link           whether it is heard
  * @param pendingEvents  how many events the edge said it still has to send
  * @param offlineSince   since when it is not heard ({@code null} while online)
+ * @param kind           {@code MICROPHONE} (the voice edge) or {@code ACTUATOR}; {@code null} for a status kept
+ *                       before it was recorded. It lets a message tell the family which equipment went silent
  */
 public record EdgeStatus(Long edgeId, Long installationId, Long householdId, Instant lastReportAt, EdgeLink link,
-                         int pendingEvents, Instant offlineSince) {
+                         int pendingEvents, Instant offlineSince, String kind) {
 
     public EdgeStatus {
         if (pendingEvents < 0) {
             throw new IllegalArgumentException("The pending events cannot be negative.");
         }
+    }
+
+    /** A status without its kind, as it was kept before the kind was recorded. */
+    public EdgeStatus(Long edgeId, Long installationId, Long householdId, Instant lastReportAt, EdgeLink link,
+                      int pendingEvents, Instant offlineSince) {
+        this(edgeId, installationId, householdId, lastReportAt, link, pendingEvents, offlineSince, null);
     }
 
     /** What a heartbeat did: the status that follows and whether it ended an outage. */
@@ -42,8 +50,17 @@ public record EdgeStatus(Long edgeId, Long installationId, Long householdId, Ins
      * @param pending how many events the edge still has to send; a negative number is read as none
      */
     public static Heartbeat heartbeat(EdgeStatus current, ReportingContext context, Instant now, int pending) {
+        return heartbeat(current, context, now, pending, current == null ? null : current.kind);
+    }
+
+    /**
+     * Records a heartbeat of an edge of a known kind.
+     *
+     * @param kind {@code MICROPHONE} or {@code ACTUATOR}, as the inventory says; {@code null} when it is not known
+     */
+    public static Heartbeat heartbeat(EdgeStatus current, ReportingContext context, Instant now, int pending, String kind) {
         var status = new EdgeStatus(context.edgeId(), context.installationId(), context.householdId(), now,
-                EdgeLink.ONLINE, Math.max(pending, 0), null);
+                EdgeLink.ONLINE, Math.max(pending, 0), null, kind);
         return new Heartbeat(status, current != null && current.link == EdgeLink.OFFLINE);
     }
 
@@ -57,7 +74,7 @@ public record EdgeStatus(Long edgeId, Long installationId, Long householdId, Ins
             return Optional.empty();
         }
         return Optional.of(new EdgeStatus(edgeId, installationId, householdId, lastReportAt, EdgeLink.OFFLINE,
-                pendingEvents, now));
+                pendingEvents, now, kind));
     }
 
     /** Whether events may be waiting in the edge: it is offline, or it said it still has some to send. */

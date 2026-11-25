@@ -23,12 +23,13 @@ public class EdgeStatusDocument {
     private String link;
     private int pendingEvents;
     private Instant offlineSince;
+    private String kind;
 
     protected EdgeStatusDocument() {
     }
 
     public EdgeStatus toDomain() {
         return new EdgeStatus(id, installationId, householdId, lastReportAt, EdgeLink.valueOf(link), pendingEvents,
-                offlineSince);
+                offlineSince, kind);
     }
 }

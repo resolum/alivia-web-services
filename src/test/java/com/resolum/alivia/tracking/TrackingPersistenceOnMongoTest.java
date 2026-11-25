@@ -1,6 +1,7 @@
 package com.resolum.alivia.tracking;
 
 import com.resolum.alivia.integration.MongoContainerSupport;
+import com.resolum.alivia.shared.infrastructure.persistence.mongo.MongoTypeMappingConfiguration;
 import com.resolum.alivia.tracking.domain.model.aggregates.DeviceEvent;
 import com.resolum.alivia.tracking.domain.model.aggregates.DeviceState;
 import com.resolum.alivia.tracking.domain.model.aggregates.EdgeStatus;
@@ -24,6 +25,7 @@ import com.resolum.alivia.tracking.infrastructure.persistence.mongo.documents.De
 import com.resolum.alivia.tracking.infrastructure.persistence.mongo.documents.EdgeStatusDocument;
 import com.resolum.alivia.tracking.infrastructure.persistence.mongo.documents.TelemetrySampleDocument;
 import org.bson.Document;
+import org.springframework.data.mongodb.core.convert.MongoConverter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
@@ -57,7 +59,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @DataMongoTest
 @Import({DeviceEventRepositoryImpl.class, DeviceStateRepositoryImpl.class, EdgeStatusRepositoryImpl.class,
-        TelemetrySampleRepositoryImpl.class})
+        TelemetrySampleRepositoryImpl.class, MongoTypeMappingConfiguration.class})
 @EnabledIf(value = "com.resolum.alivia.integration.MongoContainerSupport#dockerAvailable",
         disabledReason = "Docker is not available, so there is no MongoDB to test against")
 class TrackingPersistenceOnMongoTest {
@@ -115,7 +117,7 @@ class TrackingPersistenceOnMongoTest {
     void theDocumentsDeclareTheIndexesTheQueriesNeed() {
         var eventIndexes = indexes(mongo, DeviceEventDocument.class);
         assertThat(eventIndexes).extracting(IndexInfo::getName)
-                .contains("edge_event_unique", "household_device_time", "household_time", "command");
+                .contains("edge_event_unique", "household_device_time_id", "household_time", "command");
         assertThat(eventIndexes.stream().filter(i -> i.getName().equals("edge_event_unique")).findFirst().orElseThrow()
                 .isUnique()).isTrue();
         assertThat(eventIndexes.stream().filter(i -> i.getName().equals("command")).findFirst().orElseThrow()
@@ -384,5 +386,55 @@ class TrackingPersistenceOnMongoTest {
         } finally {
             pool.shutdownNow();
         }
+    }
+
+    // ---- the kind of the edge, and the documents without the type hint
+
+    @Test
+    void theKindOfAnEdgeIsKeptAndAReportThatDoesNotSayItDoesNotEraseIt() {
+        edges.recordHeartbeat(new EdgeStatus(3L, 30L, 300L, T0, EdgeLink.ONLINE, 0, null, "MICROPHONE"));
+        edges.recordHeartbeat(new EdgeStatus(3L, 30L, 300L, T0.plusSeconds(30), EdgeLink.ONLINE, 0, null));
+
+        assertThat(edges.findByEdgeId(3L).orElseThrow().kind()).isEqualTo("MICROPHONE");
+
+        edges.markOffline(3L, T0.plusSeconds(30), T0.plusSeconds(300));
+
+        var offline = edges.findByEdgeId(3L).orElseThrow();
+        assertThat(offline.link()).isEqualTo(EdgeLink.OFFLINE);
+        assertThat(offline.kind()).isEqualTo("MICROPHONE");
+        assertThat(edges.findAllByHouseholdId(300L)).extracting(EdgeStatus::edgeId).containsExactly(3L);
+    }
+
+    @Test
+    void aStatusWrittenBeforeTheKindExistedIsReadWithoutIt() {
+        mongo.getCollection("edge_statuses").insertOne(new Document("_id", 9L).append("installationId", 90L)
+                .append("householdId", 900L).append("lastReportAt", java.util.Date.from(T0)).append("link", "ONLINE")
+                .append("pendingEvents", 0));
+
+        var read = edges.findByEdgeId(9L).orElseThrow();
+
+        assertThat(read.kind()).isNull();
+        assertThat(read.link()).isEqualTo(EdgeLink.ONLINE);
+    }
+
+    @Test
+    void noDocumentCarriesTheTypeHintAndOneThatDoesStillReads() {
+        var context = new ReportingContext(1L, 10L, 100L, Set.of(1L));
+        events.insert(event(context, "no-hint-1", 1L, T0));
+        states.saveUnlessOlder(state(1L, T0, "closed"));
+        edges.recordHeartbeat(new EdgeStatus(1L, 10L, 100L, T0, EdgeLink.ONLINE, 0, null, "ACTUATOR"));
+        samples.save(new TelemetrySample(1L, 1L, 100L, T0, new EventAttributes(Map.of("rssi", -50)), null));
+
+        for (var collection : java.util.List.of("device_events", "device_states", "edge_statuses", "telemetry_samples")) {
+            assertThat(mongo.getCollection(collection).find().first().keySet()).as(collection).doesNotContain("_class");
+        }
+
+        // A document an earlier version wrote still has the field: it is read the same.
+        mongo.getCollection("device_states").insertOne(new Document("_id", 77L).append("_class", "com.resolum.alivia.Old")
+                .append("edgeId", 3L).append("householdId", 300L).append("connectionStatus", "CONNECTED")
+                .append("operationalStatus", "OK").append("currentState", "open")
+                .append("observedAt", java.util.Date.from(T0)).append("updatedAt", java.util.Date.from(T0))
+                .append("faults", java.util.List.of()));
+        assertThat(states.findByDeviceId(77L).orElseThrow().currentState()).isEqualTo("open");
     }
 }

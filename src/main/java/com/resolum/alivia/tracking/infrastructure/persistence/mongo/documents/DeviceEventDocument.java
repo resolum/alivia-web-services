@@ -24,7 +24,10 @@ import java.util.Map;
 @Document("device_events")
 @CompoundIndexes({
         @CompoundIndex(name = "edge_event_unique", def = "{'edgeId': 1, 'eventId': 1}", unique = true),
-        @CompoundIndex(name = "household_device_time", def = "{'householdId': 1, 'deviceId': 1, 'occurredAt': -1}"),
+        // The id closes the order: two events of one instant keep their place from one page to the next. The index of
+        // an earlier version (household_device_time, without the id) is not used any more and can be dropped.
+        @CompoundIndex(name = "household_device_time_id",
+                def = "{'householdId': 1, 'deviceId': 1, 'occurredAt': -1, '_id': -1}"),
         @CompoundIndex(name = "household_time", def = "{'householdId': 1, 'occurredAt': -1}")
 })
 public class DeviceEventDocument {

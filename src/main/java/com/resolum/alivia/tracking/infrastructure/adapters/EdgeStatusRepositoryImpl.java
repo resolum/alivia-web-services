@@ -43,6 +43,8 @@ public class EdgeStatusRepositoryImpl implements EdgeStatusRepository {
                 .set("link", EdgeLink.ONLINE.name())
                 .set("pendingEvents", status.pendingEvents())
                 .unset("offlineSince");
+        // A status written by an earlier version has no kind: it is filled in by the next report, never erased.
+        if (status.kind() != null) update.set("kind", status.kind());
         var options = FindAndModifyOptions.options().upsert(true).returnNew(false);
         EdgeStatusDocument before;
         try {

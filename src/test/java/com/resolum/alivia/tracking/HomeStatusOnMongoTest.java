@@ -3,6 +3,7 @@ package com.resolum.alivia.tracking;
 import com.resolum.alivia.assets.interfaces.acl.AssetsContextFacade;
 import com.resolum.alivia.assets.interfaces.acl.AssetsContextFacade.ScopedDevice;
 import com.resolum.alivia.integration.MongoContainerSupport;
+import com.resolum.alivia.shared.infrastructure.persistence.mongo.MongoTypeMappingConfiguration;
 import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService;
 import com.resolum.alivia.tracking.application.internal.queryservices.HomeStatusQueryServiceImpl;
 import com.resolum.alivia.tracking.domain.model.aggregates.DeviceState;
@@ -41,7 +42,7 @@ import static org.mockito.Mockito.when;
 
 /** The join of the devices of a home with what Mongo keeps, over a real database with several homes in it. */
 @DataMongoTest
-@Import({DeviceStateRepositoryImpl.class, EdgeStatusRepositoryImpl.class})
+@Import({DeviceStateRepositoryImpl.class, EdgeStatusRepositoryImpl.class, MongoTypeMappingConfiguration.class})
 @EnabledIf(value = "com.resolum.alivia.integration.MongoContainerSupport#dockerAvailable",
         disabledReason = "Docker is not available, so there is no MongoDB to test against")
 class HomeStatusOnMongoTest {

@@ -61,7 +61,8 @@ public class DeviceEventRepositoryImpl implements DeviceEventRepository {
         var query = new Query(criteria);
         long total = mongo.count(query, DeviceEventDocument.class);
         if (total == 0 || (long) page * size >= total) return new EventPage(List.of(), total);
-        var items = mongo.find(query.with(Sort.by(Sort.Direction.DESC, "occurredAt")).skip((long) page * size).limit(size),
+        // The id breaks the tie of two events of one instant, so no page repeats or skips one.
+        var items = mongo.find(query.with(Sort.by(Sort.Direction.DESC, "occurredAt", "id")).skip((long) page * size).limit(size),
                 DeviceEventDocument.class).stream().map(DeviceEventDocument::toDomain).toList();
         return new EventPage(items, total);
     }

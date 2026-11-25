@@ -71,15 +71,20 @@ class EdgeDeviceStatesContractTest {
     private static class InMemoryStates implements DeviceStateRepository {
         final Map<Long, DeviceState> kept = new HashMap<>();
         boolean failing;
+        int readsOfOne;
+        int readsOfMany;
 
         @Override
         public Optional<DeviceState> findByDeviceId(Long deviceId) {
+            readsOfOne++;
             if (failing) throw new DataAccessResourceFailureException("MongoDB is down");
             return Optional.ofNullable(kept.get(deviceId));
         }
 
         @Override
         public List<DeviceState> findAllByDeviceIds(Collection<Long> deviceIds) {
+            readsOfMany++;
+            if (failing) throw new DataAccessResourceFailureException("MongoDB is down");
             return deviceIds.stream().map(kept::get).filter(java.util.Objects::nonNull).toList();
         }
 
@@ -201,6 +206,8 @@ class EdgeDeviceStatesContractTest {
         org.mockito.Mockito.when(assets.fetchReportingEdge(3L)).thenReturn(Optional.of(new ReportingEdge(
                 new ReportingContext(3L, 30L, 300L, Set.of(10L, 11L, 12L, 13L)), "ACTUATOR", Map.of())));
         org.mockito.Mockito.when(assets.fetchReportingEdge(4L)).thenReturn(Optional.empty());
+        org.mockito.Mockito.when(assets.fetchReportingEdge(5L)).thenReturn(Optional.of(new ReportingEdge(
+                new ReportingContext(5L, 30L, 300L, Set.of(13L)), "MICROPHONE", Map.of())));
         mvc = mvcWith(Runnable::run);
     }
 
@@ -391,7 +398,7 @@ class EdgeDeviceStatesContractTest {
 
         var source = "rc-edge-3-" + silent.toEpochMilli();
         org.mockito.Mockito.verify(notifications).notifyOnce(8L, "EDGE_RECONNECTED", source, "Casa conectada de nuevo",
-                "El equipo de la casa volvió a reportar.");
+                "El equipo de puertas, ventanas, cortinas y luces de la casa volvió a reportar.");
         assertThat(events.kept.values().iterator().next().eventId()).isEqualTo(source);
     }
 
@@ -501,5 +508,66 @@ class EdgeDeviceStatesContractTest {
         assertThat(states("applied")).isEqualTo(1);
         assertThat(states("stale")).isEqualTo(1);
         assertThat(states("rejected")).isEqualTo(2);
+    }
+
+    @Test
+    void theStatesOfAReportAreReadInOneQueryNotOnePerDevice() throws Exception {
+        report(fixture("e3-device-states.request.json"), 200);
+
+        assertThat(states.readsOfMany).isEqualTo(1);
+        assertThat(states.readsOfOne).isZero();
+    }
+
+    @Test
+    void aReportWithoutDevicesReadsNoStates() throws Exception {
+        report(fixture("e3-heartbeat-only.request.json"), 200);
+
+        assertThat(states.readsOfMany + states.readsOfOne).isZero();
+    }
+
+    @Test
+    void twoReportsOfOneDeviceInOneCallSeeEachOther() throws Exception {
+        kept(10L, ConnectionStatus.CONNECTED, OperationalStatus.OK, "closed", "2026-11-24T15:00:00Z");
+
+        report(reportOf(device(10, "DISCONNECTED", "OK", "closed", "2026-11-24T15:01:00Z"),
+                device(10, "CONNECTED", "OK", "closed", "2026-11-24T15:02:00Z")), 200);
+
+        assertThat(events.types()).containsExactlyInAnyOrder(EventType.DEVICE_DISCONNECTED, EventType.DEVICE_RECOVERED);
+        assertThat(states.kept.get(10L).connectionStatus()).isEqualTo(ConnectionStatus.CONNECTED);
+        assertThat(states.readsOfMany).isEqualTo(1);
+    }
+
+    @Test
+    void ifTheStatesCannotBeReadNothingIsKeptAndTheEdgeIsToldToSendItAgain() throws Exception {
+        states.failing = true;
+
+        mvc.perform(put(PATH).principal(EDGE).contentType(MediaType.APPLICATION_JSON)
+                        .content(reportOf(device(10, "CONNECTED", "OK", "closed", "2026-11-24T15:01:00Z"))))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(header().string("Retry-After", "5"));
+
+        assertThat(states.kept).isEmpty();
+        assertThat(edgeStatuses.kept).isNull();
+    }
+
+    @Test
+    void theHeartbeatKeepsTheKindOfTheEdgeAndASilentEdgeIsToldApartByIt() throws Exception {
+        org.mockito.Mockito.when(notifications.relativesOf(300L)).thenReturn(Set.of(8L));
+        var silent = Instant.parse("2026-11-24T14:00:00Z");
+        edgeStatuses.kept = new EdgeStatus(5L, 30L, 300L, silent.minusSeconds(120), EdgeLink.OFFLINE, 0, silent, null);
+
+        mvc.perform(put(PATH).principal(new UsernamePasswordAuthenticationToken("edge:5", null, List.of()))
+                .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isOk());
+
+        assertThat(edgeStatuses.kept.kind()).isEqualTo("MICROPHONE");
+        org.mockito.Mockito.verify(notifications).notifyOnce(8L, "EDGE_RECONNECTED", "rc-edge-5-" + silent.toEpochMilli(),
+                "Casa conectada de nuevo", "El equipo de voz de la casa volvió a reportar.");
+    }
+
+    @Test
+    void anEdgeThatReportsAgainDoesNotLoseItsKindWhenTheInventoryDoesNotSayIt() throws Exception {
+        report("{}", 200);
+
+        assertThat(edgeStatuses.kept.kind()).isEqualTo("ACTUATOR");
     }
 }

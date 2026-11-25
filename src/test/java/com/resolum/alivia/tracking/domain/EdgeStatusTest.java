@@ -78,4 +78,26 @@ class EdgeStatusTest {
         assertThatThrownBy(() -> new ReportingContext(null, 30L, 300L, Set.of()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void theKindOfTheEdgeIsKeptByTheHeartbeatAndByTheTransitionToOffline() {
+        var first = EdgeStatus.heartbeat(null, CONTEXT, T0, 0, "MICROPHONE").status();
+        var next = EdgeStatus.heartbeat(first, CONTEXT, T0.plusSeconds(30), 0).status();
+        var silent = next.markedOffline(T0.plus(LIMIT).plusSeconds(31), LIMIT).orElseThrow();
+
+        assertThat(first.kind()).isEqualTo("MICROPHONE");
+        // A heartbeat that does not say the kind keeps the one already known.
+        assertThat(next.kind()).isEqualTo("MICROPHONE");
+        assertThat(silent.kind()).isEqualTo("MICROPHONE");
+        assertThat(EdgeStatus.heartbeat(silent, CONTEXT, T0.plusSeconds(400), 0, "ACTUATOR").status().kind())
+                .isEqualTo("ACTUATOR");
+    }
+
+    @Test
+    void aStatusKeptBeforeTheKindWasRecordedHasNone() {
+        var old = new EdgeStatus(3L, 30L, 300L, T0, EdgeLink.ONLINE, 0, null);
+
+        assertThat(old.kind()).isNull();
+        assertThat(EdgeStatus.heartbeat(old, CONTEXT, T0.plusSeconds(30), 0).status().kind()).isNull();
+    }
 }

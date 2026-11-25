@@ -2,6 +2,7 @@ package com.resolum.alivia.tracking;
 
 import com.mongodb.ExplainVerbosity;
 import com.resolum.alivia.integration.MongoContainerSupport;
+import com.resolum.alivia.shared.infrastructure.persistence.mongo.MongoTypeMappingConfiguration;
 import com.resolum.alivia.tracking.application.internal.queryservices.DeviceEventsQueryServiceImpl;
 import com.resolum.alivia.tracking.domain.model.aggregates.DeviceEvent;
 import com.resolum.alivia.tracking.domain.model.queries.GetDeviceEventsQuery;
@@ -45,7 +46,7 @@ import static org.mockito.Mockito.when;
  * the filters count right, a home never reads another's events, and the query goes through the index.
  */
 @DataMongoTest
-@Import(DeviceEventRepositoryImpl.class)
+@Import({DeviceEventRepositoryImpl.class, MongoTypeMappingConfiguration.class})
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @EnabledIf(value = "com.resolum.alivia.integration.MongoContainerSupport#dockerAvailable",
         disabledReason = "Docker is not available, so there is no MongoDB to test against")
@@ -183,12 +184,13 @@ class DeviceEventsOnMongoTest {
                 .find(new Document("householdId", 200L).append("deviceId", 5L)
                         .append("occurredAt", new Document("$gte", java.util.Date.from(T0))
                                 .append("$lt", java.util.Date.from(NOW))))
-                .sort(new Document("occurredAt", -1)).skip(300).limit(100)
+                .sort(new Document("occurredAt", -1).append("_id", -1)).skip(300).limit(100)
                 .explain(ExplainVerbosity.EXECUTION_STATS);
 
-        var json = execution.toJson();
-        assertThat(json).contains("IXSCAN").contains("household_device_time").doesNotContain("COLLSCAN")
-                // The index gives the order: no sort of the matches in memory.
+        // The plan that wins, not the ones MongoDB considered and discarded (one of them, over another index, sorts).
+        var winning = ((Document) ((Document) execution.get("queryPlanner")).get("winningPlan")).toJson();
+        assertThat(winning).contains("IXSCAN").contains("household_device_time_id").doesNotContain("COLLSCAN")
+                // The index gives the order, with the id breaking ties: no sort of the matches in memory.
                 .doesNotContain("\"stage\": \"SORT\"");
         var examined = ((Document) execution.get("executionStats")).get("totalDocsExamined", Number.class).intValue();
         assertThat(examined).isLessThanOrEqualTo(400);
@@ -206,7 +208,27 @@ class DeviceEventsOnMongoTest {
         System.out.printf("[M0] device_events, %d events: %.0f bytes per document (%d bytes in all), fields: %s%n",
                 count, perEvent, data, raw.keySet());
 
-        assertThat(count).isEqualTo(8_700);
+        // The test of the events of one instant adds its own, whichever runs first.
+        assertThat(count).isGreaterThanOrEqualTo(8_700);
+        assertThat(raw.keySet()).as("the type hint is not written").doesNotContain("_class");
         assertThat(perEvent).as("bytes per event document").isLessThan(1024);
+    }
+
+    @Test
+    void eventsOfTheSameInstantKeepTheirPlaceFromOnePageToTheNext() {
+        var context = new ReportingContext(500L, 5000L, 500L, Set.of(5L));
+        var instant = T0.plusSeconds(20_000);
+        for (int i = 0; i < 53; i++) {
+            events.insert(DeviceEvent.fromEdge(context, new ReportedEvent("tie-" + i, "DEVICE_STATE_CHANGED", instant, 5L,
+                    null, null, null, null, null, null, Map.of("state", "open")), instant.plusSeconds(1), false, POLICY));
+        }
+        var seen = new HashSet<String>();
+
+        for (int page = 0; page < 8; page++) {
+            events.findByDevice(500L, 5L, instant.minusSeconds(1), instant.plusSeconds(1), null, page, 7).items()
+                    .forEach(e -> assertThat(seen.add(e.eventId())).as(e.eventId()).isTrue());
+        }
+
+        assertThat(seen).hasSize(53);
     }
 }

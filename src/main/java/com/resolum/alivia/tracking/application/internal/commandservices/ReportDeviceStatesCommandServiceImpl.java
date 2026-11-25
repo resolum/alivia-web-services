@@ -12,6 +12,7 @@ import com.resolum.alivia.tracking.domain.model.commands.ReportDeviceStatesComma
 import com.resolum.alivia.tracking.domain.model.valueobjects.DeviceStateOutcome;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EdgeLink;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventType;
+import com.resolum.alivia.tracking.domain.model.valueobjects.ReportedDeviceState;
 import com.resolum.alivia.tracking.domain.model.valueobjects.ReportingContext;
 import com.resolum.alivia.tracking.domain.model.valueobjects.StateOutcome;
 import com.resolum.alivia.tracking.domain.model.valueobjects.TrackingPolicy;
@@ -24,8 +25,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
@@ -78,22 +83,35 @@ public class ReportDeviceStatesCommandServiceImpl implements ReportDeviceStatesC
         var context = edge.context();
         var now = clock.instant();
 
+        // One read for every device of the report instead of one per device: the edge and the database may be in different
+        // regions, and each read in series costs a round trip. A state kept by an earlier report of this same call is
+        // put back in the map, so two reports of one device in one call see each other.
+        var known = knownStates(command);
+
         var outcomes = new ArrayList<DeviceStateOutcome>(command.devices().size());
         for (var report : command.devices()) {
-            var outcome = apply(context, report, now);
+            var outcome = apply(context, report, now, known);
             // What was finally decided, not what was first evaluated: a report that loses the race is stale.
             meters.counter("tracking.device.states", "outcome", outcome.status().name().toLowerCase(java.util.Locale.ROOT))
                     .increment();
             outcomes.add(outcome);
         }
-        recordHeartbeat(context, now, command.pendingEvents());
+        recordHeartbeat(context, now, command.pendingEvents(), edge.edgeKind());
         return outcomes;
     }
 
-    private DeviceStateOutcome apply(ReportingContext context, com.resolum.alivia.tracking.domain.model.valueobjects.ReportedDeviceState report,
-                                     java.time.Instant now) {
-        var current = report.deviceId() == null ? null
-                : guarded(() -> states.findByDeviceId(report.deviceId()).orElse(null));
+    private Map<Long, DeviceState> knownStates(ReportDeviceStatesCommand command) {
+        var ids = command.devices().stream().map(ReportedDeviceState::deviceId).filter(Objects::nonNull).distinct().toList();
+        var known = new HashMap<Long, DeviceState>();
+        if (!ids.isEmpty()) {
+            guarded(() -> states.findAllByDeviceIds(ids)).forEach(state -> known.putIfAbsent(state.deviceId(), state));
+        }
+        return known;
+    }
+
+    private DeviceStateOutcome apply(ReportingContext context, ReportedDeviceState report, Instant now,
+                                     Map<Long, DeviceState> known) {
+        var current = report.deviceId() == null ? null : known.get(report.deviceId());
         var update = DeviceState.evaluate(current, context, report, now, policy);
         if (update.outcome() != StateOutcome.APPLIED) {
             return new DeviceStateOutcome(report.deviceId(), update.outcome(), update.reason());
@@ -107,11 +125,12 @@ public class ReportDeviceStatesCommandServiceImpl implements ReportDeviceStatesC
             // Another report observed later got in first: this one is late.
             return new DeviceStateOutcome(report.deviceId(), StateOutcome.STALE, null);
         }
+        known.put(state.deviceId(), state);
         samples.record(state, update.diagnostics());
         return new DeviceStateOutcome(report.deviceId(), StateOutcome.APPLIED, null);
     }
 
-    private void recordHeartbeat(ReportingContext context, java.time.Instant now, int pending) {
+    private void recordHeartbeat(ReportingContext context, Instant now, int pending, String kind) {
         var before = guarded(() -> edgeStatuses.findByEdgeId(context.edgeId()).orElse(null));
         if (before != null && before.link() == EdgeLink.OFFLINE) {
             // The end of the outage, with an id made from the moment it started: however many reports of the edge arrive
@@ -121,9 +140,9 @@ public class ReportDeviceStatesCommandServiceImpl implements ReportDeviceStatesC
                     EventType.EDGE_RECONNECTED, context.edgeId(), context.installationId(), context.householdId(),
                     null, now, null);
             guarded(() -> events.insert(reconnected));
-            tellTheFamilyItIsBack(context, reconnected.eventId());
+            tellTheFamilyItIsBack(context, reconnected.eventId(), kind);
         }
-        var heartbeat = EdgeStatus.heartbeat(before, context, now, pending);
+        var heartbeat = EdgeStatus.heartbeat(before, context, now, pending, kind);
         guarded(() -> edgeStatuses.recordHeartbeat(heartbeat.status()));
     }
 
@@ -131,11 +150,11 @@ public class ReportDeviceStatesCommandServiceImpl implements ReportDeviceStatesC
      * Tells the relatives that the edge is back. It is the good news and never holds the report: if it fails, the event is
      * already in the history and the report is answered, which is worth more than the notice.
      */
-    private void tellTheFamilyItIsBack(ReportingContext context, String eventId) {
+    private void tellTheFamilyItIsBack(ReportingContext context, String eventId, String kind) {
         try {
             for (Long userId : notifications.relativesOf(context.householdId())) {
                 notifications.notifyOnce(userId, EdgeLinkMessages.RECONNECTED_TYPE, eventId,
-                        EdgeLinkMessages.RECONNECTED_TITLE, EdgeLinkMessages.RECONNECTED_BODY);
+                        EdgeLinkMessages.RECONNECTED_TITLE, EdgeLinkMessages.reconnectedBody(kind));
             }
         } catch (RuntimeException failure) {
             meters.counter("tracking.link.failures", "stage", "reconnection_notice").increment();

@@ -1,0 +1,423 @@
+@startuml tracking
+skinparam nodesep 12
+skinparam ranksep 40
+left to right direction
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam noteBackgroundColor #FFFDE7
+skinparam noteBorderColor #C9B458
+skinparam packageStyle rectangle
+skinparam ArrowFontSize 10
+hide empty members
+
+skinparam class {
+  BackgroundColor #DBEAFA
+  BorderColor #5B7DB1
+}
+
+title Tracking (Telemetría): eventos, estados y enlace de los edges de un hogar
+
+note as Purpose
+  Lo que reportan los edges (voz y actuadores) se guarda en MongoDB:
+  eventos inmutables, último estado confiable de cada dispositivo,
+  si se oye a cada edge, y muestras de diagnóstico.
+  La familia lo consulta por hogar; analytics lo cuenta por fachada.
+end note
+
+package "domain.model.aggregates" #EAF2FB {
+
+  class DeviceEvent <<record>> {
+    + String eventId
+    + Long edgeId
+    + Long installationId
+    + Long householdId
+    + Long deviceId
+    + EventType type
+    + EventSeverity severity
+    + EventResult result
+    + EventOrigin origin
+    + Instant occurredAt
+    + Instant receivedAt
+    + String commandId
+    + CommandAction action
+    + Double confidence
+    + Integer batteryPct
+    + String detail
+    + EventAttributes attributes
+    + {static} fromEdge(ReportingContext, ReportedEvent, Instant receivedAt, boolean viaBatch, TrackingPolicy) : DeviceEvent
+    + {static} byServer(String eventId, EventType, Long edgeId, Long installationId, Long householdId, Long deviceId, Instant, String detail) : DeviceEvent
+  }
+
+  class DeviceState <<record>> {
+    + Long deviceId
+    + Long edgeId
+    + Long householdId
+    + ConnectionStatus connectionStatus
+    + OperationalStatus operationalStatus
+    + String currentState
+    + Integer batteryPct
+    + Instant lastCommunicationAt
+    + Instant observedAt
+    + Instant updatedAt
+    + List<String> faults
+    + {static} evaluate(DeviceState current, ReportingContext, ReportedDeviceState, Instant now, TrackingPolicy) : StateUpdate
+    + eventsSince(DeviceState before, ReportingContext, Instant receivedAt, TrackingPolicy) : List<DeviceEvent>
+    + worsenedFrom(DeviceState) : boolean
+    + recoveredFrom(DeviceState) : boolean
+  }
+
+  class EdgeStatus <<record>> {
+    + Long edgeId
+    + Long installationId
+    + Long householdId
+    + Instant lastReportAt
+    + EdgeLink link
+    + int pendingEvents
+    + Instant offlineSince
+    + String kind
+    + {static} heartbeat(EdgeStatus current, ReportingContext, Instant now, int pending, String kind) : Heartbeat
+    + markedOffline(Instant now, Duration offlineAfter) : Optional<EdgeStatus>
+    + mayHavePendingEvents() : boolean
+  }
+
+  class TelemetrySample <<record>> {
+    + Long deviceId
+    + Long edgeId
+    + Long householdId
+    + Instant sampledAt
+    + EventAttributes metrics
+    + Instant expiresAt
+  }
+}
+
+package "domain.model.valueobjects" #F3F8EE {
+
+  enum EventType {
+    COMMAND_REQUESTED
+    COMMAND_RESULT
+    COMMAND_REJECTED
+    DEVICE_STATE_CHANGED
+    DEVICE_RECOVERED
+    LOW_BATTERY
+    DEVICE_FAILURE
+    HELP_REQUESTED
+    EDGE_DISCONNECTED
+    EDGE_RECONNECTED
+    DEVICE_DISCONNECTED
+  }
+
+  enum EventResult {
+    SUCCESS
+    FAILED
+    FAILED_TIMEOUT
+    NO_CONFIRMATION
+    REJECTED_LOW_CONFIDENCE
+    REJECTED_UNAUTHORIZED
+  }
+
+  enum EventSeverity {
+    INFORMATIVE
+    PREVENTIVE
+    IMPORTANT
+    CRITICAL
+  }
+
+  enum EventOrigin {
+    LIVE
+    SYNCED
+  }
+
+  enum ConnectionStatus {
+    CONNECTED
+    DISCONNECTED
+    UNKNOWN
+  }
+
+  enum OperationalStatus {
+    OK
+    DEGRADED
+    FAILED
+  }
+
+  enum EdgeLink {
+    ONLINE
+    OFFLINE
+  }
+
+  enum HomeLink {
+    ONLINE
+    OFFLINE
+    UNKNOWN
+  }
+
+  class EventAttributes <<record>> {
+    + Map<String, Object> values
+    + {static} of(Map raw, TrackingPolicy) : EventAttributes
+  }
+
+  class ReportingContext <<record>> {
+    + Long edgeId
+    + Long installationId
+    + Long householdId
+    + Set<Long> deviceIds
+    + knows(Long deviceId) : boolean
+  }
+
+  class TrackingPolicy <<record>> {
+    + int maxAttributeKeys
+    + int maxAttributeBytes
+    + int maxDetail
+    + Duration clockTolerance
+    + Duration syncedAfter
+    + int maxBatchSize
+  }
+
+  class HistoryPolicy <<record>> {
+    + Duration maxRange
+    + int defaultPageSize
+    + int maxPageSize
+    + window(Instant from, Instant to, Integer page, Integer size, Instant now) : HistoryWindow
+  }
+
+  class CommandOutcomeTally {
+    + add(CommandFact)
+    + total() : AutonomyCounts
+    + byDevice() : List<DeviceAutonomy>
+    + withoutDevice() : AutonomyCounts
+  }
+
+  class HomeLinkSummary <<record>> {
+    + HomeLink link
+    + Set<Long> silentEdgeIds
+    + Instant offlineSince
+    + Instant lastReportAt
+    + boolean mayHavePendingEvents
+    + {static} of(List<EdgeStatus>) : HomeLinkSummary
+  }
+}
+
+package "domain.repositories (puertos)" #FFF4E5 {
+
+  interface DeviceEventRepository {
+    + insert(DeviceEvent) : EventInsertion
+    + findByDevice(householdId, deviceId, from, to, EventType, page, size) : EventPage
+    + findRecentByHousehold(householdId, limit) : List<DeviceEvent>
+    + forEachCommandFact(householdId, deviceId, from, to, Consumer<CommandFact>)
+  }
+
+  interface DeviceStateRepository {
+    + findByDeviceId(Long) : Optional<DeviceState>
+    + findAllByDeviceIds(Collection<Long>) : List<DeviceState>
+    + saveUnlessOlder(DeviceState) : boolean
+  }
+
+  interface EdgeStatusRepository {
+    + findByEdgeId(Long) : Optional<EdgeStatus>
+    + findAllByHouseholdId(Long) : List<EdgeStatus>
+    + recordHeartbeat(EdgeStatus) : Optional<EdgeStatus>
+    + markOffline(edgeId, seen, offlineSince) : boolean
+    + findOnlineSilentSince(Instant) : List<EdgeStatus>
+  }
+
+  interface TelemetrySampleRepository {
+    + save(TelemetrySample)
+    + findByDevice(householdId, deviceId, from, to, page, size) : TelemetryPage
+  }
+}
+
+package "domain.services" #EAF2FB {
+  interface RecordEdgeEventsCommandService {
+    + handle(ReportUrgentEventCommand) : int
+    + handle(ReportEventBatchCommand) : List<EventOutcome>
+  }
+  interface ReportDeviceStatesCommandService {
+    + handle(ReportDeviceStatesCommand) : List<DeviceStateOutcome>
+  }
+  interface TrackingAccessService {
+    + requireReadableHouseholdOfPerson(userId, assistedPersonId) : Long
+    + requireReadableHouseholdOfDevice(userId, deviceId) : Long
+  }
+  interface HomeStatusQueryService {
+    + handle(GetHomeStatusByAssistedPersonQuery) : HomeStatusView
+  }
+  interface DeviceEventsQueryService {
+    + handle(GetDeviceEventsQuery) : DeviceEventsPageView
+  }
+  interface DeviceTelemetryQueryService {
+    + handle(GetDeviceTelemetryQuery) : DeviceTelemetryPageView
+  }
+  interface AutonomyQueryService {
+    + handle(GetAutonomySummaryQuery) : AutonomySummaryView
+  }
+}
+
+package "application.internal" #FDEFEF {
+
+  class RecordEdgeEventsCommandServiceImpl
+  class ReportDeviceStatesCommandServiceImpl
+  class TelemetrySampleRecorder {
+    + record(DeviceState, EventAttributes)
+  }
+  class EdgeLinkWatcher <<@Scheduled>> {
+    + markSilentEdges() : int
+  }
+  class TrackingAccessServiceImpl
+  class HomeStatusQueryServiceImpl
+  class DeviceEventsQueryServiceImpl
+  class DeviceTelemetryQueryServiceImpl
+  class AutonomyQueryServiceImpl
+
+  package "outboundservices.acl" #FFFFFF {
+    class ExternalAssetsService
+    class ExternalAssistanceService
+    class ExternalProfilesService
+    class ExternalNotificationsService
+  }
+}
+
+package "infrastructure (MongoDB)" #F1EFFB {
+  class DeviceEventRepositoryImpl
+  class DeviceStateRepositoryImpl
+  class EdgeStatusRepositoryImpl
+  class TelemetrySampleRepositoryImpl
+
+  class "device_events" as DeviceEventDocument <<collection>> {
+    unique (edgeId, eventId)
+    (householdId, deviceId, occurredAt desc)
+    (householdId, occurredAt desc)
+  }
+  class "device_states" as DeviceStateDocument <<collection>> {
+    _id = deviceId
+    index householdId
+  }
+  class "edge_statuses" as EdgeStatusDocument <<collection>> {
+    _id = edgeId
+    (link, lastReportAt)
+    index householdId
+  }
+  class "telemetry_samples" as TelemetrySampleDocument <<collection>> {
+    (householdId, deviceId, sampledAt desc)
+    TTL expiresAt (opcional)
+  }
+}
+
+package "interfaces" #EEF7F0 {
+
+  package "rest.controllers" #FFFFFF {
+    class EdgeEventsController <<POST /edge/events>>
+    class EdgeEventsBatchController <<POST /edge/events/batch>>
+    class EdgeDeviceStatesController <<PUT /edge/device-states>>
+    class HomeStatusController <<GET /assisted-persons/{id}/devices/status>>
+    class DeviceEventsController <<GET /devices/{id}/events>>
+    class DeviceTelemetryController <<GET /devices/{id}/telemetry>>
+  }
+
+  package "acl" #FFFFFF {
+    class TrackingContextFacadeImpl <<application.acl>>
+    interface TrackingContextFacade {
+      + summarizeAutonomy(householdId, deviceId, from, to) : AutonomySummary
+    }
+  }
+}
+
+package "otros contextos (solo por fachada)" #F5F5F5 {
+  interface AssetsContextFacade <<assets>>
+  interface AssistanceContextFacade <<assistance>>
+  interface HouseholdAccessFacade <<profiles>>
+  interface NotificationsContextFacade <<communications>>
+  class "analytics" as Analytics
+}
+
+DeviceEvent --> EventType
+DeviceEvent --> EventResult
+DeviceEvent --> EventSeverity
+DeviceEvent --> EventOrigin
+DeviceEvent *-- EventAttributes
+TelemetrySample *-- EventAttributes
+DeviceState --> ConnectionStatus
+DeviceState --> OperationalStatus
+DeviceState ..> DeviceEvent : produce\n(eventsSince)
+EdgeStatus --> EdgeLink
+HomeLinkSummary ..> EdgeStatus
+HomeLinkSummary --> HomeLink
+DeviceEvent ..> TrackingPolicy
+DeviceState ..> TrackingPolicy
+DeviceEvent ..> ReportingContext
+DeviceState ..> ReportingContext
+
+RecordEdgeEventsCommandServiceImpl ..|> RecordEdgeEventsCommandService
+ReportDeviceStatesCommandServiceImpl ..|> ReportDeviceStatesCommandService
+TrackingAccessServiceImpl ..|> TrackingAccessService
+HomeStatusQueryServiceImpl ..|> HomeStatusQueryService
+DeviceEventsQueryServiceImpl ..|> DeviceEventsQueryService
+DeviceTelemetryQueryServiceImpl ..|> DeviceTelemetryQueryService
+AutonomyQueryServiceImpl ..|> AutonomyQueryService
+
+RecordEdgeEventsCommandServiceImpl ..> DeviceEventRepository
+RecordEdgeEventsCommandServiceImpl ..> ExternalAssetsService
+RecordEdgeEventsCommandServiceImpl ..> ExternalNotificationsService
+ReportDeviceStatesCommandServiceImpl ..> DeviceStateRepository
+ReportDeviceStatesCommandServiceImpl ..> EdgeStatusRepository
+ReportDeviceStatesCommandServiceImpl ..> DeviceEventRepository
+ReportDeviceStatesCommandServiceImpl ..> TelemetrySampleRecorder
+ReportDeviceStatesCommandServiceImpl ..> ExternalNotificationsService
+TelemetrySampleRecorder ..> TelemetrySampleRepository
+EdgeLinkWatcher ..> EdgeStatusRepository
+EdgeLinkWatcher ..> DeviceEventRepository
+EdgeLinkWatcher ..> ExternalNotificationsService
+TrackingAccessServiceImpl ..> ExternalAssistanceService
+TrackingAccessServiceImpl ..> ExternalProfilesService
+TrackingAccessServiceImpl ..> ExternalAssetsService
+HomeStatusQueryServiceImpl ..> TrackingAccessService
+HomeStatusQueryServiceImpl ..> DeviceStateRepository
+HomeStatusQueryServiceImpl ..> EdgeStatusRepository
+DeviceEventsQueryServiceImpl ..> TrackingAccessService
+DeviceEventsQueryServiceImpl ..> DeviceEventRepository
+DeviceEventsQueryServiceImpl ..> HistoryPolicy
+DeviceTelemetryQueryServiceImpl ..> ExternalAssetsService
+DeviceTelemetryQueryServiceImpl ..> TelemetrySampleRepository
+AutonomyQueryServiceImpl ..> DeviceEventRepository
+AutonomyQueryServiceImpl ..> EdgeStatusRepository
+AutonomyQueryServiceImpl ..> CommandOutcomeTally
+
+DeviceEventRepositoryImpl ..|> DeviceEventRepository
+DeviceStateRepositoryImpl ..|> DeviceStateRepository
+EdgeStatusRepositoryImpl ..|> EdgeStatusRepository
+TelemetrySampleRepositoryImpl ..|> TelemetrySampleRepository
+DeviceEventRepositoryImpl --> DeviceEventDocument
+DeviceStateRepositoryImpl --> DeviceStateDocument
+EdgeStatusRepositoryImpl --> EdgeStatusDocument
+TelemetrySampleRepositoryImpl --> TelemetrySampleDocument
+
+EdgeEventsController ..> RecordEdgeEventsCommandService
+EdgeEventsBatchController ..> RecordEdgeEventsCommandService
+EdgeDeviceStatesController ..> ReportDeviceStatesCommandService
+HomeStatusController ..> HomeStatusQueryService
+DeviceEventsController ..> DeviceEventsQueryService
+DeviceTelemetryController ..> DeviceTelemetryQueryService
+TrackingContextFacadeImpl ..|> TrackingContextFacade
+TrackingContextFacadeImpl ..> AutonomyQueryService
+Analytics ..> TrackingContextFacade
+
+ExternalAssetsService ..> AssetsContextFacade
+ExternalAssistanceService ..> AssistanceContextFacade
+ExternalProfilesService ..> HouseholdAccessFacade
+ExternalNotificationsService ..> NotificationsContextFacade
+
+note bottom of EdgeStatus
+  El vigilante marca OFFLINE solo si el edge no reportó en
+  edge-offline-after (PT3M). El evento y la notificación se
+  escriben ANTES de marcar, y la marca es atómica.
+end note
+
+note bottom of DeviceState
+  Regla del último estado confiable: un reporte observado antes del
+  guardado es STALE y uno inválido es REJECTED; ninguno lo reemplaza.
+end note
+
+note bottom of DeviceEventRepository
+  La identidad de un evento es (edgeId, eventId): el índice único hace
+  idempotente el reenvío, incluso con reintentos simultáneos.
+end note
+
+@enduml

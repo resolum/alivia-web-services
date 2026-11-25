@@ -1,6 +1,7 @@
 package com.resolum.alivia.tracking;
 
 import com.resolum.alivia.integration.MongoContainerSupport;
+import com.resolum.alivia.shared.infrastructure.persistence.mongo.MongoTypeMappingConfiguration;
 import com.resolum.alivia.tracking.application.internal.commandservices.ReportDeviceStatesCommandServiceImpl;
 import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService;
 import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService.ReportingEdge;
@@ -59,7 +60,7 @@ import static org.mockito.Mockito.when;
 @DataMongoTest
 @Import({ReportDeviceStatesCommandServiceImpl.class, DeviceEventRepositoryImpl.class, DeviceStateRepositoryImpl.class,
         EdgeStatusRepositoryImpl.class, TelemetrySampleRepositoryImpl.class, TrackingConfiguration.class,
-        ReportDeviceStatesOnMongoTest.Beans.class})
+        ReportDeviceStatesOnMongoTest.Beans.class, MongoTypeMappingConfiguration.class})
 @EnabledIf(value = "com.resolum.alivia.integration.MongoContainerSupport#dockerAvailable",
         disabledReason = "Docker is not available, so there is no MongoDB to test against")
 class ReportDeviceStatesOnMongoTest {

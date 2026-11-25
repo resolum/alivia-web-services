@@ -1,6 +1,7 @@
 package com.resolum.alivia.tracking;
 
 import com.resolum.alivia.integration.MongoContainerSupport;
+import com.resolum.alivia.shared.infrastructure.persistence.mongo.MongoTypeMappingConfiguration;
 import com.resolum.alivia.tracking.application.acl.TrackingContextFacadeImpl;
 import com.resolum.alivia.tracking.application.internal.queryservices.AutonomyQueryServiceImpl;
 import com.resolum.alivia.tracking.domain.model.aggregates.DeviceEvent;
@@ -38,7 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * refused by the unique index), and what comes out is what analytics would count.
  */
 @DataMongoTest
-@Import({DeviceEventRepositoryImpl.class, EdgeStatusRepositoryImpl.class})
+@Import({DeviceEventRepositoryImpl.class, EdgeStatusRepositoryImpl.class, MongoTypeMappingConfiguration.class})
 @EnabledIf(value = "com.resolum.alivia.integration.MongoContainerSupport#dockerAvailable",
         disabledReason = "Docker is not available, so there is no MongoDB to test against")
 class AutonomySummaryOnMongoTest {
