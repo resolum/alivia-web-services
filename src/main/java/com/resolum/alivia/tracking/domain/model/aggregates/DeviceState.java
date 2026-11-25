@@ -1,6 +1,8 @@
 package com.resolum.alivia.tracking.domain.model.aggregates;
 
 import com.resolum.alivia.tracking.domain.model.valueobjects.ConnectionStatus;
+import com.resolum.alivia.tracking.domain.model.valueobjects.EventType;
+import com.resolum.alivia.tracking.domain.model.valueobjects.ReportedEvent;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventAttributes;
 import com.resolum.alivia.tracking.domain.model.valueobjects.OperationalStatus;
 import com.resolum.alivia.tracking.domain.model.valueobjects.RejectionReason;
@@ -11,6 +13,7 @@ import com.resolum.alivia.tracking.domain.model.valueobjects.StateUpdate;
 import com.resolum.alivia.tracking.domain.model.valueobjects.TrackingPolicy;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -66,6 +69,47 @@ public record DeviceState(Long deviceId, Long edgeId, Long householdId, Connecti
                 blankToNull(report.currentState()), report.batteryPct(), report.lastCommunicationAt(),
                 report.observedAt(), now, report.faults());
         return new StateUpdate(StateOutcome.APPLIED, null, state, EventAttributes.of(report.diagnostics(), policy));
+    }
+
+    /**
+     * The events that this state adds to the history, given the one it replaces: a device that disconnected or failed, one
+     * that came back, and a change of what it is doing. Nothing happens the first time a device reports, nor while it keeps
+     * reporting the same thing, so a heartbeat every thirty seconds adds nothing.
+     *
+     * <p>Each event has an id made from the device, the moment observed and the kind, so producing it again (the edge
+     * resends a report that was not acknowledged) is recognised and keeps one.</p>
+     */
+    public List<DeviceEvent> eventsSince(DeviceState before, ReportingContext context, Instant receivedAt,
+                                         TrackingPolicy policy) {
+        var events = new ArrayList<DeviceEvent>();
+        if (before == null) return events;
+        var at = String.valueOf(observedAt.toEpochMilli());
+        if (worsenedFrom(before)) {
+            if (connectionStatus == ConnectionStatus.DISCONNECTED) {
+                events.add(DeviceEvent.byServer("dc-" + deviceId + "-" + at, EventType.DEVICE_DISCONNECTED, edgeId,
+                        context.installationId(), householdId, deviceId, observedAt, null));
+            } else {
+                events.add(DeviceEvent.fromEdge(context, new ReportedEvent("fl-" + deviceId + "-" + at,
+                        EventType.DEVICE_FAILURE.name(), observedAt, deviceId, null, null, null, null, null,
+                        faults.isEmpty() ? null : cut(String.join(", ", faults), policy.maxDetail()), null),
+                        receivedAt, false, policy));
+            }
+        }
+        if (recoveredFrom(before)) {
+            events.add(DeviceEvent.fromEdge(context, new ReportedEvent("rc-" + deviceId + "-" + at,
+                    EventType.DEVICE_RECOVERED.name(), observedAt, deviceId, null, null, null, null, null, null, null),
+                    receivedAt, false, policy));
+        }
+        if (currentState != null && before.currentState != null && !currentState.equals(before.currentState)) {
+            events.add(DeviceEvent.fromEdge(context, new ReportedEvent("sc-" + deviceId + "-" + at,
+                    EventType.DEVICE_STATE_CHANGED.name(), observedAt, deviceId, null, null, null, null, null, null,
+                    java.util.Map.of("state", currentState, "previous", before.currentState)), receivedAt, false, policy));
+        }
+        return events;
+    }
+
+    private static String cut(String text, int max) {
+        return text.length() <= max ? text : text.substring(0, max);
     }
 
     /** Whether this state is worse than the one before it: it went from working to failing or to disconnected. */

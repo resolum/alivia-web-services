@@ -12,6 +12,7 @@ import com.resolum.alivia.tracking.domain.model.valueobjects.ReportedEvent;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventType;
 import com.resolum.alivia.tracking.domain.model.valueobjects.ReportingContext;
 import com.resolum.alivia.tracking.infrastructure.adapters.DeviceEventRepositoryImpl;
+import com.resolum.alivia.tracking.infrastructure.adapters.TelemetrySampleRepositoryImpl;
 import com.resolum.alivia.tracking.infrastructure.configuration.TrackingConfiguration;
 import com.resolum.alivia.tracking.infrastructure.persistence.mongo.documents.DeviceEventDocument;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -48,7 +49,8 @@ import static org.mockito.Mockito.when;
 
 /** The urgent report of an edge over a real MongoDB: the event is kept once, however many times the edge resends it. */
 @DataMongoTest
-@Import({RecordEdgeEventsCommandServiceImpl.class, DeviceEventRepositoryImpl.class, TrackingConfiguration.class,
+@Import({RecordEdgeEventsCommandServiceImpl.class, DeviceEventRepositoryImpl.class, TelemetrySampleRepositoryImpl.class,
+        TrackingConfiguration.class,
         RecordEdgeEventsOnMongoTest.Beans.class})
 @EnabledIf(value = "com.resolum.alivia.integration.MongoContainerSupport#dockerAvailable",
         disabledReason = "Docker is not available, so there is no MongoDB to test against")

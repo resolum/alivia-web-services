@@ -5,6 +5,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.resolum.alivia.tracking.application.internal.commandservices.TelemetrySampleRecorder;
+import com.resolum.alivia.tracking.domain.repositories.TelemetrySampleRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+
+import java.time.Clock;
 import java.time.Duration;
 
 /** The limits of what an edge may report, from {@code alivia.tracking.*}; the defaults are the ones of the edge contract. */
@@ -21,5 +26,19 @@ public class TrackingConfiguration {
             @Value("${alivia.tracking.max-batch-size:100}") int maxBatchSize) {
         return new TrackingPolicy(maxAttributeKeys, maxAttributeBytes, maxDetail, clockTolerance, syncedAfter,
                 maxBatchSize);
+    }
+
+    /**
+     * Writes the diagnostics readings in the background. With no {@code alivia.tracking.samples-retention} the readings
+     * are not given an expiration, so none is deleted: the retention is a decision that deletes data (D-TR-6).
+     */
+    @Bean
+    public TelemetrySampleRecorder telemetrySampleRecorder(
+            TelemetrySampleRepository samples, Clock clock, MeterRegistry meters,
+            @Value("${alivia.tracking.sample-interval:PT5M}") Duration interval,
+            @Value("${alivia.tracking.samples-retention:}") String retention,
+            @Value("${alivia.tracking.sample-queue-size:1000}") int queueSize) {
+        return new TelemetrySampleRecorder(samples, clock, interval,
+                retention.isBlank() ? null : Duration.parse(retention.strip()), queueSize, meters);
     }
 }
