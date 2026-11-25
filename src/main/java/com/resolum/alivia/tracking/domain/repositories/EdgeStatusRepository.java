@@ -23,6 +23,9 @@ public interface EdgeStatusRepository {
      */
     boolean markOffline(Long edgeId, Instant seen, Instant offlineSince);
 
+    /** The edges of the household that have reported at least once. */
+    List<EdgeStatus> findAllByHouseholdId(Long householdId);
+
     /** The edges that are online and have not reported since {@code limit}. */
     List<EdgeStatus> findOnlineSilentSince(Instant limit);
 }

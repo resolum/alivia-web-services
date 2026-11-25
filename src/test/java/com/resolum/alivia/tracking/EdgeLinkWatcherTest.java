@@ -92,6 +92,11 @@ class EdgeLinkWatcherTest {
         }
 
         @Override
+        public List<EdgeStatus> findAllByHouseholdId(Long householdId) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public List<EdgeStatus> findOnlineSilentSince(Instant limit) {
             if (staleListing != null) return staleListing;
             return kept.values().stream()

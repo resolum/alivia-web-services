@@ -63,6 +63,13 @@ public class EdgeStatusRepositoryImpl implements EdgeStatusRepository {
     }
 
     @Override
+    public List<EdgeStatus> findAllByHouseholdId(Long householdId) {
+        if (householdId == null) return List.of();
+        return mongo.find(new Query(where("householdId").is(householdId)), EdgeStatusDocument.class).stream()
+                .map(EdgeStatusDocument::toDomain).toList();
+    }
+
+    @Override
     public List<EdgeStatus> findOnlineSilentSince(Instant limit) {
         var query = new Query(where("link").is(EdgeLink.ONLINE.name()).and("lastReportAt").lt(limit));
         return mongo.find(query, EdgeStatusDocument.class).stream().map(EdgeStatusDocument::toDomain).toList();

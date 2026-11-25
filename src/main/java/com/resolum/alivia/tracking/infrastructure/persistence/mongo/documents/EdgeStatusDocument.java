@@ -4,6 +4,7 @@ import com.resolum.alivia.tracking.domain.model.aggregates.EdgeStatus;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EdgeLink;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
@@ -16,6 +17,7 @@ public class EdgeStatusDocument {
     @Id
     private Long id;
     private Long installationId;
+    @Indexed(name = "household")
     private Long householdId;
     private Instant lastReportAt;
     private String link;

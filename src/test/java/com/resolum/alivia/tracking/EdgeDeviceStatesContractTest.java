@@ -109,6 +109,11 @@ class EdgeDeviceStatesContractTest {
         }
 
         @Override
+        public List<EdgeStatus> findAllByHouseholdId(Long householdId) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public boolean markOffline(Long edgeId, Instant seen, Instant offlineSince) {
             throw new UnsupportedOperationException();
         }
