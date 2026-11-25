@@ -9,6 +9,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -48,5 +50,30 @@ class ExternalAssetsServiceTest {
     void withoutAnEdgeIdNothingIsAsked() {
         assertThat(service.fetchReportingEdge(null)).isEmpty();
         verifyNoInteractions(facade);
+    }
+
+    @Test
+    void theDevicesOfAHomeAreTheOnesAssetsHasPlacedInIt() {
+        when(facade.fetchDevicesOfHousehold(5L)).thenReturn(List.of(
+                new AssetsContextFacade.ScopedDevice(10L, "Puerta principal", "DOOR", "IN_USE", "entrada"),
+                new AssetsContextFacade.ScopedDevice(11L, null, "LIGHT", "MAINTENANCE", "sala")));
+
+        var devices = service.fetchDevicesOfHousehold(5L);
+
+        assertThat(devices).extracting(ExternalAssetsService.HomeDevice::deviceId).containsExactly(10L, 11L);
+        assertThat(devices.get(0).alias()).isEqualTo("Puerta principal");
+        assertThat(devices.get(1).alias()).isNull();
+        assertThat(devices.get(1).type()).isEqualTo("LIGHT");
+        assertThat(service.fetchDevicesOfHousehold(null)).isEmpty();
+        verify(facade, never()).fetchDevicesOfHousehold(null);
+    }
+
+    @Test
+    void theHouseholdOfADeviceIsAskedOnlyWhenThereIsADevice() {
+        when(facade.fetchHouseholdOfDevice(10L)).thenReturn(Optional.of(5L));
+
+        assertThat(service.fetchHouseholdOfDevice(10L)).contains(5L);
+        assertThat(service.fetchHouseholdOfDevice(null)).isEmpty();
+        verify(facade, never()).fetchHouseholdOfDevice(null);
     }
 }

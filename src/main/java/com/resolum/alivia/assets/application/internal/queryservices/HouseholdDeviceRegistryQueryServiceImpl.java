@@ -1,7 +1,9 @@
 package com.resolum.alivia.assets.application.internal.queryservices;
 
 import com.resolum.alivia.assets.domain.model.aggregates.HouseholdDeviceRegistry;
+import com.resolum.alivia.assets.domain.model.queries.GetDevicesOfHouseholdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByEdgeIdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetHouseholdOfDeviceQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeScopeByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeTableVersionByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetTableVersionByInstallationIdQuery;
@@ -15,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -53,6 +56,27 @@ public class HouseholdDeviceRegistryQueryServiceImpl implements HouseholdDeviceR
                                         assignment.getDevice().getAlias(), assignment.getDevice().getDeviceType(),
                                         assignment.getDevice().getAssetStatus(), assignment.getRoomKey()))
                                 .toList()));
+    }
+
+    /** The registry and its entries come from one snapshot, as in the scope of an edge. */
+    @Override
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public List<EdgeScopeView.ScopedDevice> handle(GetDevicesOfHouseholdQuery query) {
+        if (query.householdId() == null) return List.of();
+        return registryRepository.findActiveByHouseholdId(query.householdId())
+                .map(registry -> registry.activeAssignments().stream()
+                        .map(assignment -> new EdgeScopeView.ScopedDevice(assignment.getDevice().getId(),
+                                assignment.getDevice().getAlias(), assignment.getDevice().getDeviceType(),
+                                assignment.getDevice().getAssetStatus(), assignment.getRoomKey()))
+                        .toList())
+                .orElse(List.of());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Long> handle(GetHouseholdOfDeviceQuery query) {
+        if (query.deviceId() == null) return Optional.empty();
+        return registryRepository.findActiveHouseholdIdByDeviceId(query.deviceId());
     }
 
     @Override

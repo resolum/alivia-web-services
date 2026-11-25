@@ -119,6 +119,40 @@ class EdgeScopeQueryServiceTest {
     }
 
     @Test
+    void theFacadeAnswersTheDevicesAndTheHouseholdWithPrimitives() {
+        var registry = registry();
+        when(registries.findActiveByHouseholdId(5L)).thenReturn(Optional.of(registry));
+        when(registries.findActiveByHouseholdId(6L)).thenReturn(Optional.empty());
+        when(registries.findActiveHouseholdIdByDeviceId(1L)).thenReturn(Optional.of(5L));
+        when(registries.findActiveHouseholdIdByDeviceId(2L)).thenReturn(Optional.empty());
+        var facade = new AssetsContextFacadeImpl(mock(DeviceQueryService.class), mock(DeviceCommandService.class),
+                mock(EdgeCommandService.class), mock(EdgeQueryService.class),
+                mock(HouseholdDeviceRegistryCommandService.class), mock(DeviceAssignmentCommandService.class), service);
+
+        var devices = facade.fetchDevicesOfHousehold(5L);
+
+        assertEquals(2, devices.size());
+        assertEquals("LIGHT", devices.get(0).type());
+        assertEquals("IN_USE", devices.get(0).status());
+        assertEquals("Luz de la sala", devices.get(0).alias());
+        assertEquals("sala", devices.get(0).roomKey());
+        assertTrue(facade.fetchDevicesOfHousehold(6L).isEmpty());
+        assertEquals(Optional.of(5L), facade.fetchHouseholdOfDevice(1L));
+        assertEquals(Optional.empty(), facade.fetchHouseholdOfDevice(2L));
+    }
+
+    @Test
+    void theDevicesOfAHouseholdAreReadFromOneSnapshot() throws Exception {
+        var method = HouseholdDeviceRegistryQueryServiceImpl.class.getMethod("handle",
+                com.resolum.alivia.assets.domain.model.queries.GetDevicesOfHouseholdQuery.class);
+
+        var transactional = method.getAnnotation(Transactional.class);
+
+        assertTrue(transactional.readOnly());
+        assertEquals(Isolation.REPEATABLE_READ, transactional.isolation());
+    }
+
+    @Test
     void theRegistryAndItsEntriesAreReadFromOneSnapshot() throws Exception {
         var method = HouseholdDeviceRegistryQueryServiceImpl.class.getMethod("handle", GetEdgeScopeByEdgeIdQuery.class);
 

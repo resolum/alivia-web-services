@@ -92,7 +92,10 @@ import com.resolum.alivia.profiles.domain.exceptions.EmailAddressAlreadyExistsEx
 import com.resolum.alivia.profiles.domain.exceptions.EmailNotEditableException;
 import com.resolum.alivia.profiles.domain.exceptions.HouseholdAccessDeniedException;
 import com.resolum.alivia.profiles.domain.exceptions.ProfileAccessDeniedException;
+import com.resolum.alivia.tracking.domain.exceptions.AssistedPersonNotAccessible;
+import com.resolum.alivia.tracking.domain.exceptions.AssistedPersonWithoutHousehold;
 import com.resolum.alivia.tracking.domain.exceptions.BatchTooLarge;
+import com.resolum.alivia.tracking.domain.exceptions.DeviceNotAccessible;
 import com.resolum.alivia.tracking.domain.exceptions.EdgeNotInInstallation;
 import com.resolum.alivia.tracking.domain.exceptions.InvalidTrackingData;
 import com.resolum.alivia.tracking.domain.exceptions.TrackingStorageUnavailable;
@@ -318,6 +321,21 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(EdgeNotInInstallation.class)
     public ProblemDetail handleEdgeNotInInstallation(EdgeNotInInstallation exception) {
         return problem(HttpStatus.NOT_FOUND, "edge_without_installation", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(AssistedPersonNotAccessible.class)
+    public ProblemDetail handleAssistedPersonNotAccessible(AssistedPersonNotAccessible exception) {
+        return problem(HttpStatus.NOT_FOUND, "assisted_person_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(AssistedPersonWithoutHousehold.class)
+    public ProblemDetail handleAssistedPersonWithoutHousehold(AssistedPersonWithoutHousehold exception) {
+        return problem(HttpStatus.NOT_FOUND, "assisted_person_without_household", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(DeviceNotAccessible.class)
+    public ProblemDetail handleDeviceNotAccessible(DeviceNotAccessible exception) {
+        return problem(HttpStatus.NOT_FOUND, "device_not_found", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(BatchTooLarge.class)

@@ -5,6 +5,7 @@ import com.resolum.alivia.tracking.domain.model.valueobjects.ReportingContext;
 import org.springframework.stereotype.Service;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -46,5 +47,30 @@ public class ExternalAssetsService {
                 scope.devices().stream().filter(device -> device.alias() != null)
                         .collect(Collectors.toMap(AssetsContextFacade.ScopedDevice::deviceId,
                                 AssetsContextFacade.ScopedDevice::alias, (first, second) -> first))));
+    }
+
+    /**
+     * A device of a home, with what a relative recognises it by.
+     *
+     * @param deviceId the device
+     * @param alias    the name the business gave it; may be {@code null}
+     * @param type     {@code MICROPHONE}, {@code DOOR}, {@code WINDOW}, {@code CURTAIN} or {@code LIGHT}
+     * @param roomKey  the room where it is placed
+     */
+    public record HomeDevice(Long deviceId, String alias, String type, String roomKey) {
+    }
+
+    /** The devices placed in the household right now; empty when it has none. */
+    public List<HomeDevice> fetchDevicesOfHousehold(Long householdId) {
+        if (householdId == null) return List.of();
+        return assetsContextFacade.fetchDevicesOfHousehold(householdId).stream()
+                .map(device -> new HomeDevice(device.deviceId(), device.alias(), device.type(), device.roomKey()))
+                .toList();
+    }
+
+    /** The household where the device is placed right now; empty when it is not placed in an active installation. */
+    public Optional<Long> fetchHouseholdOfDevice(Long deviceId) {
+        if (deviceId == null) return Optional.empty();
+        return assetsContextFacade.fetchHouseholdOfDevice(deviceId);
     }
 }

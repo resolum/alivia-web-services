@@ -12,7 +12,9 @@ import com.resolum.alivia.assets.domain.model.queries.GetEdgeByMacAddressQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeCountByBusinessIdQuery;
 import com.resolum.alivia.assets.domain.services.DeviceCommandService;
 import com.resolum.alivia.assets.domain.services.DeviceAssignmentCommandService;
+import com.resolum.alivia.assets.domain.model.queries.GetDevicesOfHouseholdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeScopeByEdgeIdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetHouseholdOfDeviceQuery;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeType;
 import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryCommandService;
 import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryQueryService;
@@ -22,6 +24,7 @@ import com.resolum.alivia.assets.domain.services.EdgeQueryService;
 import com.resolum.alivia.assets.interfaces.acl.AssetsContextFacade;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -86,6 +89,19 @@ public class AssetsContextFacadeImpl implements AssetsContextFacade {
                                 .map(device -> new ScopedDevice(device.deviceId(), device.alias(), device.type().name(),
                                         device.status().name(), device.roomKey()))
                                 .toList()));
+    }
+
+    @Override
+    public List<ScopedDevice> fetchDevicesOfHousehold(Long householdId) {
+        return householdDeviceRegistryQueryService.handle(new GetDevicesOfHouseholdQuery(householdId)).stream()
+                .map(device -> new ScopedDevice(device.deviceId(), device.alias(), device.type().name(),
+                        device.status().name(), device.roomKey()))
+                .toList();
+    }
+
+    @Override
+    public Optional<Long> fetchHouseholdOfDevice(Long deviceId) {
+        return householdDeviceRegistryQueryService.handle(new GetHouseholdOfDeviceQuery(deviceId));
     }
 
     @Override

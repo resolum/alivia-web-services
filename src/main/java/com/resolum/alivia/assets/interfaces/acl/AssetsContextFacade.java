@@ -63,6 +63,18 @@ public interface AssetsContextFacade {
     record ScopedDevice(Long deviceId, String alias, String type, String status, String roomKey) {
     }
 
+    /**
+     * The devices placed in the household right now, as primitives; empty when the household has no active installation
+     * or no device placed in it. Authorization is not decided here: the consumer checks it first.
+     */
+    List<ScopedDevice> fetchDevicesOfHousehold(Long householdId);
+
+    /**
+     * The household where the device is placed right now; empty when the device is unknown, not placed, or placed in an
+     * installation that is no longer active.
+     */
+    Optional<Long> fetchHouseholdOfDevice(Long deviceId);
+
     Long fetchEdgeCountByBusinessId(Long businessId);
     Long fetchDeviceCountByBusinessId(Long businessId);
 }
