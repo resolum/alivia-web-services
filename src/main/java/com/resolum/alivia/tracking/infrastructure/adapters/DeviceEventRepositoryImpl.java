@@ -1,6 +1,7 @@
 package com.resolum.alivia.tracking.infrastructure.adapters;
 
 import com.resolum.alivia.tracking.domain.model.aggregates.DeviceEvent;
+import com.resolum.alivia.tracking.domain.model.valueobjects.CommandFact;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventInsertion;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventPage;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventType;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 import static org.springframework.data.mongodb.core.query.Criteria.where;
 
@@ -62,6 +64,21 @@ public class DeviceEventRepositoryImpl implements DeviceEventRepository {
         var items = mongo.find(query.with(Sort.by(Sort.Direction.DESC, "occurredAt")).skip((long) page * size).limit(size),
                 DeviceEventDocument.class).stream().map(DeviceEventDocument::toDomain).toList();
         return new EventPage(items, total);
+    }
+
+    @Override
+    public void forEachCommandFact(Long householdId, Long deviceId, Instant from, Instant to, Consumer<CommandFact> action) {
+        var criteria = where("householdId").is(householdId).and("occurredAt").gte(from).lt(to)
+                .and("type").in(EventType.COMMAND_REQUESTED.name(), EventType.COMMAND_RESULT.name(),
+                        EventType.COMMAND_REJECTED.name())
+                .and("commandId").exists(true);
+        if (deviceId != null) criteria = criteria.and("deviceId").is(deviceId);
+        // Only what the metrics need is read: no detail, no attributes, nothing of what was said.
+        var query = new Query(criteria);
+        query.fields().include("commandId", "type", "result", "origin", "occurredAt", "deviceId");
+        try (var events = mongo.stream(query, DeviceEventDocument.class)) {
+            events.forEach(document -> action.accept(document.toCommandFact()));
+        }
     }
 
     @Override

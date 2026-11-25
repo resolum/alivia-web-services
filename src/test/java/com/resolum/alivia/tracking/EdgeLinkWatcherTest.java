@@ -127,6 +127,13 @@ class EdgeLinkWatcherTest {
         }
 
         @Override
+        public void forEachCommandFact(Long householdId, Long deviceId, Instant from, Instant to,
+                java.util.function.Consumer<com.resolum.alivia.tracking.domain.model.valueobjects.CommandFact> action) {
+            throw new UnsupportedOperationException();
+        }
+
+
+        @Override
         public List<DeviceEvent> findRecentByHousehold(Long householdId, int limit) {
             throw new UnsupportedOperationException();
         }

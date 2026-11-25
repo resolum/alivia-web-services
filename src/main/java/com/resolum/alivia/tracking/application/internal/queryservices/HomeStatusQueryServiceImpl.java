@@ -4,12 +4,10 @@ import com.resolum.alivia.tracking.application.internal.outboundservices.acl.Ext
 import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService.HomeDevice;
 import com.resolum.alivia.tracking.domain.exceptions.TrackingStorageUnavailable;
 import com.resolum.alivia.tracking.domain.model.aggregates.DeviceState;
-import com.resolum.alivia.tracking.domain.model.aggregates.EdgeStatus;
 import com.resolum.alivia.tracking.domain.model.queries.GetHomeStatusByAssistedPersonQuery;
 import com.resolum.alivia.tracking.domain.model.valueobjects.ConnectionStatus;
 import com.resolum.alivia.tracking.domain.model.valueobjects.DeviceStatusView;
-import com.resolum.alivia.tracking.domain.model.valueobjects.EdgeLink;
-import com.resolum.alivia.tracking.domain.model.valueobjects.HomeLink;
+import com.resolum.alivia.tracking.domain.model.valueobjects.HomeLinkSummary;
 import com.resolum.alivia.tracking.domain.model.valueobjects.HomeStatusView;
 import com.resolum.alivia.tracking.domain.repositories.DeviceStateRepository;
 import com.resolum.alivia.tracking.domain.repositories.EdgeStatusRepository;
@@ -21,7 +19,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -70,17 +67,14 @@ public class HomeStatusQueryServiceImpl implements HomeStatusQueryService {
                 .collect(Collectors.toMap(DeviceState::deviceId, state -> state, (first, second) -> first));
         var edges = read(() -> edgeStatuses.findAllByHouseholdId(householdId));
 
-        Set<Long> silentEdges = new HashSet<>();
-        edges.stream().filter(edge -> edge.link() == EdgeLink.OFFLINE).forEach(edge -> silentEdges.add(edge.edgeId()));
-
-        var views = devices.stream().map(device -> view(device, stateOf.get(device.deviceId()), silentEdges)).toList();
-        var offlineSince = edges.stream().filter(edge -> edge.link() == EdgeLink.OFFLINE)
-                .map(EdgeStatus::offlineSince).filter(Objects::nonNull).min(Comparator.naturalOrder()).orElse(null);
-        var lastUpdatedAt = Stream.concat(edges.stream().map(EdgeStatus::lastReportAt),
+        var home = HomeLinkSummary.of(edges);
+        var views = devices.stream()
+                .map(device -> view(device, stateOf.get(device.deviceId()), home.silentEdgeIds())).toList();
+        var lastUpdatedAt = Stream.concat(Stream.ofNullable(home.lastReportAt()),
                         stateOf.values().stream().map(DeviceState::updatedAt))
                 .filter(Objects::nonNull).max(Comparator.naturalOrder()).orElse(null);
-        return new HomeStatusView(householdId, linkOf(edges, silentEdges), offlineSince, lastUpdatedAt,
-                edges.stream().anyMatch(EdgeStatus::mayHavePendingEvents), views);
+        return new HomeStatusView(householdId, home.link(), home.offlineSince(), lastUpdatedAt,
+                home.mayHavePendingEvents(), views);
     }
 
     private static DeviceStatusView view(HomeDevice device, DeviceState state, Set<Long> silentEdges) {
@@ -92,11 +86,6 @@ public class HomeStatusQueryServiceImpl implements HomeStatusQueryService {
                 state.connectionStatus(), state.operationalStatus(), state.currentState(), state.batteryPct(),
                 state.lastCommunicationAt(), state.observedAt(), state.updatedAt(), state.faults(),
                 silentEdges.contains(state.edgeId()));
-    }
-
-    private static HomeLink linkOf(List<EdgeStatus> edges, Set<Long> silentEdges) {
-        if (edges.isEmpty()) return HomeLink.UNKNOWN;
-        return silentEdges.isEmpty() ? HomeLink.ONLINE : HomeLink.OFFLINE;
     }
 
     /** A read that fails is not an empty home: the caller is told the data is not available. */

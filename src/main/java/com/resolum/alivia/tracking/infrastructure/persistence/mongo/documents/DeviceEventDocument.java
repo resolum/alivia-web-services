@@ -2,6 +2,7 @@ package com.resolum.alivia.tracking.infrastructure.persistence.mongo.documents;
 
 import com.resolum.alivia.tracking.domain.model.aggregates.DeviceEvent;
 import com.resolum.alivia.tracking.domain.model.valueobjects.CommandAction;
+import com.resolum.alivia.tracking.domain.model.valueobjects.CommandFact;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventAttributes;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventOrigin;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventResult;
@@ -73,6 +74,12 @@ public class DeviceEventDocument {
         document.detail = event.detail();
         document.attributes = event.attributes().isEmpty() ? null : event.attributes().values();
         return document;
+    }
+
+    /** What the autonomy metrics read of the event; the document may have been read with only these fields. */
+    public CommandFact toCommandFact() {
+        return new CommandFact(commandId, EventType.valueOf(type), result == null ? null : EventResult.valueOf(result),
+                EventOrigin.valueOf(origin), occurredAt, deviceId);
     }
 
     public DeviceEvent toDomain() {
