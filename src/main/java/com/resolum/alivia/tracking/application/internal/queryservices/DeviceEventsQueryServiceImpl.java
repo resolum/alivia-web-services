@@ -15,8 +15,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.Locale;
 
 /**
@@ -46,35 +44,21 @@ public class DeviceEventsQueryServiceImpl implements DeviceEventsQueryService {
 
     @Override
     public DeviceEventsPageView handle(GetDeviceEventsQuery query) {
-        int page = query.page() == null ? 0 : query.page();
-        int size = query.size() == null ? policy.defaultPageSize() : query.size();
-        if (page < 0) {
-            throw new InvalidHistoryQuery("invalid_page", "The page must be 0 or more.");
-        }
-        if (size < 1 || size > policy.maxPageSize()) {
-            throw new InvalidHistoryQuery("invalid_page_size", "The size must be between 1 and " + policy.maxPageSize() + ".");
-        }
+        var window = policy.window(query.from(), query.to(), query.page(), query.size(), clock.instant());
         var type = typeOf(query.type());
-        var to = query.to() == null ? clock.instant() : query.to();
-        var from = query.from() == null ? to.minus(policy.maxRange()) : query.from();
-        if (from.isAfter(to)) {
-            throw new InvalidHistoryQuery("invalid_range", "The start of the period cannot be after its end.");
-        }
-        if (Duration.between(from, to).compareTo(policy.maxRange()) > 0) {
-            throw new InvalidHistoryQuery("range_too_large",
-                    "The period cannot be longer than " + policy.maxRange().toDays() + " days.");
-        }
 
         var householdId = access.requireReadableHouseholdOfDevice(query.userId(), query.deviceId());
         EventPage found;
         try {
-            found = events.findByDevice(householdId, query.deviceId(), from, to, type, page, size);
+            found = events.findByDevice(householdId, query.deviceId(), window.from(), window.to(), type, window.page(),
+                    window.size());
         } catch (RuntimeException failure) {
             meters.counter("tracking.storage.failures", "operation", "read_device_events").increment();
             log.error("The events of the device {} could not be read.", query.deviceId(), failure);
             throw new TrackingStorageUnavailable(failure);
         }
-        return new DeviceEventsPageView(query.deviceId(), from, to, page, size, found.total(), found.items());
+        return new DeviceEventsPageView(query.deviceId(), window.from(), window.to(), window.page(), window.size(),
+                found.total(), found.items());
     }
 
     private static EventType typeOf(String text) {

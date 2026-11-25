@@ -342,8 +342,10 @@ class TrackingPersistenceOnMongoTest {
                 new EventAttributes(Map.of("rssi", -60)), T0.plus(Duration.ofDays(7))));
         samples.save(new TelemetrySample(11L, 3L, 300L, T0, new EventAttributes(Map.of("rssi", -70)), null));
 
-        var read = samples.findByDevice(300L, 10L, T0, T0.plusSeconds(60), 10);
+        var page = samples.findByDevice(300L, 10L, T0, T0.plusSeconds(60), 0, 10);
+        var read = page.items();
 
+        assertThat(page.total()).isEqualTo(2);
         assertThat(read).hasSize(2);
         assertThat(read.get(0).sampledAt()).isEqualTo(T0.plusSeconds(30));
         assertThat(read.get(0).expiresAt()).isEqualTo(T0.plus(Duration.ofDays(7)));

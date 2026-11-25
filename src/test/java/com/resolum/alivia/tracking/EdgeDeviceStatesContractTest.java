@@ -17,6 +17,7 @@ import com.resolum.alivia.tracking.domain.model.valueobjects.EdgeLink;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventInsertion;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventPage;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventType;
+import com.resolum.alivia.tracking.domain.model.valueobjects.TelemetryPage;
 import com.resolum.alivia.tracking.domain.model.valueobjects.OperationalStatus;
 import com.resolum.alivia.tracking.domain.model.valueobjects.ReportingContext;
 import com.resolum.alivia.tracking.domain.model.valueobjects.TrackingPolicy;
@@ -165,7 +166,7 @@ class EdgeDeviceStatesContractTest {
         }
 
         @Override
-        public List<TelemetrySample> findByDevice(Long householdId, Long deviceId, Instant from, Instant to, int limit) {
+        public TelemetryPage findByDevice(Long householdId, Long deviceId, Instant from, Instant to, int page, int size) {
             throw new UnsupportedOperationException();
         }
     }
