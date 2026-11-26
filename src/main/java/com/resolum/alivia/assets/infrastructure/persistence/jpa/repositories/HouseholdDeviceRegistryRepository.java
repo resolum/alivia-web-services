@@ -51,6 +51,17 @@ public interface HouseholdDeviceRegistryRepository extends JpaRepository<Househo
             + "where r.microphoneEdge.id in :edgeIds or r.actuatorEdge.id in :edgeIds")
     List<HouseholdDeviceRegistry> findAllByAssignedEdgeIdIn(@Param("edgeIds") Collection<Long> edgeIds);
 
+    /** The active registry of the household, without locking it. */
+    @Query("select r from HouseholdDeviceRegistry r where r.householdId = :householdId "
+            + "and r.status = com.resolum.alivia.assets.domain.model.valueobjects.RegistryStatus.ACTIVE")
+    Optional<HouseholdDeviceRegistry> findActiveByHouseholdId(@Param("householdId") Long householdId);
+
+    /** The household of the active registry that holds the device in an active entry. */
+    @Query("select r.householdId from HouseholdDeviceRegistry r where r.status = "
+            + "com.resolum.alivia.assets.domain.model.valueobjects.RegistryStatus.ACTIVE and exists "
+            + "(select 1 from DeviceAssignment e where e.registry = r and e.device.id = :deviceId and e.unassignedAt is null)")
+    Optional<Long> findActiveHouseholdIdByDeviceId(@Param("deviceId") Long deviceId);
+
     /** The registry that has the edge as one of its edge services, without locking it (to read its table). */
     @Query("select r from HouseholdDeviceRegistry r where r.microphoneEdge.id = :edgeId or r.actuatorEdge.id = :edgeId")
     Optional<HouseholdDeviceRegistry> findByAssignedEdgeId(@Param("edgeId") Long edgeId);

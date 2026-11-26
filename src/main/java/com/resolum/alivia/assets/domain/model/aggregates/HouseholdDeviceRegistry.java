@@ -218,6 +218,11 @@ public class HouseholdDeviceRegistry extends AuditableAbstractAggregateRoot<Hous
         return EdgeAccessTable.of(installationId.installationId(), householdId, tableVersion, activeEntries().toList());
     }
 
+    /** The devices placed in the installation now, in the order they were placed. */
+    public List<DeviceAssignment> activeAssignments() {
+        return activeEntries().toList();
+    }
+
     private Stream<DeviceAssignment> activeEntries() {
         return entries.stream().filter(DeviceAssignment::isActive);
     }

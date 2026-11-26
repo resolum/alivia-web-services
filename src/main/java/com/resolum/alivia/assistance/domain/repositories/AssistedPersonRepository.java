@@ -10,4 +10,11 @@ public interface AssistedPersonRepository {
     Optional<AssistedPerson> findById(Long id);
     List<AssistedPerson> findAllByRelativeId(Long relativeId);
     List<AssistedPerson> findAll();
+
+    /** The assisted persons who live in the household. */
+    List<AssistedPerson> findAllByHouseholdId(Long householdId);
+
+    /** The assisted persons whose person profile is the given one (normally one). */
+    List<AssistedPerson> findAllByPersonProfileId(Long personProfileId);
+
 }

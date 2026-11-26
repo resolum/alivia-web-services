@@ -1,0 +1,31 @@
+{
+  "deviceId": 10,
+  "from": "2026-11-24T00:00:00Z",
+  "to": "2026-11-25T00:00:00Z",
+  "page": 0,
+  "size": 2,
+  "totalElements": 3,
+  "totalPages": 2,
+  "items": [
+    {
+      "eventId": "ev-3",
+      "type": "COMMAND_RESULT",
+      "severity": "INFORMATIVE",
+      "result": "SUCCESS",
+      "origin": "SYNCED",
+      "occurredAt": "2026-11-24T14:58:00Z",
+      "receivedAt": "2026-11-24T15:05:00Z",
+      "commandId": "cmd-77",
+      "action": "OPEN"
+    },
+    {
+      "eventId": "ev-2",
+      "type": "DEVICE_STATE_CHANGED",
+      "severity": "INFORMATIVE",
+      "origin": "LIVE",
+      "occurredAt": "2026-11-24T14:00:00Z",
+      "receivedAt": "2026-11-24T14:00:02Z",
+      "attributes": { "state": "open", "previous": "closed" }
+    }
+  ]
+}

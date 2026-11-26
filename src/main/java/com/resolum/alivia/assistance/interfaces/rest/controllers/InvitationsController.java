@@ -17,6 +17,9 @@ import com.resolum.alivia.assistance.domain.model.queries.GetPendingInvitationsB
 import com.resolum.alivia.assistance.domain.model.queries.GetRelativeByIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetRelativeByUserIdQuery;
 import com.resolum.alivia.assistance.domain.services.AssistedPersonQueryService;
+import com.resolum.alivia.assistance.domain.exceptions.AssistanceAccessDeniedException;
+import com.resolum.alivia.assistance.domain.services.AssistanceAccessService;
+import com.resolum.alivia.assistance.interfaces.rest.CallerIdentity;
 import com.resolum.alivia.assistance.domain.services.InvitationCommandService;
 import com.resolum.alivia.assistance.domain.services.InvitationQueryService;
 import com.resolum.alivia.assistance.domain.services.RelativeQueryService;
@@ -47,12 +50,14 @@ public class InvitationsController {
     private final RelativeQueryService relativeQueryService;
     private final AssistedPersonQueryService assistedPersonQueryService;
     private final ExternalIamService externalIamService;
+    private final AssistanceAccessService accessService;
 
     public InvitationsController(InvitationCommandService commandService,
             InvitationQueryService queryService,
             RelativeQueryService relativeQueryService,
-            AssistedPersonQueryService assistedPersonQueryService) {
-        this(commandService, queryService, relativeQueryService, assistedPersonQueryService, null);
+            AssistedPersonQueryService assistedPersonQueryService,
+            AssistanceAccessService accessService) {
+        this(commandService, queryService, relativeQueryService, assistedPersonQueryService, accessService, null);
     }
 
     @Autowired
@@ -60,11 +65,13 @@ public class InvitationsController {
             InvitationQueryService queryService,
             RelativeQueryService relativeQueryService,
             AssistedPersonQueryService assistedPersonQueryService,
+            AssistanceAccessService accessService,
             @Autowired(required = false) ExternalIamService externalIamService) {
         this.commandService = commandService;
         this.queryService = queryService;
         this.relativeQueryService = relativeQueryService;
         this.assistedPersonQueryService = assistedPersonQueryService;
+        this.accessService = accessService;
         this.externalIamService = externalIamService;
     }
 
@@ -72,38 +79,21 @@ public class InvitationsController {
     public ResponseEntity<Long> createInvitation(
             Principal principal,
             @RequestBody CreateInvitationResource resource) {
-        Long relativeId = null;
-        if (principal != null) {
-            try {
-                Long userId = Long.valueOf(principal.getName());
-                relativeId = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId)).map(Relative::getId)
-                        .orElse(null);
-            } catch (Exception ignored) {
-            }
-        }
-        if (relativeId == null && resource.relativeId() != null) {
-            if (relativeQueryService.handle(new GetRelativeByIdQuery(resource.relativeId())).isPresent()) {
-                relativeId = resource.relativeId();
-            }
-        }
-        if (relativeId == null) {
-            var defaultRelative = relativeQueryService.handle(new GetRelativeByIdQuery(1L));
-            if (defaultRelative.isPresent()) {
-                relativeId = 1L;
-            } else {
-                throw new RelativeNotFoundException(1L);
-            }
-        }
-
+        Long userId = CallerIdentity.requireUserId(principal);
         Long assistedPersonId = resource.assistedPersonId();
         if (assistedPersonId == null) {
-            var persons = assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(relativeId));
-            assistedPersonId = persons.isEmpty() ? 1L : persons.get(0).getId();
+            // Without a person: the first one of the relative who is calling.
+            var relative = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId))
+                    .orElseThrow(() -> new AssistanceAccessDeniedException("Only a relative may invite a caregiver."));
+            assistedPersonId = assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(relative.getId()))
+                    .stream().findFirst().map(person -> person.getId())
+                    .orElseThrow(() -> new com.resolum.alivia.assistance.domain.exceptions.AssistedPersonNotFoundException(0L));
         }
+        var person = accessService.requireManage(assistedPersonId, userId);
 
         CreateInvitationCommand command = new CreateInvitationCommand(
-                relativeId,
-                assistedPersonId,
+                person.getRelative().getId(),
+                person.getId(),
                 resource.inviteeEmail());
         Long id = commandService.handle(command);
         return new ResponseEntity<>(id, HttpStatus.CREATED);
@@ -114,29 +104,34 @@ public class InvitationsController {
             @PathVariable Long id,
             @RequestBody(required = false) AcceptInvitationResource resource,
             Principal principal) {
+        var invitation = queryService.handle(new GetInvitationByIdQuery(id))
+                .orElseThrow(() -> new InvitationNotFoundException(id));
+        String inviteeEmail = invitation.getInviteeEmail().email();
         Long caregiverUserId = null;
         if (principal != null) {
             try {
                 caregiverUserId = Long.valueOf(principal.getName());
-            } catch (Exception ignored) {
+            } catch (NumberFormatException ignored) {
             }
         }
-        if (caregiverUserId == null && resource != null && resource.password() != null && !resource.password().isBlank()) {
-            var invitation = queryService.handle(new GetInvitationByIdQuery(id))
-                    .orElseThrow(() -> new InvitationNotFoundException(id));
-            String email = invitation.getInviteeEmail().email();
+        if (caregiverUserId != null) {
+            // A signed-in user accepts only an invitation sent to the email of their own account.
+            String own = externalIamService == null ? null
+                    : externalIamService.fetchEmails(java.util.Set.of(new UserId(caregiverUserId))).get(new UserId(caregiverUserId));
+            if (own == null || !own.equalsIgnoreCase(inviteeEmail)) {
+                throw new AssistanceAccessDeniedException("The invitation was sent to another email.");
+            }
+        } else if (resource != null && resource.password() != null && !resource.password().isBlank()
+                && externalIamService != null) {
+            // Not signed in: the invitee creates the account of the invited email with a password.
             String firstName = resource.firstName() != null && !resource.firstName().isBlank() ? resource.firstName() : "Cuidador";
             String lastName = resource.lastName() != null && !resource.lastName().isBlank() ? resource.lastName() : "Invitado";
             String phoneNumber = resource.phoneNumber() != null && !resource.phoneNumber().isBlank() ? resource.phoneNumber() : "51987654321";
-            if (externalIamService != null) {
-                caregiverUserId = externalIamService.registerCaregiverAccount(email, resource.password(), firstName, lastName, phoneNumber);
-            }
-        }
-        if (caregiverUserId == null && resource != null) {
-            caregiverUserId = resource.caregiverUserId();
+            caregiverUserId = externalIamService.registerCaregiverAccount(inviteeEmail, resource.password(), firstName, lastName, phoneNumber);
         }
         if (caregiverUserId == null) {
-            caregiverUserId = 1L;
+            // The user id of the body and a default account are never used to decide who accepts.
+            throw new AssistanceAccessDeniedException("Sign in, or choose a password, to accept the invitation.");
         }
         AcceptInvitationCommand command = new AcceptInvitationCommand(id, caregiverUserId);
         Long resultId = commandService.handle(command);
@@ -144,45 +139,17 @@ public class InvitationsController {
     }
 
     @PostMapping("/{id}/revoke")
-    public ResponseEntity<Long> revokeInvitation(
-            @PathVariable Long id,
-            @RequestParam(required = false) Long relativeId,
-            Principal principal) {
-        Long effectiveRelativeId = null;
-        if (principal != null) {
-            try {
-                Long userId = Long.valueOf(principal.getName());
-                effectiveRelativeId = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId))
-                        .map(Relative::getId).orElse(null);
-            } catch (Exception ignored) {
-            }
-        }
-        if (effectiveRelativeId == null) {
-            effectiveRelativeId = relativeId != null ? relativeId : 1L;
-        }
-        RevokeInvitationCommand command = new RevokeInvitationCommand(id, effectiveRelativeId);
+    public ResponseEntity<Long> revokeInvitation(@PathVariable Long id, Principal principal) {
+        var invitation = accessService.requireManageInvitation(id, CallerIdentity.requireUserId(principal));
+        RevokeInvitationCommand command = new RevokeInvitationCommand(id, invitation.getAssistedPerson().getRelative().getId());
         Long resultId = commandService.handle(command);
         return ResponseEntity.ok(resultId);
     }
 
     @PostMapping("/{id}/resend")
-    public ResponseEntity<Long> resendInvitation(
-            @PathVariable Long id,
-            @RequestParam(required = false) Long relativeId,
-            Principal principal) {
-        Long effectiveRelativeId = null;
-        if (principal != null) {
-            try {
-                Long userId = Long.valueOf(principal.getName());
-                effectiveRelativeId = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId))
-                        .map(Relative::getId).orElse(null);
-            } catch (Exception ignored) {
-            }
-        }
-        if (effectiveRelativeId == null) {
-            effectiveRelativeId = relativeId != null ? relativeId : 1L;
-        }
-        ResendInvitationCommand command = new ResendInvitationCommand(id, effectiveRelativeId);
+    public ResponseEntity<Long> resendInvitation(@PathVariable Long id, Principal principal) {
+        var invitation = accessService.requireManageInvitation(id, CallerIdentity.requireUserId(principal));
+        ResendInvitationCommand command = new ResendInvitationCommand(id, invitation.getAssistedPerson().getRelative().getId());
         Long resultId = commandService.handle(command);
         return ResponseEntity.ok(resultId);
     }
@@ -204,7 +171,9 @@ public class InvitationsController {
     public ResponseEntity<List<InvitationResource>> getInvitations(
             Principal principal,
             @RequestParam(required = false) Long assistedPersonId) {
+        Long userId = CallerIdentity.requireUserId(principal);
         if (assistedPersonId != null) {
+            accessService.requireManage(assistedPersonId, userId);
             List<InvitationResource> list = queryService
                     .handle(new GetInvitationsByAssistedPersonIdQuery(assistedPersonId))
                     .stream()
@@ -212,41 +181,32 @@ public class InvitationsController {
                     .toList();
             return ResponseEntity.ok(list);
         }
-        if (principal != null) {
-            try {
-                Long userId = Long.valueOf(principal.getName());
-                var relativeOpt = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId));
-                if (relativeOpt.isPresent()) {
-                    var persons = assistedPersonQueryService
-                            .handle(new GetAssistedPersonsByRelativeIdQuery(relativeOpt.get().getId()));
-                    List<InvitationResource> all = new ArrayList<>();
-                    for (var person : persons) {
-                        all.addAll(queryService.handle(new GetInvitationsByAssistedPersonIdQuery(person.getId()))
-                                .stream()
-                                .map(InvitationResourceAssembler::toResourceFromEntity)
-                                .toList());
-                    }
-                    return ResponseEntity.ok(all);
-                }
-            } catch (Exception e) {
-                log.warn("Could not find invitations by principal {}: {}", principal.getName(), e.getMessage());
-            }
-        }
-        var persons = assistedPersonQueryService.handle(new GetAllAssistedPersonsQuery());
+        // Without a person: the invitations of the persons the caller is in charge of, never of anyone else.
         List<InvitationResource> all = new ArrayList<>();
-        for (var person : persons) {
-            all.addAll(queryService.handle(new GetInvitationsByAssistedPersonIdQuery(person.getId()))
-                    .stream()
-                    .map(InvitationResourceAssembler::toResourceFromEntity)
-                    .toList());
+        var relativeOpt = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId));
+        if (relativeOpt.isPresent()) {
+            var persons = assistedPersonQueryService
+                    .handle(new GetAssistedPersonsByRelativeIdQuery(relativeOpt.get().getId()));
+            for (var person : persons) {
+                all.addAll(queryService.handle(new GetInvitationsByAssistedPersonIdQuery(person.getId()))
+                        .stream()
+                        .map(InvitationResourceAssembler::toResourceFromEntity)
+                        .toList());
+            }
         }
         return ResponseEntity.ok(all);
     }
 
     @GetMapping("/pending")
-    public ResponseEntity<List<InvitationResource>> getPendingInvitations(@RequestParam Long caregiverUserId) {
+    public ResponseEntity<List<InvitationResource>> getPendingInvitations(
+            @RequestParam(required = false) Long caregiverUserId, Principal principal) {
+        // The pending invitations of an account are read by that account only.
+        Long userId = CallerIdentity.requireUserId(principal);
+        if (caregiverUserId != null && !caregiverUserId.equals(userId)) {
+            throw new AssistanceAccessDeniedException("The invitations of another user cannot be read.");
+        }
         List<InvitationResource> list = queryService
-                .handle(new GetPendingInvitationsByCaregiverUserIdQuery(caregiverUserId))
+                .handle(new GetPendingInvitationsByCaregiverUserIdQuery(userId))
                 .stream()
                 .map(InvitationResourceAssembler::toResourceFromEntity)
                 .toList();

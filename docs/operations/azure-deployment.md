@@ -71,7 +71,7 @@ entorno. Sí hay que definirlas todas (§9).
 | P-4 | El script de despliegue es el **único dueño** de la configuración de la aplicación en App Service; Terraform no define esas variables | Terraform define algunas (los secretos acabarían en el estado) |
 | P-5 | `staging` se despliega al hacer push a `develop`; `production` al hacer push a `main`, con aprobación manual del entorno de GitHub | `release/**` → staging, como el repositorio de referencia |
 | P-6 | La base de datos y Atlas aceptan solo las IP de salida de la aplicación (reglas por IP) | «Permitir servicios de Azure» / `0.0.0.0/0` (más simple, menos seguro) |
-| P-7 | Mientras ningún código use MongoDB, desactivar su indicador en `/actuator/health` con `MANAGEMENT_HEALTH_MONGODB_ENABLED=false` | Dejarlo activo: una caída de Atlas tumbaría la verificación del despliegue (§4.4) |
+| P-7 | ~~Mientras ningún código use MongoDB, desactivar su indicador en `/actuator/health` con `MANAGEMENT_HEALTH_MONGODB_ENABLED=false`~~ **Revertida el 2026-11-24 (T-6.1):** el contexto Tracking ya usa MongoDB; `deploy.sh` fija `MANAGEMENT_HEALTH_MONGODB_ENABLED=true`. Ver `docs/operations/tracking-mongodb.md` | Dejarlo activo: una caída de Atlas tumbaría la verificación del despliegue (§4.4) |
 
 ## 4. Arquitectura
 
@@ -179,6 +179,13 @@ fija `MANAGEMENT_HEALTH_MONGODB_ENABLED=false` en ambos entornos mientras nada u
   al instante.
 - **Condición para revertirlo:** la primera funcionalidad que lea o escriba en MongoDB debe quitar esta variable (y
   reevaluar la región, D-11) en el mismo cambio que la introduce. Queda como criterio de revisión de esa funcionalidad.
+
+> **Actualización 2026-11-24 (T-6.1):** la condición se cumplió: el contexto Tracking lee y escribe en MongoDB. `deploy.sh` ahora
+> fija `MANAGEMENT_HEALTH_MONGODB_ENABLED=true` (a propósito `true` y no «quitada»: `az webapp config appsettings set` no borra
+> un valor anterior, así que un `false` ya aplicado seguiría vigente). Las consecuencias de arriba se invierten: una caída de
+> Atlas **sí** marca la verificación del despliegue y la comprobación de salud de App Service como fallidas. Detalle, tiempos
+> de espera y la recomendación sobre la ruta de salud de App Service en `docs/operations/tracking-mongodb.md`. La región (D-11)
+> y M0 frente a un plan de pago se reevalúan allí; la decisión sigue siendo de la persona asignada.
 
 Para medir la latencia real desde Perú, una vez desplegado `staging`, basta cronometrar `GET /actuator/health` desde Lima; no
 hay cifras publicadas de Microsoft para Lima.
@@ -426,7 +433,7 @@ solo es seguro si las migraciones nuevas son compatibles hacia atrás; ver §11.
 | Secretos de la aplicación | GitHub Secrets **del entorno** (`staging`, `production`) | `IAM_JWT_SECRET`, `STRIPE_*`, `CLOUDINARY_API_*`, `DB_PASSWORD`, `MONGODB_URI`, `IAM_SUPER_ADMIN_PASSWORD`, `RESEND_API_KEY` |
 | Configuración no secreta | GitHub Variables **del entorno** | `CORS_ALLOWED_ORIGINS`, `IAM_EMAIL_VERIFICATION_LINK_BASE_URL`, `DB_URL`, `DB_USERNAME`, `MONGODB_DATABASE` |
 | Nombres de los recursos | GitHub Variables **del entorno** | `AZURE_RESOURCE_GROUP`, `AZURE_WEBAPP_NAME`, `ACR_NAME` (los nombres llevan un sufijo aleatorio, así que `deploy.sh` no puede deducirlos: los recibe) |
-| Valores fijos del despliegue | El propio `deploy.sh` | `SPRING_PROFILES_ACTIVE=prod`, `PORT`, `WEBSITES_PORT`, `SERVER_FORWARD_HEADERS_STRATEGY`, `MANAGEMENT_HEALTH_MONGODB_ENABLED=false` (P-7) |
+| Valores fijos del despliegue | El propio `deploy.sh` | `SPRING_PROFILES_ACTIVE=prod`, `PORT`, `WEBSITES_PORT`, `SERVER_FORWARD_HEADERS_STRATEGY`, `MANAGEMENT_HEALTH_MONGODB_ENABLED=true` (P-7 revertida, T-6.1) |
 
 **Cómo los conecta `cd-deploy.yml`** (todos son del **entorno** de GitHub, no del repositorio; un valor vacío cuenta como no
 definido):

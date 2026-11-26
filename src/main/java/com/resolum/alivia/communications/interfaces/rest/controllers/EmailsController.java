@@ -8,6 +8,7 @@ import com.resolum.alivia.communications.interfaces.rest.transform.EmailResource
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -24,7 +25,8 @@ public class EmailsController {
     }
 
     @GetMapping
-    @Operation(summary = "Get emails by delivery status")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    @Operation(summary = "Get emails by delivery status", description = "Only an administrator reads the delivery log")
     public ResponseEntity<List<EmailResource>> getAll(@RequestParam(defaultValue = "FAILED") String status) {
         EmailStatus emailStatus = EmailStatus.FAILED;
         if (status != null && !status.isBlank()) {

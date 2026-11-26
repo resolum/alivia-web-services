@@ -1,0 +1,38 @@
+{
+  "reportedAt": "2026-11-24T15:04:00Z",
+  "edge": { "pendingEvents": 3, "uptimeS": 3600 },
+  "devices": [
+    {
+      "deviceId": 10,
+      "connectionStatus": "CONNECTED",
+      "operationalStatus": "OK",
+      "currentState": "closed",
+      "batteryPct": 78,
+      "lastCommunicationAt": "2026-11-24T15:03:58Z",
+      "observedAt": "2026-11-24T15:03:58Z",
+      "faults": [],
+      "diagnostics": { "rssi": -55, "freeHeap": 180000 }
+    },
+    {
+      "deviceId": 11,
+      "connectionStatus": "CONNECTED",
+      "operationalStatus": "OK",
+      "currentState": "open",
+      "observedAt": "2026-11-24T14:00:00Z"
+    },
+    {
+      "deviceId": 12,
+      "connectionStatus": "CONNECTED",
+      "operationalStatus": "OK",
+      "currentState": "closed",
+      "batteryPct": 101,
+      "observedAt": "2026-11-24T15:03:59Z"
+    },
+    {
+      "deviceId": 99,
+      "connectionStatus": "CONNECTED",
+      "operationalStatus": "OK",
+      "observedAt": "2026-11-24T15:03:59Z"
+    }
+  ]
+}

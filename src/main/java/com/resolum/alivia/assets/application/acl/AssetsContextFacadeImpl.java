@@ -12,13 +12,20 @@ import com.resolum.alivia.assets.domain.model.queries.GetEdgeByMacAddressQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeCountByBusinessIdQuery;
 import com.resolum.alivia.assets.domain.services.DeviceCommandService;
 import com.resolum.alivia.assets.domain.services.DeviceAssignmentCommandService;
+import com.resolum.alivia.assets.domain.model.queries.GetDevicesOfHouseholdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetEdgeScopeByEdgeIdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetEdgesOfHouseholdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetHouseholdOfDeviceQuery;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeType;
 import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryCommandService;
+import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryQueryService;
 import com.resolum.alivia.assets.domain.services.DeviceQueryService;
 import com.resolum.alivia.assets.domain.services.EdgeCommandService;
 import com.resolum.alivia.assets.domain.services.EdgeQueryService;
 import com.resolum.alivia.assets.interfaces.acl.AssetsContextFacade;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -29,10 +36,13 @@ public class AssetsContextFacadeImpl implements AssetsContextFacade {
     private final EdgeQueryService edgeQueryService;
     private final HouseholdDeviceRegistryCommandService householdDeviceRegistryCommandService;
     private final DeviceAssignmentCommandService deviceAssignmentCommandService;
+    private final HouseholdDeviceRegistryQueryService householdDeviceRegistryQueryService;
 
     public AssetsContextFacadeImpl(DeviceQueryService deviceQueryService, DeviceCommandService deviceCommandService, EdgeCommandService edgeCommandService, EdgeQueryService edgeQueryService,
                                    HouseholdDeviceRegistryCommandService householdDeviceRegistryCommandService,
-                                   DeviceAssignmentCommandService deviceAssignmentCommandService) {
+                                   DeviceAssignmentCommandService deviceAssignmentCommandService,
+                                   HouseholdDeviceRegistryQueryService householdDeviceRegistryQueryService) {
+        this.householdDeviceRegistryQueryService = householdDeviceRegistryQueryService;
         this.householdDeviceRegistryCommandService = householdDeviceRegistryCommandService;
         this.deviceAssignmentCommandService = deviceAssignmentCommandService;
         this.deviceQueryService = deviceQueryService;
@@ -68,6 +78,39 @@ public class AssetsContextFacadeImpl implements AssetsContextFacade {
     public void unassignDevice(Long deviceId, String reason, Long actingUserId) {
         deviceAssignmentCommandService.handle(new UnassignDeviceCommand(deviceId, reason, actingUserId,
                 CallerAuthority.AUTHORIZED_BY_CONTEXT));
+    }
+
+    @Override
+    public Optional<EdgeScope> fetchEdgeScope(Long edgeId) {
+        return householdDeviceRegistryQueryService.handle(new GetEdgeScopeByEdgeIdQuery(edgeId))
+                .map(view -> new EdgeScope(view.edgeId(),
+                        view.edgeType() == EdgeType.MICROPHONE_EDGE ? "MICROPHONE" : "ACTUATOR",
+                        view.installationId(), view.householdId(),
+                        view.devices().stream()
+                                .map(device -> new ScopedDevice(device.deviceId(), device.alias(), device.type().name(),
+                                        device.status().name(), device.roomKey()))
+                                .toList()));
+    }
+
+    @Override
+    public List<ScopedDevice> fetchDevicesOfHousehold(Long householdId) {
+        return householdDeviceRegistryQueryService.handle(new GetDevicesOfHouseholdQuery(householdId)).stream()
+                .map(device -> new ScopedDevice(device.deviceId(), device.alias(), device.type().name(),
+                        device.status().name(), device.roomKey()))
+                .toList();
+    }
+
+    @Override
+    public List<AssignedEdge> fetchEdgesOfHousehold(Long householdId) {
+        return householdDeviceRegistryQueryService.handle(new GetEdgesOfHouseholdQuery(householdId)).stream()
+                .map(edge -> new AssignedEdge(edge.edgeId(),
+                        edge.edgeType() == EdgeType.MICROPHONE_EDGE ? "MICROPHONE" : "ACTUATOR"))
+                .toList();
+    }
+
+    @Override
+    public Optional<Long> fetchHouseholdOfDevice(Long deviceId) {
+        return householdDeviceRegistryQueryService.handle(new GetHouseholdOfDeviceQuery(deviceId));
     }
 
     @Override

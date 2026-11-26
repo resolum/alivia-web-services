@@ -6,7 +6,7 @@
 #
 # What it does (docs/operations/azure-deployment.md, section 8):
 #   1. validates the arguments, that every required variable is set (it lists NAMES, never values) and that the email
-#      configuration can work;
+#      and push notification configurations can work;
 #   2. checks that the image exists in the registry and remembers the one that runs now;
 #   2b. starts the PostgreSQL server when it is stopped and waits until it is Ready (only when AZURE_POSTGRES_SERVER_NAME
 #      is set): a stopped server makes the application fail to start and the health check wait for the whole timeout;
@@ -58,7 +58,7 @@ readonly REQUIRED_APP_VARS=(
 # Have a default in the application; they are copied only when set.
 readonly OPTIONAL_APP_VARS=(
   IAM_EMAIL_PROVIDER IAM_EMAIL_FROM IAM_EMAIL_FROM_NAME RESEND_API_KEY
-  PUSH_PROVIDER FIREBASE_CREDENTIALS_JSON
+  PUSH_PROVIDER FIREBASE_CREDENTIALS_JSON FIREBASE_CREDENTIALS_PATH
   IAM_ACCOUNT_ACTIVATION_LINK_BASE_URL IAM_ACCOUNT_ACTIVATION_EXPIRATION_HOURS
   IAM_EMAIL_VERIFICATION_EXPIRATION_HOURS IAM_EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS
   IAM_DEFAULT_PHOTO_URL HCM_DEFAULT_BUSINESS_ID
@@ -77,17 +77,20 @@ readonly SECRET_VARS=(
   DB_PASSWORD MONGODB_URI IAM_JWT_SECRET
   STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET
   CLOUDINARY_API_KEY CLOUDINARY_API_SECRET
-  IAM_SUPER_ADMIN_PASSWORD RESEND_API_KEY FIREBASE_CREDENTIALS_JSON
+  IAM_SUPER_ADMIN_PASSWORD RESEND_API_KEY FIREBASE_CREDENTIALS_JSON FIREBASE_CREDENTIALS_PATH
 )
 
-# Owned by this script (Terraform does not define them). MongoDB is left out of /actuator/health while no code uses it,
-# so an Atlas outage cannot fail a deployment (decision P-7). The property is management.health.mongodb.enabled.
+# Owned by this script (Terraform does not define them). MongoDB is part of /actuator/health again: Tracking now reads and
+# writes it, so an Atlas outage that makes the application useless must not look healthy (decision P-7, reverted by the
+# Tracking context). The value is set to true, and not just left out, on purpose: `az webapp config appsettings set` only
+# adds or changes settings, so an App Service that already has `false` from before keeps it unless it is overwritten.
+# The property is management.health.mongodb.enabled.
 readonly FIXED_SETTINGS=(
   "SPRING_PROFILES_ACTIVE=prod"
   "PORT=8080"
   "WEBSITES_PORT=8080"
   "SERVER_FORWARD_HEADERS_STRATEGY=framework"
-  "MANAGEMENT_HEALTH_MONGODB_ENABLED=false"
+  "MANAGEMENT_HEALTH_MONGODB_ENABLED=true"
 )
 
 ENVIRONMENT=""
@@ -204,6 +207,44 @@ check_email_configuration() {
   esac
 }
 
+is_not_blank() {
+  local name="$1"
+  [[ "${!name:-}" =~ [^[:space:]] ]]
+}
+
+# In a deployment FIREBASE_CREDENTIALS_JSON and FIREBASE_CREDENTIALS_PATH are two names for the same secret: the service
+# account key file encoded in Base64. The application is different: it reads only the first one as the key and takes the
+# second one for the path of a file (and an error opening it would write the "path" to the log). So when only the second
+# one is given, its value is also sent as the first one, which the application prefers. With both, the first one wins.
+unify_firebase_credentials() {
+  if ! is_not_blank FIREBASE_CREDENTIALS_JSON && is_not_blank FIREBASE_CREDENTIALS_PATH; then
+    FIREBASE_CREDENTIALS_JSON="$FIREBASE_CREDENTIALS_PATH"
+  fi
+}
+
+# Push notifications: the application does not start with a provider other than log or firebase, or with firebase and no
+# service account. The rollback would bring back the previous image but not the settings, so that image would read the same
+# ones. Those cases are refused here, before anything is changed. The application compares the provider ignoring case but
+# does not trim it. Whether the key itself is valid cannot be checked from here.
+check_push_configuration() {
+  local provider="${PUSH_PROVIDER:-}"
+
+  case "$provider" in
+    [Ff][Ii][Rr][Ee][Bb][Aa][Ss][Ee])
+      is_not_blank FIREBASE_CREDENTIALS_JSON \
+        || die "PUSH_PROVIDER=firebase exige FIREBASE_CREDENTIALS_JSON o FIREBASE_CREDENTIALS_PATH (el archivo de credenciales en Base64)"
+      ;;
+    "" | [Ll][Oo][Gg])
+      if [[ -z "$provider" ]] && { is_set FIREBASE_CREDENTIALS_JSON || is_set FIREBASE_CREDENTIALS_PATH; }; then
+        warn "hay credenciales de Firebase pero PUSH_PROVIDER no esta definida: este despliegue no activa el envio (por defecto es 'log')"
+      fi
+      ;;
+    *)
+      die "PUSH_PROVIDER='$provider' no es valido (usa log o firebase)"
+      ;;
+  esac
+}
+
 check_variables() {
   local missing=() name
   for name in "${RESOURCE_VARS[@]}" "${REQUIRED_APP_VARS[@]}"; do
@@ -231,6 +272,8 @@ check_variables() {
   done
 
   check_email_configuration
+  unify_firebase_credentials
+  check_push_configuration
 }
 
 # In GitHub Actions the values of secrets are already masked, but a variable that holds a derived value (for example a

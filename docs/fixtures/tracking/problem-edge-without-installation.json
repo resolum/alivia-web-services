@@ -1,0 +1,8 @@
+{
+  "type": "about:blank",
+  "title": "Not Found",
+  "status": 404,
+  "detail": "The edge 3 is not assigned to an active installation.",
+  "code": "edge_without_installation",
+  "errors": []
+}

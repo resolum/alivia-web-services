@@ -1,17 +1,25 @@
 package com.resolum.alivia.assets.application.internal.queryservices;
 
 import com.resolum.alivia.assets.domain.model.aggregates.HouseholdDeviceRegistry;
+import com.resolum.alivia.assets.domain.model.queries.GetDevicesOfHouseholdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByEdgeIdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetEdgesOfHouseholdQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetHouseholdOfDeviceQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetEdgeScopeByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeTableVersionByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetTableVersionByInstallationIdQuery;
+import com.resolum.alivia.assets.domain.model.valueobjects.AssignedEdge;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeAccessTable;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeScopeView;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeTableVersion;
+import com.resolum.alivia.assets.domain.model.valueobjects.EdgeType;
 import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryQueryService;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.HouseholdDeviceRegistryRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -33,6 +41,60 @@ public class HouseholdDeviceRegistryQueryServiceImpl implements HouseholdDeviceR
         return registryRepository.findByAssignedEdgeId(query.edgeId())
                 .filter(HouseholdDeviceRegistry::isActive)
                 .map(HouseholdDeviceRegistry::table);
+    }
+
+    /** Same snapshot as the table: the registry and its entries are read together. */
+    @Override
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public Optional<EdgeScopeView> handle(GetEdgeScopeByEdgeIdQuery query) {
+        return registryRepository.findByAssignedEdgeId(query.edgeId())
+                .filter(HouseholdDeviceRegistry::isActive)
+                .map(registry -> new EdgeScopeView(query.edgeId(),
+                        registry.getMicrophoneEdge() != null && query.edgeId().equals(registry.getMicrophoneEdge().getId())
+                                ? EdgeType.MICROPHONE_EDGE : EdgeType.ACTUATOR_EDGE,
+                        registry.getInstallationId().installationId(), registry.getHouseholdId(),
+                        registry.activeAssignments().stream()
+                                .map(assignment -> new EdgeScopeView.ScopedDevice(assignment.getDevice().getId(),
+                                        assignment.getDevice().getAlias(), assignment.getDevice().getDeviceType(),
+                                        assignment.getDevice().getAssetStatus(), assignment.getRoomKey()))
+                                .toList()));
+    }
+
+    /** The registry and its entries come from one snapshot, as in the scope of an edge. */
+    @Override
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public List<EdgeScopeView.ScopedDevice> handle(GetDevicesOfHouseholdQuery query) {
+        if (query.householdId() == null) return List.of();
+        return registryRepository.findActiveByHouseholdId(query.householdId())
+                .map(registry -> registry.activeAssignments().stream()
+                        .map(assignment -> new EdgeScopeView.ScopedDevice(assignment.getDevice().getId(),
+                                assignment.getDevice().getAlias(), assignment.getDevice().getDeviceType(),
+                                assignment.getDevice().getAssetStatus(), assignment.getRoomKey()))
+                        .toList())
+                .orElse(List.of());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AssignedEdge> handle(GetEdgesOfHouseholdQuery query) {
+        if (query.householdId() == null) return List.of();
+        return registryRepository.findActiveByHouseholdId(query.householdId()).map(registry -> {
+            var edges = new java.util.ArrayList<AssignedEdge>(2);
+            if (registry.getMicrophoneEdge() != null) {
+                edges.add(new AssignedEdge(registry.getMicrophoneEdge().getId(), EdgeType.MICROPHONE_EDGE));
+            }
+            if (registry.getActuatorEdge() != null) {
+                edges.add(new AssignedEdge(registry.getActuatorEdge().getId(), EdgeType.ACTUATOR_EDGE));
+            }
+            return List.copyOf(edges);
+        }).orElse(List.of());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Long> handle(GetHouseholdOfDeviceQuery query) {
+        if (query.deviceId() == null) return Optional.empty();
+        return registryRepository.findActiveHouseholdIdByDeviceId(query.deviceId());
     }
 
     @Override

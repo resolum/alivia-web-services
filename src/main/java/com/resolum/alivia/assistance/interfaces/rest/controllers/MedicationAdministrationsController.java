@@ -6,13 +6,13 @@ import com.resolum.alivia.assistance.domain.model.commands.CancelActivityOccurre
 import com.resolum.alivia.assistance.domain.model.commands.CompleteActivityCommand;
 import com.resolum.alivia.assistance.domain.model.queries.GetActivityLogsByAssistedPersonIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetAgendaByAssistedPersonIdQuery;
-import com.resolum.alivia.assistance.domain.model.queries.GetAllAssistedPersonsQuery;
 import com.resolum.alivia.assistance.domain.model.valueobjects.ActivityLogStatus;
 import com.resolum.alivia.assistance.domain.model.valueobjects.AgendaItem;
 import com.resolum.alivia.assistance.domain.services.ActivityLogCommandService;
 import com.resolum.alivia.assistance.domain.services.ActivityLogQueryService;
-import com.resolum.alivia.assistance.domain.services.AssistedPersonQueryService;
+import com.resolum.alivia.assistance.domain.services.AssistanceAccessService;
 import com.resolum.alivia.assistance.domain.services.CareActivityQueryService;
+import com.resolum.alivia.assistance.interfaces.rest.CallerIdentity;
 import com.resolum.alivia.assistance.interfaces.rest.resources.CareAgendaItemResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.MedicationAdministrationResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.RecordMedicationOutcomeResource;
@@ -36,28 +36,30 @@ import java.util.Optional;
 public class MedicationAdministrationsController {
 
     private final CareActivityQueryService careActivityQueryService;
-    private final AssistedPersonQueryService assistedPersonQueryService;
+    private final AssistanceAccessService accessService;
     private final ActivityLogQueryService activityLogQueryService;
     private final ActivityLogCommandService activityLogCommandService;
 
     public MedicationAdministrationsController(
             CareActivityQueryService careActivityQueryService,
-            AssistedPersonQueryService assistedPersonQueryService,
+            AssistanceAccessService accessService,
             ActivityLogQueryService activityLogQueryService,
             ActivityLogCommandService activityLogCommandService) {
         this.careActivityQueryService = careActivityQueryService;
-        this.assistedPersonQueryService = assistedPersonQueryService;
+        this.accessService = accessService;
         this.activityLogQueryService = activityLogQueryService;
         this.activityLogCommandService = activityLogCommandService;
     }
 
     @GetMapping("/{administrationId}")
-    public ResponseEntity<MedicationAdministrationResource> getAdministration(@PathVariable String administrationId) {
+    public ResponseEntity<MedicationAdministrationResource> getAdministration(@PathVariable String administrationId,
+                                                                             Principal principal) {
+        Long userId = CallerIdentity.requireUserId(principal);
         OccurrenceKey key = parseAdministrationId(administrationId);
         if (key == null) {
             return ResponseEntity.notFound().build();
         }
-        Optional<AgendaMatch> matchOpt = findOccurrence(key.assignmentId(), key.date());
+        Optional<AgendaMatch> matchOpt = findOccurrence(key.assignmentId(), key.date(), userId);
         if (matchOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
@@ -73,18 +75,12 @@ public class MedicationAdministrationsController {
         if (key == null || resource == null || resource.result() == null) {
             return ResponseEntity.badRequest().build();
         }
-        Optional<AgendaMatch> matchOpt = findOccurrence(key.assignmentId(), key.date());
+        Long userId = CallerIdentity.requireUserId(principal);
+        Optional<AgendaMatch> matchOpt = findOccurrence(key.assignmentId(), key.date(), userId);
         if (matchOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
         AgendaMatch match = matchOpt.get();
-        Long userId = null;
-        if (principal != null) {
-            try {
-                userId = Long.valueOf(principal.getName());
-            } catch (Exception ignored) {
-            }
-        }
 
         if ("ADMINISTERED".equalsIgnoreCase(resource.result())) {
             activityLogCommandService.handle(new CompleteActivityCommand(
@@ -108,8 +104,9 @@ public class MedicationAdministrationsController {
         return ResponseEntity.ok(toResource(administrationId, match, key.date()));
     }
 
-    private Optional<AgendaMatch> findOccurrence(Long assignmentId, LocalDate date) {
-        List<AssistedPerson> persons = assistedPersonQueryService.handle(new GetAllAssistedPersonsQuery());
+    /** Looks for the occurrence only among the persons the caller takes care of, so an id of another home is a 404. */
+    private Optional<AgendaMatch> findOccurrence(Long assignmentId, LocalDate date, Long userId) {
+        List<AssistedPerson> persons = accessService.readableBy(userId);
         for (AssistedPerson person : persons) {
             List<AgendaItem> items = careActivityQueryService.handle(
                     new GetAgendaByAssistedPersonIdQuery(person.getId(), date, date));

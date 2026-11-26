@@ -12,10 +12,11 @@ import com.resolum.alivia.assistance.domain.repositories.AssistedPersonRepositor
 import com.resolum.alivia.assistance.domain.repositories.CareActivityRepository;
 import com.resolum.alivia.assistance.domain.repositories.CaregiverRepository;
 import com.resolum.alivia.assistance.domain.repositories.RelativeRepository;
-import com.resolum.alivia.assistance.domain.model.queries.GetAllAssistedPersonsQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetAssistedPersonsByRelativeIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetCaregiversByUserIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetRelativeByUserIdQuery;
+import com.resolum.alivia.assistance.domain.exceptions.AssistanceAccessDeniedException;
+import com.resolum.alivia.assistance.domain.services.AssistanceAccessService;
 import com.resolum.alivia.assistance.domain.services.AssistedPersonQueryService;
 import com.resolum.alivia.assistance.domain.services.CareActivityQueryService;
 import com.resolum.alivia.assistance.domain.services.CaregiverQueryService;
@@ -38,7 +39,10 @@ import static com.resolum.alivia.assistance.AssistanceFixtures.caregiver;
 import static com.resolum.alivia.assistance.AssistanceFixtures.principal;
 import static com.resolum.alivia.assistance.AssistanceFixtures.relative;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -50,6 +54,7 @@ class AgendaControllerTest {
     private RelativeQueryService relativeQueryService;
     private AssistedPersonQueryService assistedPersonQueryService;
     private CaregiverQueryService caregiverQueryService;
+    private AssistanceAccessService access;
     private AgendaController controller;
     private Relative relative;
     private AssistedPerson person;
@@ -60,7 +65,8 @@ class AgendaControllerTest {
         relativeQueryService = mock(RelativeQueryService.class);
         assistedPersonQueryService = mock(AssistedPersonQueryService.class);
         caregiverQueryService = mock(CaregiverQueryService.class);
-        controller = new AgendaController(queries, relativeQueryService, assistedPersonQueryService, caregiverQueryService);
+        access = mock(AssistanceAccessService.class);
+        controller = new AgendaController(queries, relativeQueryService, assistedPersonQueryService, caregiverQueryService, access);
         relative = relative(1L);
         person = assistedPerson(2L, relative);
     }
@@ -80,7 +86,7 @@ class AgendaControllerTest {
                 item(9, CareActivityType.MEAL, OccurrenceStatus.SCHEDULED, null),
                 item(7, CareActivityType.MEDICATION, OccurrenceStatus.COMPLETED, null)));
 
-        var body = controller.getCareAgenda(null, from, to, 2L, null, OccurrenceStatus.SCHEDULED,
+        var body = controller.getCareAgenda(principal("1"), from, to, 2L, null, OccurrenceStatus.SCHEDULED,
                 ReminderPriority.HIGH).getBody();
 
         assertThat(body).hasSize(2);
@@ -94,8 +100,8 @@ class AgendaControllerTest {
         when(queries.handle(new GetAgendaByCaregiverIdQuery(3L, from, to)))
                 .thenReturn(List.of(item(8, CareActivityType.BATH, OccurrenceStatus.MISSED, 3L)));
 
-        assertThat(controller.getCareAgenda(null, from, to, null, 3L, null, null).getBody()).hasSize(1);
-        assertThat(controller.getAgendaByCaregiverId(3L, from, to).getBody()).hasSize(1);
+        assertThat(controller.getCareAgenda(principal("1"), from, to, null, 3L, null, null).getBody()).hasSize(1);
+        assertThat(controller.getAgendaByCaregiverId(3L, principal("1"), from, to).getBody()).hasSize(1);
     }
 
     @Test
@@ -106,7 +112,7 @@ class AgendaControllerTest {
                 .thenReturn(List.of(item(8, CareActivityType.THERAPY, OccurrenceStatus.SCHEDULED, null)));
 
         assertThat(controller.getCareAgenda(principal("1"), from, to, null, null, null, null).getBody()).hasSize(1);
-        assertThat(controller.getAgendaByAssistedPersonId(2L, from, to).getBody()).hasSize(1);
+        assertThat(controller.getAgendaByAssistedPersonId(2L, principal("1"), from, to).getBody()).hasSize(1);
     }
 
     @Test
@@ -120,13 +126,30 @@ class AgendaControllerTest {
     }
 
     @Test
-    void fallsBackToEveryActiveActivityWhenTheCallerHasNothing() {
-        when(assistedPersonQueryService.handle(any(GetAllAssistedPersonsQuery.class))).thenReturn(List.of(person));
-        when(queries.handle(any(GetAgendaByAssistedPersonIdQuery.class)))
-                .thenReturn(List.of(item(8, CareActivityType.APPOINTMENT, OccurrenceStatus.SCHEDULED, null)));
+    void checksThatTheCallerMayReadWhatItAsksFor() {
+        when(access.requireRead(2L, 9L)).thenThrow(new AssistanceAccessDeniedException("no"));
+        when(access.requireReadCaregiver(3L, 9L)).thenThrow(new AssistanceAccessDeniedException("no"));
 
-        assertThat(controller.getCareAgenda(principal("not-a-user"), from, to, null, null, null, null).getBody())
-                .hasSize(1);
-        assertThat(controller.getCareAgenda(null, from, to, null, null, null, null).getBody()).hasSize(1);
+        assertThatThrownBy(() -> controller.getCareAgenda(principal("9"), from, to, 2L, null, null, null))
+                .isInstanceOf(AssistanceAccessDeniedException.class);
+        assertThatThrownBy(() -> controller.getCareAgenda(principal("9"), from, to, null, 3L, null, null))
+                .isInstanceOf(AssistanceAccessDeniedException.class);
+        assertThatThrownBy(() -> controller.getAgendaByAssistedPersonId(2L, principal("9"), from, to))
+                .isInstanceOf(AssistanceAccessDeniedException.class);
+        assertThatThrownBy(() -> controller.getAgendaByCaregiverId(3L, principal("9"), from, to))
+                .isInstanceOf(AssistanceAccessDeniedException.class);
+        verify(queries, never()).handle(any(GetAgendaByAssistedPersonIdQuery.class));
+        verify(queries, never()).handle(any(GetAgendaByCaregiverIdQuery.class));
+    }
+
+    @Test
+    void aCallerWhoTakesCareOfNobodyGetsAnEmptyAgendaNeverEveryoneElses() {
+        when(relativeQueryService.handle(new GetRelativeByUserIdQuery(9L))).thenReturn(Optional.empty());
+        when(caregiverQueryService.handle(new GetCaregiversByUserIdQuery(9L))).thenReturn(List.of());
+
+        assertThat(controller.getCareAgenda(principal("9"), from, to, null, null, null, null).getBody()).isEmpty();
+        verify(queries, never()).handle(any(GetAgendaByAssistedPersonIdQuery.class));
+        assertThatThrownBy(() -> controller.getCareAgenda(null, from, to, null, null, null, null))
+                .isInstanceOf(AssistanceAccessDeniedException.class);
     }
 }

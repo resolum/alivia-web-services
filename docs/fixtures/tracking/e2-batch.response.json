@@ -1,0 +1,10 @@
+{
+  "results": [
+    { "eventId": "9f1c0e7a2b6d4c3e8a5b1d2f3c4e5a01", "status": "ACCEPTED" },
+    { "eventId": "9f1c0e7a2b6d4c3e8a5b1d2f3c4e5a02", "status": "ACCEPTED" },
+    { "eventId": "9f1c0e7a2b6d4c3e8a5b1d2f3c4e5a03", "status": "DUPLICATE" },
+    { "eventId": "9f1c0e7a2b6d4c3e8a5b1d2f3c4e5a04", "status": "ACCEPTED" },
+    { "eventId": "9f1c0e7a2b6d4c3e8a5b1d2f3c4e5a05", "status": "ACCEPTED" },
+    { "eventId": "9f1c0e7a2b6d4c3e8a5b1d2f3c4e5a06", "status": "REJECTED", "reason": "unknown_device" }
+  ]
+}

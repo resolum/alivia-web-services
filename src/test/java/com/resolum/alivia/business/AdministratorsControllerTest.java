@@ -139,12 +139,45 @@ class AdministratorsControllerTest {
         when(queryService.handle(any(GetAdministratorByIdQuery.class)))
                 .thenReturn(Optional.of(createAdministratorEntity(1L, 10L, 20L, "newbackup@gmail.com")));
 
+        when(queryService.handle(new com.resolum.alivia.business.domain.model.queries.GetAdministratorByUserIdQuery(10L)))
+                .thenReturn(Optional.of(createAdministratorEntity(1L, 10L, 20L, "newbackup@gmail.com")));
+
         mockMvc.perform(put("/api/v1/administrators/1")
+                        .principal(() -> "10")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(resource)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.backupPersonalEmail").value("newbackup@gmail.com"));
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/administrators/{id} returns 403 when it is not the record of the caller")
+    void updateAdministratorRefusesARecordThatIsNotTheCallers() throws Exception {
+        var resource = new UpdateAdministratorResource(null, null, "Carlos Alberto", "Mendoza Ruiz",
+                LocalDate.of(1985, 5, 20), "51987654321", "newbackup@gmail.com");
+        // The caller (account 11) is the administrator 2, so the record 1 is not theirs.
+        when(queryService.handle(new com.resolum.alivia.business.domain.model.queries.GetAdministratorByUserIdQuery(11L)))
+                .thenReturn(Optional.of(createAdministratorEntity(2L, 11L, 21L, "other@gmail.com")));
+
+        mockMvc.perform(put("/api/v1/administrators/1")
+                        .principal(() -> "11")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(resource)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/v1/administrators/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(resource)))
+                .andExpect(status().isForbidden());
+        org.mockito.Mockito.verifyNoInteractions(commandService);
+    }
+
+    @Test
+    @DisplayName("The administrator endpoints require the ADMINISTRATOR role")
+    void theControllerRequiresTheAdministratorRole() {
+        var rule = AdministratorsController.class.getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class);
+        org.junit.jupiter.api.Assertions.assertNotNull(rule);
+        org.junit.jupiter.api.Assertions.assertEquals("hasRole('ADMINISTRATOR')", rule.value());
     }
 
     @Test

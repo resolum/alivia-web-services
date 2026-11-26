@@ -1,15 +1,14 @@
 package com.resolum.alivia.assistance.interfaces.rest.controllers;
 
-import com.resolum.alivia.assistance.domain.model.aggregates.Relative;
+import com.resolum.alivia.assistance.domain.model.aggregates.AssistedPerson;
 import com.resolum.alivia.assistance.domain.model.commands.*;
 import com.resolum.alivia.assistance.domain.model.queries.*;
-import com.resolum.alivia.assistance.domain.services.AssistedPersonQueryService;
+import com.resolum.alivia.assistance.domain.services.AssistanceAccessService;
 import com.resolum.alivia.assistance.domain.services.CareActivityCommandService;
 import com.resolum.alivia.assistance.domain.services.CareActivityQueryService;
-import com.resolum.alivia.assistance.domain.services.RelativeQueryService;
+import com.resolum.alivia.assistance.interfaces.rest.CallerIdentity;
 import com.resolum.alivia.assistance.interfaces.rest.resources.*;
 import com.resolum.alivia.assistance.interfaces.rest.transform.CareActivityResourceAssembler;
-import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -25,59 +24,33 @@ public class CareActivitiesController {
 
     private final CareActivityCommandService commandService;
     private final CareActivityQueryService queryService;
-    private final RelativeQueryService relativeQueryService;
-    private final AssistedPersonQueryService assistedPersonQueryService;
+    private final AssistanceAccessService accessService;
 
     public CareActivitiesController(CareActivityCommandService commandService,
                                    CareActivityQueryService queryService,
-                                   RelativeQueryService relativeQueryService,
-                                   AssistedPersonQueryService assistedPersonQueryService) {
+                                   AssistanceAccessService accessService) {
         this.commandService = commandService;
         this.queryService = queryService;
-        this.relativeQueryService = relativeQueryService;
-        this.assistedPersonQueryService = assistedPersonQueryService;
+        this.accessService = accessService;
     }
 
-    private Long resolveRelativeId(Long relativeId, Principal principal) {
-        if (principal != null) {
-            try {
-                Long userId = Long.valueOf(principal.getName());
-                var byUser = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId));
-                if (byUser.isPresent()) {
-                    return byUser.get().getId();
-                }
-            } catch (Exception ignored) {}
-        }
-        if (relativeId != null) {
-            var byId = relativeQueryService.handle(new GetRelativeByIdQuery(relativeId));
-            if (byId.isPresent()) {
-                return relativeId;
-            }
-        }
-        var allAssisted = assistedPersonQueryService.handle(new GetAllAssistedPersonsQuery());
-        if (!allAssisted.isEmpty() && allAssisted.get(0).getRelative() != null) {
-            return allAssisted.get(0).getRelative().getId();
-        }
-        return 1L;
+    /**
+     * The activities are changed on behalf of the relative in charge of the person. Who is calling was already
+     * checked, so this id is the one of the person's relative and never one sent by the client.
+     */
+    private static Long relativeInChargeOf(AssistedPerson person) {
+        return person.getRelative().getId();
     }
 
     @PostMapping
     public ResponseEntity<Long> createCareActivity(
             Principal principal,
             @RequestBody CreateCareActivityResource resource) {
-        Long relativeId = resolveRelativeId(resource.relativeId(), principal);
-        Long assistedPersonId = resource.assistedPersonId();
-        if (assistedPersonId == null || assistedPersonQueryService.handle(new GetAssistedPersonByIdQuery(assistedPersonId)).isEmpty()) {
-            var persons = assistedPersonQueryService.handle(new GetAssistedPersonsByRelativeIdQuery(relativeId));
-            if (persons.isEmpty()) {
-                persons = assistedPersonQueryService.handle(new GetAllAssistedPersonsQuery());
-            }
-            assistedPersonId = persons.isEmpty() ? 1L : persons.get(0).getId();
-        }
+        var person = accessService.requireOperate(resource.assistedPersonId(), CallerIdentity.requireUserId(principal));
 
         CreateCareActivityCommand command = new CreateCareActivityCommand(
-                relativeId,
-                assistedPersonId,
+                relativeInChargeOf(person),
+                person.getId(),
                 resource.type(),
                 resource.title(),
                 resource.description()
@@ -91,10 +64,10 @@ public class CareActivitiesController {
             @PathVariable Long id,
             Principal principal,
             @RequestBody UpdateCareActivityResource resource) {
-        Long relativeId = resolveRelativeId(resource.relativeId(), principal);
+        var activity = accessService.requireOperateActivity(id, CallerIdentity.requireUserId(principal));
         UpdateCareActivityCommand command = new UpdateCareActivityCommand(
                 id,
-                relativeId,
+                relativeInChargeOf(activity.getAssistedPerson()),
                 resource.type(),
                 resource.title(),
                 resource.description()
@@ -106,20 +79,20 @@ public class CareActivitiesController {
     @PostMapping("/{id}/activate")
     public ResponseEntity<Long> activateCareActivity(
             @PathVariable Long id,
-            @RequestParam(required = false) Long relativeId,
             Principal principal) {
-        Long effRelativeId = resolveRelativeId(relativeId, principal);
-        Long resultId = commandService.handle(new ActivateCareActivityCommand(id, effRelativeId));
+        var activity = accessService.requireOperateActivity(id, CallerIdentity.requireUserId(principal));
+        Long resultId = commandService.handle(
+                new ActivateCareActivityCommand(id, relativeInChargeOf(activity.getAssistedPerson())));
         return ResponseEntity.ok(resultId);
     }
 
     @PostMapping("/{id}/deactivate")
     public ResponseEntity<Long> deactivateCareActivity(
             @PathVariable Long id,
-            @RequestParam(required = false) Long relativeId,
             Principal principal) {
-        Long effRelativeId = resolveRelativeId(relativeId, principal);
-        Long resultId = commandService.handle(new DeactivateCareActivityCommand(id, effRelativeId));
+        var activity = accessService.requireOperateActivity(id, CallerIdentity.requireUserId(principal));
+        Long resultId = commandService.handle(
+                new DeactivateCareActivityCommand(id, relativeInChargeOf(activity.getAssistedPerson())));
         return ResponseEntity.ok(resultId);
     }
 
@@ -128,10 +101,10 @@ public class CareActivitiesController {
             @PathVariable Long id,
             Principal principal,
             @RequestBody AssignCareActivityResource resource) {
-        Long relativeId = resolveRelativeId(resource.relativeId(), principal);
+        var activity = accessService.requireOperateActivity(id, CallerIdentity.requireUserId(principal));
         AssignCareActivityCommand command = new AssignCareActivityCommand(
                 id,
-                relativeId,
+                relativeInChargeOf(activity.getAssistedPerson()),
                 resource.caregiverId(),
                 resource.scheduleType(),
                 resource.days(),
@@ -149,11 +122,11 @@ public class CareActivitiesController {
             @PathVariable Long assignmentId,
             Principal principal,
             @RequestBody UpdateActivityAssignmentResource resource) {
-        Long relativeId = resolveRelativeId(resource.relativeId(), principal);
+        var activity = accessService.requireOperateActivity(id, CallerIdentity.requireUserId(principal));
         UpdateActivityAssignmentCommand command = new UpdateActivityAssignmentCommand(
                 id,
                 assignmentId,
-                relativeId,
+                relativeInChargeOf(activity.getAssistedPerson()),
                 resource.caregiverId(),
                 resource.scheduleType(),
                 resource.days(),
@@ -169,10 +142,10 @@ public class CareActivitiesController {
     public ResponseEntity<Long> activateAssignment(
             @PathVariable Long id,
             @PathVariable Long assignmentId,
-            @RequestParam(required = false) Long relativeId,
             Principal principal) {
-        Long effRelativeId = resolveRelativeId(relativeId, principal);
-        Long resultId = commandService.handle(new ActivateActivityAssignmentCommand(id, assignmentId, effRelativeId));
+        var activity = accessService.requireOperateActivity(id, CallerIdentity.requireUserId(principal));
+        Long resultId = commandService.handle(new ActivateActivityAssignmentCommand(
+                id, assignmentId, relativeInChargeOf(activity.getAssistedPerson())));
         return ResponseEntity.ok(resultId);
     }
 
@@ -180,23 +153,23 @@ public class CareActivitiesController {
     public ResponseEntity<Long> deactivateAssignment(
             @PathVariable Long id,
             @PathVariable Long assignmentId,
-            @RequestParam(required = false) Long relativeId,
             Principal principal) {
-        Long effRelativeId = resolveRelativeId(relativeId, principal);
-        Long resultId = commandService.handle(new DeactivateActivityAssignmentCommand(id, assignmentId, effRelativeId));
+        var activity = accessService.requireOperateActivity(id, CallerIdentity.requireUserId(principal));
+        Long resultId = commandService.handle(new DeactivateActivityAssignmentCommand(
+                id, assignmentId, relativeInChargeOf(activity.getAssistedPerson())));
         return ResponseEntity.ok(resultId);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<CareActivityResource> getCareActivityById(@PathVariable Long id) {
-        return queryService.handle(new GetCareActivityByIdQuery(id))
-                .map(CareActivityResourceAssembler::toResourceFromEntity)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<CareActivityResource> getCareActivityById(@PathVariable Long id, Principal principal) {
+        var activity = accessService.requireReadActivity(id, CallerIdentity.requireUserId(principal));
+        return ResponseEntity.ok(CareActivityResourceAssembler.toResourceFromEntity(activity));
     }
 
     @GetMapping("/assisted-person/{assistedPersonId}")
-    public ResponseEntity<List<CareActivityResource>> getCareActivitiesByAssistedPersonId(@PathVariable Long assistedPersonId) {
+    public ResponseEntity<List<CareActivityResource>> getCareActivitiesByAssistedPersonId(
+            @PathVariable Long assistedPersonId, Principal principal) {
+        accessService.requireRead(assistedPersonId, CallerIdentity.requireUserId(principal));
         List<CareActivityResource> list = queryService.handle(new GetCareActivitiesByAssistedPersonIdQuery(assistedPersonId))
                 .stream()
                 .map(CareActivityResourceAssembler::toResourceFromEntity)

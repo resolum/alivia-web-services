@@ -6,9 +6,11 @@ import com.resolum.alivia.communications.domain.services.AlertCommandService;
 import com.resolum.alivia.communications.domain.services.AlertQueryService;
 import com.resolum.alivia.communications.interfaces.rest.resources.AlertResource;
 import com.resolum.alivia.communications.interfaces.rest.transform.AlertResourceAssembler;
+import com.resolum.alivia.communications.interfaces.rest.CallerIdentity;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,39 +30,25 @@ public class AlertsController {
         this.queryService = queryService;
     }
 
-    private Long resolveUserId(Principal principal, Long requestedUserId) {
-        if (requestedUserId != null) {
-            return requestedUserId;
-        }
-        if (principal != null) {
-            try {
-                return Long.parseLong(principal.getName());
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return 1L;
-    }
-
     @GetMapping
     @Operation(summary = "Get user alerts history")
-    public ResponseEntity<List<AlertResource>> getAll(
-            Principal principal,
-            @RequestParam(required = false) Long userId) {
-        Long targetUserId = resolveUserId(principal, userId);
+    public ResponseEntity<List<AlertResource>> getAll(Principal principal) {
+        Long targetUserId = CallerIdentity.requireUserId(principal);
         var alerts = queryService.handle(new GetAllAlertsByUserIdQuery(targetUserId));
         var resources = alerts.stream().map(AlertResourceAssembler::toResourceFromEntity).toList();
         return ResponseEntity.ok(resources);
     }
 
     @PostMapping
-    @Operation(summary = "Create an emergency alert")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    @Operation(summary = "Create an emergency alert", description = "Only an administrator creates an alert for a user")
     public ResponseEntity<Long> createAlert(
             @RequestParam(required = false) Long userId,
             @RequestParam String helpRequestId,
             @RequestParam String title,
             @RequestParam String body,
             Principal principal) {
-        Long targetUserId = resolveUserId(principal, userId);
+        Long targetUserId = userId != null ? userId : CallerIdentity.requireUserId(principal);
         Long id = commandService.handle(new CreateAlertCommand(targetUserId, helpRequestId, title, body));
         return ResponseEntity.status(HttpStatus.CREATED).body(id);
     }

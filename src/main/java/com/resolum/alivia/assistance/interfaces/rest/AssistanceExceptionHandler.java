@@ -1,6 +1,7 @@
 package com.resolum.alivia.assistance.interfaces.rest;
 
 import com.resolum.alivia.assistance.domain.exceptions.ActivityAssignmentNotActiveException;
+import com.resolum.alivia.assistance.domain.exceptions.AssistanceAccessDeniedException;
 import com.resolum.alivia.assistance.domain.exceptions.ActivityAssignmentNotFoundException;
 import com.resolum.alivia.assistance.domain.exceptions.AssistedPersonNotFoundException;
 import com.resolum.alivia.assistance.domain.exceptions.AssistedPersonNotManagedByRelativeException;
@@ -66,6 +67,7 @@ public class AssistanceExceptionHandler {
 
     // 403 Forbidden
     @ExceptionHandler({
+            AssistanceAccessDeniedException.class,
             AssistedPersonNotManagedByRelativeException.class,
             InvitationNotForUserException.class,
             NotResponsibleForActivityException.class,

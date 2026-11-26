@@ -9,14 +9,14 @@ import com.resolum.alivia.assistance.domain.model.commands.CompleteActivityComma
 import com.resolum.alivia.assistance.domain.model.entities.ActivityAssignment;
 import com.resolum.alivia.assistance.domain.model.queries.GetActivityLogsByAssistedPersonIdQuery;
 import com.resolum.alivia.assistance.domain.model.queries.GetAgendaByAssistedPersonIdQuery;
-import com.resolum.alivia.assistance.domain.model.queries.GetAllAssistedPersonsQuery;
 import com.resolum.alivia.assistance.domain.model.valueobjects.AgendaItem;
 import com.resolum.alivia.assistance.domain.model.valueobjects.CareActivityType;
 import com.resolum.alivia.assistance.domain.model.valueobjects.OccurrenceStatus;
 import com.resolum.alivia.assistance.domain.model.valueobjects.Schedule;
 import com.resolum.alivia.assistance.domain.services.ActivityLogCommandService;
 import com.resolum.alivia.assistance.domain.services.ActivityLogQueryService;
-import com.resolum.alivia.assistance.domain.services.AssistedPersonQueryService;
+import com.resolum.alivia.assistance.domain.exceptions.AssistanceAccessDeniedException;
+import com.resolum.alivia.assistance.domain.services.AssistanceAccessService;
 import com.resolum.alivia.assistance.domain.services.CareActivityQueryService;
 import com.resolum.alivia.assistance.interfaces.rest.controllers.MedicationAdministrationsController;
 import com.resolum.alivia.assistance.interfaces.rest.resources.RecordMedicationOutcomeResource;
@@ -36,13 +36,14 @@ import static com.resolum.alivia.assistance.AssistanceFixtures.assistedPerson;
 import static com.resolum.alivia.assistance.AssistanceFixtures.principal;
 import static com.resolum.alivia.assistance.AssistanceFixtures.relative;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class MedicationAdministrationsControllerTest {
 
     private CareActivityQueryService careActivityQueryService;
-    private AssistedPersonQueryService assistedPersonQueryService;
+    private AssistanceAccessService access;
     private ActivityLogQueryService activityLogQueryService;
     private ActivityLogCommandService activityLogCommandService;
     private MedicationAdministrationsController controller;
@@ -54,12 +55,12 @@ class MedicationAdministrationsControllerTest {
     @BeforeEach
     void setUp() {
         careActivityQueryService = mock(CareActivityQueryService.class);
-        assistedPersonQueryService = mock(AssistedPersonQueryService.class);
+        access = mock(AssistanceAccessService.class);
         activityLogQueryService = mock(ActivityLogQueryService.class);
         activityLogCommandService = mock(ActivityLogCommandService.class);
 
         controller = new MedicationAdministrationsController(
-                careActivityQueryService, assistedPersonQueryService,
+                careActivityQueryService, access,
                 activityLogQueryService, activityLogCommandService);
 
         Relative rel = relative(1L);
@@ -75,15 +76,15 @@ class MedicationAdministrationsControllerTest {
                 new AgendaItem.Contact("Paciente", new PersonProfileId(101L), "Ana", "ana@alivia.test")
         );
 
-        when(assistedPersonQueryService.handle(any(GetAllAssistedPersonsQuery.class))).thenReturn(List.of(person));
+        when(access.readableBy(1L)).thenReturn(List.of(person));
     }
 
     @Test
     void getAdministrationReturnsNotFoundForInvalidOrMissingOccurrence() {
-        assertThat(controller.getAdministration("invalid-id").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(controller.getAdministration("invalid-id", principal("1")).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
         when(careActivityQueryService.handle(any(GetAgendaByAssistedPersonIdQuery.class))).thenReturn(List.of());
-        assertThat(controller.getAdministration("5-20261115").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(controller.getAdministration("5-20261115", principal("1")).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test
@@ -101,7 +102,7 @@ class MedicationAdministrationsControllerTest {
         when(careActivityQueryService.handle(any(GetAgendaByAssistedPersonIdQuery.class))).thenReturn(List.of(agendaItem));
         when(activityLogQueryService.handle(any(GetActivityLogsByAssistedPersonIdQuery.class))).thenReturn(List.of(log));
 
-        var response = controller.getAdministration("5-20261115");
+        var response = controller.getAdministration("5-20261115", principal("1"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().administrationId()).isEqualTo("5-20261115");
@@ -127,8 +128,24 @@ class MedicationAdministrationsControllerTest {
         verify(activityLogCommandService).handle(any(CompleteActivityCommand.class));
 
         var omitted = controller.recordOutcome("5-20261115",
-                new RecordMedicationOutcomeResource("OMITTED", "no quiso", null), principal("bad"));
+                new RecordMedicationOutcomeResource("OMITTED", "no quiso", null), principal("1"));
         assertThat(omitted.getStatusCode()).isEqualTo(HttpStatus.OK);
         verify(activityLogCommandService).handle(any(CancelActivityOccurrenceCommand.class));
+    }
+
+    @Test
+    void anOccurrenceOfAPersonTheCallerDoesNotTakeCareOfIsNotFoundAndNothingIsRecorded() {
+        when(access.readableBy(9L)).thenReturn(List.of());
+        when(careActivityQueryService.handle(any(GetAgendaByAssistedPersonIdQuery.class))).thenReturn(List.of(agendaItem));
+
+        assertThat(controller.getAdministration("5-20261115", principal("9")).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(controller.recordOutcome("5-20261115",
+                new RecordMedicationOutcomeResource("ADMINISTERED", "ok", null), principal("9")).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        verifyNoInteractions(activityLogCommandService);
+        assertThatThrownBy(() -> controller.recordOutcome("5-20261115",
+                new RecordMedicationOutcomeResource("ADMINISTERED", "ok", null), principal("bad")))
+                .isInstanceOf(AssistanceAccessDeniedException.class);
     }
 }

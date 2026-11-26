@@ -86,6 +86,16 @@ class WebSecurityConfigurationTest {
     }
 
     @Test
+    void theQueriesOfTrackingNeedASession() throws Exception {
+        mvc.perform(get("/api/v1/assisted-persons/2/devices/status")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/assisted-persons/2/devices/status").with(user("7"))).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/assisted-persons/2/events/recent")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/assisted-persons/2/events/recent").with(user("7"))).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/devices/10/events")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/devices/10/events").with(user("7"))).andExpect(status().isOk());
+    }
+
+    @Test
     void validBearerTokenOfEnabledUserIsAuthenticated() throws Exception {
         givenUser(true);
 
@@ -211,6 +221,21 @@ class WebSecurityConfigurationTest {
 
         @GetMapping("/actuator/info")
         String info() {
+            return "{}";
+        }
+
+        @GetMapping("/api/v1/assisted-persons/{personId}/devices/status")
+        String homeStatus() {
+            return "{}";
+        }
+
+        @GetMapping("/api/v1/assisted-persons/{personId}/events/recent")
+        String recentEvents() {
+            return "{}";
+        }
+
+        @GetMapping("/api/v1/devices/{deviceId}/events")
+        String deviceEvents() {
             return "{}";
         }
 

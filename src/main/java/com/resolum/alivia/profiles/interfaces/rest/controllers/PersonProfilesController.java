@@ -12,12 +12,16 @@ import com.resolum.alivia.profiles.interfaces.rest.transform.CreatePersonProfile
 import com.resolum.alivia.profiles.interfaces.rest.transform.PersonProfileResourceFromEntityAssembler;
 import com.resolum.alivia.profiles.interfaces.rest.transform.UpdatePersonProfileCommandFromResourceAssembler;
 import com.resolum.alivia.shared.domain.model.valueobjects.UserId;
+import com.resolum.alivia.profiles.domain.services.ProfileAccessService;
+import com.resolum.alivia.profiles.interfaces.rest.Caller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
@@ -32,12 +36,16 @@ public class PersonProfilesController {
 
     private final PersonProfileCommandService commandService;
     private final PersonProfileQueryService queryService;
+    private final ProfileAccessService accessService;
 
-    public PersonProfilesController(PersonProfileCommandService commandService, PersonProfileQueryService queryService) {
+    public PersonProfilesController(PersonProfileCommandService commandService, PersonProfileQueryService queryService,
+                                    ProfileAccessService accessService) {
         this.commandService = commandService;
         this.queryService = queryService;
+        this.accessService = accessService;
     }
 
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
     @PostMapping(consumes = MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Crear perfil de persona (Multipart/form-data con archivo de foto)")
@@ -80,7 +88,10 @@ public class PersonProfilesController {
             @ApiResponse(responseCode = "200", description = "Perfil encontrado"),
             @ApiResponse(responseCode = "404", description = "Perfil no encontrado")
     })
-    public ResponseEntity<PersonProfileResource> getPersonProfileById(@PathVariable Long profileId) {
+    public ResponseEntity<PersonProfileResource> getPersonProfileById(@PathVariable Long profileId,
+                                                                      Authentication authentication) {
+        accessService.assertCanReadPersonProfile(profileId, Caller.userId(authentication),
+                Caller.isAdministrator(authentication));
         var query = new GetPersonProfileByIdQuery(profileId);
         var profile = queryService.handle(query)
                 .orElseThrow(() -> new PersonProfileNotFoundException(profileId));
@@ -96,7 +107,10 @@ public class PersonProfilesController {
     })
     public ResponseEntity<PersonProfileResource> updatePersonProfile(
             @PathVariable Long profileId,
-            @ModelAttribute UpdatePersonProfileResource resource) {
+            @ModelAttribute UpdatePersonProfileResource resource,
+            Authentication authentication) {
+        accessService.assertCanChangePersonProfile(profileId, Caller.userId(authentication),
+                Caller.isAdministrator(authentication));
         var command = UpdatePersonProfileCommandFromResourceAssembler.toCommandFromResource(profileId, resource);
         var updatedId = commandService.handle(command);
         var profile = queryService.handle(new GetPersonProfileByIdQuery(updatedId));

@@ -232,6 +232,7 @@ jobs:
           IAM_SUPER_ADMIN_PASSWORD: ${{ secrets.IAM_SUPER_ADMIN_PASSWORD }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           FIREBASE_CREDENTIALS_JSON: ${{ secrets.FIREBASE_CREDENTIALS_JSON }}
+          FIREBASE_CREDENTIALS_PATH: ${{ secrets.FIREBASE_CREDENTIALS_PATH }}
           # Variables of the environment: required
           DB_URL: ${{ vars.DB_URL }}
           DB_USERNAME: ${{ vars.DB_USERNAME }}

@@ -6,8 +6,10 @@ import com.resolum.alivia.assistance.domain.model.commands.EscalateHandoverComma
 import com.resolum.alivia.assistance.domain.model.commands.ProposeSubstituteCommand;
 import com.resolum.alivia.assistance.domain.model.commands.RequestHandoverCommand;
 import com.resolum.alivia.assistance.domain.model.queries.GetHandoversQuery;
+import com.resolum.alivia.assistance.domain.services.AssistanceAccessService;
 import com.resolum.alivia.assistance.domain.services.HandoverCommandService;
 import com.resolum.alivia.assistance.domain.services.HandoverQueryService;
+import com.resolum.alivia.assistance.interfaces.rest.CallerIdentity;
 import com.resolum.alivia.assistance.interfaces.rest.resources.AnswerHandoverResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.HandoverResource;
 import com.resolum.alivia.assistance.interfaces.rest.resources.ProposeSubstituteResource;
@@ -31,21 +33,14 @@ public class HandoversController {
 
     private final HandoverCommandService commandService;
     private final HandoverQueryService queryService;
+    private final AssistanceAccessService accessService;
 
     public HandoversController(HandoverCommandService commandService,
-            HandoverQueryService queryService) {
+            HandoverQueryService queryService,
+            AssistanceAccessService accessService) {
         this.commandService = commandService;
         this.queryService = queryService;
-    }
-
-    private UserId userIdOf(Principal principal) {
-        if (principal == null)
-            return null;
-        try {
-            return new UserId(Long.valueOf(principal.getName()));
-        } catch (Exception e) {
-            return null;
-        }
+        this.accessService = accessService;
     }
 
     @GetMapping({ "/handovers", "/assisted-persons/{assistedPersonId}/handovers" })
@@ -55,8 +50,16 @@ public class HandoversController {
             @RequestParam(required = false) Long assistedPerson,
             Principal principal) {
 
+        Long userId = CallerIdentity.requireUserId(principal);
         Long targetId = assistedPersonId != null ? assistedPersonId : assistedPerson;
-        List<Handover> handovers = queryService.handle(new GetHandoversQuery(targetId, userIdOf(principal)));
+        if (targetId == null) {
+            // Without a person: the first one the caller takes care of, never one chosen by the service.
+            var readable = accessService.readableBy(userId);
+            if (readable.isEmpty()) return ResponseEntity.ok(List.of());
+            targetId = readable.getFirst().getId();
+        }
+        accessService.requireRead(targetId, userId);
+        List<Handover> handovers = queryService.handle(new GetHandoversQuery(targetId, new UserId(userId)));
         List<HandoverResource> resources = handovers.stream()
                 .map(HandoverResourceAssembler::toResourceFromEntity)
                 .toList();
@@ -65,9 +68,13 @@ public class HandoversController {
 
     @PostMapping("/handovers/request")
     @Operation(summary = "Request shift handover")
-    public ResponseEntity<HandoverResource> requestHandover(@RequestBody RequestHandoverResource resource) {
+    public ResponseEntity<HandoverResource> requestHandover(@RequestBody RequestHandoverResource resource,
+                                                            Principal principal) {
+        Long userId = CallerIdentity.requireUserId(principal);
         Long fromShiftId = Long.parseLong(resource.fromShiftId());
         Long toShiftId = Long.parseLong(resource.toShiftId());
+        accessService.requireOperateShift(fromShiftId, userId);
+        accessService.requireOperateShift(toShiftId, userId);
 
         Handover handover = commandService.handle(new RequestHandoverCommand(
                 fromShiftId,
@@ -101,8 +108,10 @@ public class HandoversController {
     @Operation(summary = "Answer shift handover (accept or decline)")
     public ResponseEntity<HandoverResource> answerHandover(
             @PathVariable Long id,
-            @RequestBody AnswerHandoverResource resource) {
+            @RequestBody AnswerHandoverResource resource,
+            Principal principal) {
 
+        accessService.requireOperateHandover(id, CallerIdentity.requireUserId(principal));
         Long actorId = parseOptionalLong(resource.actorId());
 
         Handover handover = commandService.handle(new AnswerHandoverCommand(
@@ -123,10 +132,11 @@ public class HandoversController {
             @RequestBody ProposeSubstituteResource resource,
             Principal principal) {
 
+        Long userId = CallerIdentity.requireUserId(principal);
+        accessService.requireOperateHandover(id, userId);
         Long substituteId = parseOptionalLong(resource.substituteCaregiverId());
         if (substituteId == null) {
-            UserId currentUserId = userIdOf(principal);
-            substituteId = currentUserId != null ? currentUserId.userId() : 0L;
+            substituteId = userId;
         }
         Long actorId = parseOptionalLong(resource.actorId());
 
@@ -141,7 +151,8 @@ public class HandoversController {
 
     @PostMapping("/handovers/{id}/escalate")
     @Operation(summary = "Mark shift handover as escalated")
-    public ResponseEntity<HandoverResource> escalateHandover(@PathVariable Long id) {
+    public ResponseEntity<HandoverResource> escalateHandover(@PathVariable Long id, Principal principal) {
+        accessService.requireOperateHandover(id, CallerIdentity.requireUserId(principal));
         Handover handover = commandService.handle(new EscalateHandoverCommand(id));
         return ResponseEntity.ok(HandoverResourceAssembler.toResourceFromEntity(handover));
     }

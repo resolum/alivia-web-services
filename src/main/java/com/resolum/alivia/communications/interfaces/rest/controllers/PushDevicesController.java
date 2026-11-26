@@ -5,6 +5,7 @@ import com.resolum.alivia.communications.domain.model.commands.UnregisterPushDev
 import com.resolum.alivia.communications.domain.model.valueobjects.PushPlatform;
 import com.resolum.alivia.communications.domain.services.PushDeviceCommandService;
 import com.resolum.alivia.communications.interfaces.rest.resources.RegisterPushDeviceResource;
+import com.resolum.alivia.communications.interfaces.rest.CallerIdentity;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -25,25 +26,13 @@ public class PushDevicesController {
         this.commandService = commandService;
     }
 
-    private Long resolveUserId(Principal principal, Long requestedUserId) {
-        if (requestedUserId != null) {
-            return requestedUserId;
-        }
-        if (principal != null) {
-            try {
-                return Long.parseLong(principal.getName());
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return 1L;
-    }
-
     @PostMapping
     @Operation(summary = "Register or reassign a mobile push token")
     public ResponseEntity<Long> register(
             @Valid @RequestBody RegisterPushDeviceResource resource,
             Principal principal) {
-        Long targetUserId = resolveUserId(principal, resource.userId());
+        // The token is registered for the caller; the user id of the body is not trusted.
+        Long targetUserId = CallerIdentity.requireUserId(principal);
         PushPlatform platform = PushPlatform.ANDROID;
         if (resource.platform() != null && !resource.platform().isBlank()) {
             try {
@@ -59,9 +48,8 @@ public class PushDevicesController {
     @Operation(summary = "Unregister a push device token")
     public ResponseEntity<Void> unregister(
             @PathVariable String token,
-            @RequestParam(required = false) Long userId,
             Principal principal) {
-        Long targetUserId = resolveUserId(principal, userId);
+        Long targetUserId = CallerIdentity.requireUserId(principal);
         commandService.handle(new UnregisterPushDeviceCommand(targetUserId, token));
         return ResponseEntity.noContent().build();
     }

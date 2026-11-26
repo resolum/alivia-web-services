@@ -1,0 +1,21 @@
+{
+  "deviceId": 10,
+  "from": "2026-11-24T00:00:00Z",
+  "to": "2026-11-25T00:00:00Z",
+  "page": 0,
+  "size": 2,
+  "totalElements": 3,
+  "totalPages": 2,
+  "items": [
+    {
+      "edgeId": 3,
+      "sampledAt": "2026-11-24T14:58:00Z",
+      "metrics": { "rssi": -55, "freeHeap": 180000 }
+    },
+    {
+      "edgeId": 3,
+      "sampledAt": "2026-11-24T14:53:00Z",
+      "metrics": { "rssi": -61, "freeHeap": 179200 }
+    }
+  ]
+}

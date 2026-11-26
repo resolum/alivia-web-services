@@ -196,7 +196,7 @@ settings = {s["name"]: s["value"] for s in json.load(open(sys.argv[1]))}
 assert settings["DB_PASSWORD"] == sys.argv[2], "DB_PASSWORD did not survive the JSON escaping"
 assert settings["PORT"] == "8080" and settings["WEBSITES_PORT"] == "8080"
 assert settings["SPRING_PROFILES_ACTIVE"] == "prod"
-assert settings["MANAGEMENT_HEALTH_MONGODB_ENABLED"] == "false"
+assert settings["MANAGEMENT_HEALTH_MONGODB_ENABLED"] == "true", "a stale false from before P-7 was reverted must be overwritten"
 assert settings["SERVER_FORWARD_HEADERS_STRATEGY"] == "framework"
 assert "IAM_EMAIL_PROVIDER" not in settings, "an unset optional variable must not be copied"
 PY
@@ -206,6 +206,92 @@ else
   echo "  skip JSON checks: no python found"
 fi
 check "az output is silenced for the settings call" grep -q "appsettings set.*-o none" "$FAKE_DIR/calls"
+
+echo "push notifications"
+# setting_is <name> <value>: the setting reached the file given to az with exactly that value.
+setting_is() { grep -qF "{\"name\":\"$1\",\"value\":\"$2\"," "$FAKE_DIR/settings.json"; }
+no_setting() { ! grep -qF "\"name\":\"$1\"" "$FAKE_DIR/settings.json"; }
+
+# In a deployment both names carry the same secret: the key file in Base64.
+KEY=c2VydmljZS1hY2NvdW50LXNlY3JldA==
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="PUSH_PROVIDER=firebase FIREBASE_CREDENTIALS_JSON=$KEY FIREBASE_CREDENTIALS_PATH=$KEY" run_deploy staging new
+check "status 0" status_is 0
+check "the push provider reaches the settings" setting_is PUSH_PROVIDER firebase
+check "the first name reaches the settings" setting_is FIREBASE_CREDENTIALS_JSON "$KEY"
+check "the second name reaches the settings" setting_is FIREBASE_CREDENTIALS_PATH "$KEY"
+check "the Firebase key is not printed" lacks_text c2VydmljZS1hY2NvdW50LXNlY3JldA
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+run_deploy staging new
+check "unset push variables are not copied" bash -c "! grep -qE '\"name\":\"(PUSH_PROVIDER|FIREBASE_CREDENTIALS_JSON|FIREBASE_CREDENTIALS_PATH)\"' '$FAKE_DIR/settings.json'"
+check "and nothing is warned about push" lacks_text "credenciales de Firebase"
+
+# refused_untouched <description>: the deployment stopped before any call to Azure.
+refused_untouched() {
+  check "$1: status 1" status_is 1
+  check "$1: no Azure call was made" test ! -s "$FAKE_DIR/calls"
+}
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="PUSH_PROVIDER=firebase" run_deploy staging new
+refused_untouched "firebase without a key or a path"
+check "the message names both variables" contains_text "PUSH_PROVIDER=firebase exige FIREBASE_CREDENTIALS_JSON o FIREBASE_CREDENTIALS_PATH"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+# Split on newlines only, so that the blank value reaches the script as it is.
+IFS=$'\n' EXTRA_ENV=$'PUSH_PROVIDER=firebase\nFIREBASE_CREDENTIALS_JSON=   ' run_deploy staging new
+refused_untouched "firebase with a blank key"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="PUSH_PROVIDER=fcm FIREBASE_CREDENTIALS_JSON=c2VydmljZS1hY2NvdW50LXNlY3JldA==" run_deploy staging new
+refused_untouched "an unknown push provider"
+check "the message says which values work" contains_text "PUSH_PROVIDER='fcm' no es valido (usa log o firebase)"
+check "the Firebase key is not printed when refusing" lacks_text c2VydmljZS1hY2NvdW50LXNlY3JldA
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+IFS=$'\n' EXTRA_ENV=$'PUSH_PROVIDER=firebase \nFIREBASE_CREDENTIALS_JSON=c2VjcmV0' run_deploy staging new
+refused_untouched "a provider with a trailing space (the application does not trim it)"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="PUSH_PROVIDER=Firebase FIREBASE_CREDENTIALS_JSON=c2VydmljZS1hY2NvdW50LXNlY3JldA==" run_deploy staging new
+check "the provider is accepted in any case, as the application does" status_is 0
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="PUSH_PROVIDER=firebase FIREBASE_CREDENTIALS_PATH=$KEY" run_deploy staging new
+check "only the second name: status 0" status_is 0
+check "its value is also sent as the first one, the only one the application reads as a key" setting_is FIREBASE_CREDENTIALS_JSON "$KEY"
+check "and the second one is sent too" setting_is FIREBASE_CREDENTIALS_PATH "$KEY"
+check "the key is not printed" lacks_text c2VydmljZS1hY2NvdW50LXNlY3JldA
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+IFS=$'\n' EXTRA_ENV=$'PUSH_PROVIDER=firebase\nFIREBASE_CREDENTIALS_JSON=   \nFIREBASE_CREDENTIALS_PATH=c2VjcmV0' run_deploy staging new
+check "a blank first name is replaced by the second one" setting_is FIREBASE_CREDENTIALS_JSON c2VjcmV0
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="PUSH_PROVIDER=firebase FIREBASE_CREDENTIALS_JSON=$KEY" run_deploy staging new
+check "only the first name: status 0" status_is 0
+check "the second name is not invented" no_setting FIREBASE_CREDENTIALS_PATH
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="PUSH_PROVIDER=firebase FIREBASE_CREDENTIALS_JSON=Zmlyc3Q= FIREBASE_CREDENTIALS_PATH=c2Vjb25k" run_deploy staging new
+check "when they differ the first one wins" setting_is FIREBASE_CREDENTIALS_JSON Zmlyc3Q=
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="GITHUB_ACTIONS=true FIREBASE_CREDENTIALS_JSON=Zmlyc3Q= FIREBASE_CREDENTIALS_PATH=c2Vjb25k" run_deploy staging new
+check "in GitHub Actions the first name is masked" contains_text "::add-mask::Zmlyc3Q="
+check "in GitHub Actions the second name is masked" contains_text "::add-mask::c2Vjb25k"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="PUSH_PROVIDER=log" run_deploy staging new
+check "log needs no key: status 0" status_is 0
+check "log reaches the settings, which is how push is switched off" setting_is PUSH_PROVIDER log
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="FIREBASE_CREDENTIALS_JSON=c2VydmljZS1hY2NvdW50LXNlY3JldA==" run_deploy staging new
+check "a key without a provider: status 0" status_is 0
+check "and warns that push is not switched on" contains_text "este despliegue no activa el envio"
 
 echo "unhealthy deployment with a previous image"
 new_case acrtest.azurecr.io/alivia-api:old old new

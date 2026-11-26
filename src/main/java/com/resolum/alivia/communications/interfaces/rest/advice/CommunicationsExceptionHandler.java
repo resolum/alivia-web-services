@@ -22,7 +22,7 @@ public class CommunicationsExceptionHandler {
         ));
     }
 
-    @ExceptionHandler({NotificationNotForUser.class, PushDeviceNotForUser.class})
+    @ExceptionHandler({NotificationNotForUser.class, PushDeviceNotForUser.class, CallerNotIdentified.class})
     public ResponseEntity<Map<String, Object>> handleForbidden(RuntimeException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
                 "timestamp", LocalDateTime.now().toString(),

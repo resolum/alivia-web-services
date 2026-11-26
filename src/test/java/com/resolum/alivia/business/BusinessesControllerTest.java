@@ -51,11 +51,17 @@ class BusinessesControllerTest {
     @Mock
     private BusinessQueryService queryService;
 
+    @Mock
+    private com.resolum.alivia.business.domain.services.AdministratorQueryService administratorQueryService;
+
+    /** The caller: the account 100, which is the administrator 1 (see {@link #createBusinessEntity}). */
+    private final java.security.Principal caller = () -> "100";
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
-        var controller = new BusinessesController(commandService, queryService);
+        var controller = new BusinessesController(commandService, queryService, administratorQueryService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -161,15 +167,51 @@ class BusinessesControllerTest {
                 "Tu salud primero"
         );
 
+        when(administratorQueryService.handle(new com.resolum.alivia.business.domain.model.queries.GetAdministratorByUserIdQuery(100L)))
+                .thenReturn(Optional.of(createBusinessEntity(1L, 50L, 7L).getAdministrator()));
         when(commandService.handle(any(UpdateBusinessCommand.class))).thenReturn(1L);
         when(queryService.handle(any(GetBusinessByIdQuery.class)))
                 .thenReturn(Optional.of(createBusinessEntity(1L, 50L, 1L)));
 
         mockMvc.perform(put("/api/v1/businesses/1")
+                        .principal(caller)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(resource)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1));
+
+        // The administrator of the command is the caller (7), not the one of the body (1).
+        var captor = org.mockito.ArgumentCaptor.forClass(UpdateBusinessCommand.class);
+        org.mockito.Mockito.verify(commandService).handle(captor.capture());
+        org.junit.jupiter.api.Assertions.assertEquals(7L, captor.getValue().administratorId());
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/businesses/{id} returns 403 when the caller has no administrator record")
+    void updateBusinessRefusesACallerWhoIsNotAnAdministrator() throws Exception {
+        var resource = new UpdateBusinessResource(1L, null, null, "Clínica", "San Pablo S.A.C.", "Atención Médica",
+                "Centro", "5112345678", null, "soporte@sanpablo.com", "51987654321", "51987654321", "Tu salud");
+        when(administratorQueryService.handle(any(com.resolum.alivia.business.domain.model.queries.GetAdministratorByUserIdQuery.class)))
+                .thenReturn(Optional.empty());
+
+        mockMvc.perform(put("/api/v1/businesses/1")
+                        .principal(caller)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(resource)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/v1/businesses/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(resource)))
+                .andExpect(status().isForbidden());
+        org.mockito.Mockito.verifyNoInteractions(commandService);
+    }
+
+    @Test
+    @DisplayName("The business endpoints require the ADMINISTRATOR role")
+    void theControllerRequiresTheAdministratorRole() {
+        var rule = BusinessesController.class.getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class);
+        org.junit.jupiter.api.Assertions.assertNotNull(rule);
+        org.junit.jupiter.api.Assertions.assertEquals("hasRole('ADMINISTRATOR')", rule.value());
     }
 
     @Test
@@ -191,10 +233,13 @@ class BusinessesControllerTest {
                 "Tu salud primero"
         );
 
+        when(administratorQueryService.handle(any(com.resolum.alivia.business.domain.model.queries.GetAdministratorByUserIdQuery.class)))
+                .thenReturn(Optional.of(createBusinessEntity(1L, 50L, 2L).getAdministrator()));
         when(commandService.handle(any(UpdateBusinessCommand.class)))
                 .thenThrow(new UnauthorizedAdministratorException("Administrator is not authorized to manage this business."));
 
         mockMvc.perform(put("/api/v1/businesses/1")
+                        .principal(caller)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(resource)))
                 .andExpect(status().isForbidden())
