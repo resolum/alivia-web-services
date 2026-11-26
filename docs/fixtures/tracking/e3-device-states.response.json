@@ -1,0 +1,8 @@
+{
+  "results": [
+    { "deviceId": 10, "status": "APPLIED" },
+    { "deviceId": 11, "status": "STALE" },
+    { "deviceId": 12, "status": "REJECTED", "reason": "battery_out_of_range" },
+    { "deviceId": 99, "status": "REJECTED", "reason": "unknown_device" }
+  ]
+}

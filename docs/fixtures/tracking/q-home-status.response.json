@@ -1,0 +1,62 @@
+{
+  "personId": 2,
+  "householdId": 30,
+  "edgeLink": "OFFLINE",
+  "offlineSince": "2026-11-24T15:01:00Z",
+  "lastUpdatedAt": "2026-11-24T15:04:50Z",
+  "mayHavePendingEvents": true,
+  "devices": [
+    {
+      "deviceId": 10,
+      "alias": "Puerta principal",
+      "type": "DOOR",
+      "roomKey": "entrada",
+      "connectionStatus": "CONNECTED",
+      "operationalStatus": "OK",
+      "currentState": "closed",
+      "batteryPct": 78,
+      "lastCommunicationAt": "2026-11-24T14:58:00Z",
+      "observedAt": "2026-11-24T14:58:00Z",
+      "lastUpdatedAt": "2026-11-24T14:58:01Z",
+      "faults": [],
+      "stale": true
+    },
+    {
+      "deviceId": 11,
+      "alias": "Luz de la sala",
+      "type": "LIGHT",
+      "roomKey": "sala",
+      "connectionStatus": "CONNECTED",
+      "operationalStatus": "DEGRADED",
+      "currentState": "on",
+      "batteryPct": 15,
+      "lastCommunicationAt": "2026-11-24T14:57:00Z",
+      "observedAt": "2026-11-24T14:57:00Z",
+      "lastUpdatedAt": "2026-11-24T14:57:01Z",
+      "faults": ["LOW_SIGNAL"],
+      "stale": true
+    },
+    {
+      "deviceId": 12,
+      "alias": "Cortina del cuarto",
+      "type": "CURTAIN",
+      "roomKey": "cuarto",
+      "connectionStatus": "UNKNOWN",
+      "faults": [],
+      "stale": false
+    },
+    {
+      "deviceId": 13,
+      "alias": "Micrófono de la sala",
+      "type": "MICROPHONE",
+      "roomKey": "sala",
+      "connectionStatus": "CONNECTED",
+      "operationalStatus": "OK",
+      "lastCommunicationAt": "2026-11-24T15:04:49Z",
+      "observedAt": "2026-11-24T15:04:49Z",
+      "lastUpdatedAt": "2026-11-24T15:04:50Z",
+      "faults": [],
+      "stale": false
+    }
+  ]
+}
