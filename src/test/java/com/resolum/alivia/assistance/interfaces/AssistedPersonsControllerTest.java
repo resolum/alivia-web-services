@@ -22,7 +22,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.Authentication;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -72,6 +75,15 @@ class AssistedPersonsControllerTest {
                 "DNI", BIRTH, kinship, mobility, "Luis", "51922", consent);
     }
 
+    private static CreateAssistedPersonResource withoutRelativeId() {
+        return new CreateAssistedPersonResource(null, 3L, "a@mail.com", "519", "Ana", "Diaz", "12345678", null,
+                "DNI", BIRTH, null, null, "Luis", "51922", true);
+    }
+
+    private static Authentication caller(String name, String... authorities) {
+        return new TestingAuthenticationToken(name, null, authorities);
+    }
+
     @ParameterizedTest
     @CsvSource({
             "parent, partial, PARENT, PARTIAL",
@@ -87,7 +99,7 @@ class AssistedPersonsControllerTest {
         when(commands.handle(any(CreateAssistedPersonCommand.class))).thenReturn(2L);
         when(queries.handle(new GetAssistedPersonByIdQuery(2L))).thenReturn(Optional.of(person));
 
-        var response = controller.createAssistedPerson(createResource(kinship, mobility, false), principal("7"));
+        var response = controller.createAssistedPerson(createResource(kinship, mobility, false), caller("7"));
 
         assertThat(response.getStatusCode().value()).isEqualTo(201);
         ArgumentCaptor<CreateAssistedPersonCommand> command = ArgumentCaptor.forClass(CreateAssistedPersonCommand.class);
@@ -103,7 +115,7 @@ class AssistedPersonsControllerTest {
         when(commands.handle(any(CreateAssistedPersonCommand.class))).thenReturn(2L);
         when(queries.handle(new GetAssistedPersonByIdQuery(2L))).thenReturn(Optional.empty());
 
-        var response = controller.createAssistedPerson(createResource(" ", null, null), principal("7"));
+        var response = controller.createAssistedPerson(createResource(" ", null, null), caller("7"));
 
         assertThat(response.getBody().id()).isEqualTo(2L);
         ArgumentCaptor<CreateAssistedPersonCommand> command = ArgumentCaptor.forClass(CreateAssistedPersonCommand.class);
@@ -118,8 +130,7 @@ class AssistedPersonsControllerTest {
         when(commands.handle(any(CreateAssistedPersonCommand.class))).thenReturn(2L);
         when(queries.handle(new GetAssistedPersonByIdQuery(2L))).thenReturn(Optional.of(person));
 
-        controller.createAssistedPerson(new CreateAssistedPersonResource(null, 3L, "a@mail.com", "519", "Ana",
-                "Diaz", "12345678", null, "DNI", BIRTH, null, null, "Luis", "51922", true), principal("7"));
+        controller.createAssistedPerson(withoutRelativeId(), caller("7"));
 
         ArgumentCaptor<CreateAssistedPersonCommand> command = ArgumentCaptor.forClass(CreateAssistedPersonCommand.class);
         verify(commands).handle(command.capture());
@@ -127,8 +138,55 @@ class AssistedPersonsControllerTest {
     }
 
     @Test
-    void createRefusesACallerWhoIsNotARelative() {
-        assertThatThrownBy(() -> controller.createAssistedPerson(createResource(null, null, null), principal("8")))
+    void createLetsAnAccountWithoutARelativeRecordRegisterItsFirstPerson() {
+        when(commands.handle(any(CreateAssistedPersonCommand.class))).thenReturn(2L);
+        when(queries.handle(new GetAssistedPersonByIdQuery(2L))).thenReturn(Optional.of(person));
+        when(access.canManageHousehold(3L, 8L)).thenReturn(true);
+
+        var response = controller.createAssistedPerson(withoutRelativeId(), caller("8", "ROLE_CAREGIVER"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(201);
+        ArgumentCaptor<CreateAssistedPersonCommand> command = ArgumentCaptor.forClass(CreateAssistedPersonCommand.class);
+        verify(commands).handle(command.capture());
+        // No relative id: the command service creates the record of the caller.
+        assertThat(command.getValue().relativeId()).isNull();
+        assertThat(command.getValue().userId()).isEqualTo(8L);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "ROLE_ADMINISTRATOR", "ROLE_TECHNICIAN" })
+    void createNeverTurnsAStaffAccountIntoARelative(String role) {
+        when(access.canManageHousehold(3L, 8L)).thenReturn(true);
+
+        assertThatThrownBy(() -> controller.createAssistedPerson(withoutRelativeId(), caller("8", role)))
+                .isInstanceOf(AssistanceAccessDeniedException.class);
+        verify(commands, never()).handle(any(CreateAssistedPersonCommand.class));
+    }
+
+    @Test
+    void createKeepsWorkingForAStaffAccountThatAlreadyIsARelative() {
+        when(commands.handle(any(CreateAssistedPersonCommand.class))).thenReturn(2L);
+        when(queries.handle(new GetAssistedPersonByIdQuery(2L))).thenReturn(Optional.of(person));
+
+        controller.createAssistedPerson(createResource(null, null, null), caller("7", "ROLE_ADMINISTRATOR"));
+
+        ArgumentCaptor<CreateAssistedPersonCommand> command = ArgumentCaptor.forClass(CreateAssistedPersonCommand.class);
+        verify(commands).handle(command.capture());
+        assertThat(command.getValue().relativeId()).isEqualTo(1L);
+    }
+
+    @Test
+    void createRefusesARelativeIdFromAnAccountThatHasNone() {
+        when(access.canManageHousehold(3L, 8L)).thenReturn(true);
+
+        assertThatThrownBy(() -> controller.createAssistedPerson(createResource(null, null, null), caller("8")))
+                .isInstanceOf(AssistanceAccessDeniedException.class);
+        verify(commands, never()).handle(any(CreateAssistedPersonCommand.class));
+    }
+
+    @Test
+    void createRefusesAHouseholdOfAnotherToANewAccount() {
+        assertThatThrownBy(() -> controller.createAssistedPerson(withoutRelativeId(), caller("8")))
                 .isInstanceOf(AssistanceAccessDeniedException.class);
         verify(commands, never()).handle(any(CreateAssistedPersonCommand.class));
     }
@@ -138,7 +196,7 @@ class AssistedPersonsControllerTest {
         var forAnotherRelative = new CreateAssistedPersonResource(99L, 3L, "a@mail.com", "519", "Ana", "Diaz",
                 "12345678", null, "DNI", BIRTH, null, null, "Luis", "51922", true);
 
-        assertThatThrownBy(() -> controller.createAssistedPerson(forAnotherRelative, principal("7")))
+        assertThatThrownBy(() -> controller.createAssistedPerson(forAnotherRelative, caller("7")))
                 .isInstanceOf(AssistanceAccessDeniedException.class);
         verify(commands, never()).handle(any(CreateAssistedPersonCommand.class));
     }
@@ -147,7 +205,7 @@ class AssistedPersonsControllerTest {
     void createRefusesAHouseholdTheCallerDoesNotManage() {
         when(access.canManageHousehold(3L, 7L)).thenReturn(false);
 
-        assertThatThrownBy(() -> controller.createAssistedPerson(createResource(null, null, null), principal("7")))
+        assertThatThrownBy(() -> controller.createAssistedPerson(createResource(null, null, null), caller("7")))
                 .isInstanceOf(AssistanceAccessDeniedException.class);
         verify(commands, never()).handle(any(CreateAssistedPersonCommand.class));
     }
@@ -156,7 +214,7 @@ class AssistedPersonsControllerTest {
     void createRefusesACallerWithoutAnAccount() {
         assertThatThrownBy(() -> controller.createAssistedPerson(createResource(null, null, null), null))
                 .isInstanceOf(AssistanceAccessDeniedException.class);
-        assertThatThrownBy(() -> controller.createAssistedPerson(createResource(null, null, null), principal("edge:4")))
+        assertThatThrownBy(() -> controller.createAssistedPerson(createResource(null, null, null), caller("edge:4")))
                 .isInstanceOf(AssistanceAccessDeniedException.class);
     }
 

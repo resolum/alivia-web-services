@@ -2,6 +2,7 @@ package com.resolum.alivia.assistance.interfaces.rest.controllers;
 
 import com.resolum.alivia.assistance.application.internal.outboundservices.acl.ExternalProfilesService;
 import com.resolum.alivia.assistance.domain.model.aggregates.AssistedPerson;
+import com.resolum.alivia.assistance.domain.model.aggregates.Relative;
 import com.resolum.alivia.assistance.domain.model.commands.CreateAssistedPersonCommand;
 import com.resolum.alivia.assistance.domain.model.commands.UpdateAssistedPersonCommand;
 import com.resolum.alivia.assistance.domain.exceptions.AssistanceAccessDeniedException;
@@ -23,16 +24,21 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/assisted-persons")
 @Tag(name = "Assisted Persons", description = "Endpoints for managing assisted persons")
 public class AssistedPersonsController {
+
+    /** The staff roles that are never turned into a relative by registering an assisted person. */
+    private static final Set<String> STAFF_AUTHORITIES = Set.of("ROLE_ADMINISTRATOR", "ROLE_TECHNICIAN");
 
     private final AssistedPersonCommandService commandService;
     private final AssistedPersonQueryService queryService;
@@ -52,6 +58,11 @@ public class AssistedPersonsController {
         this.relativeQueryService = relativeQueryService;
     }
 
+    private static boolean hasStaffRole(Authentication authentication) {
+        return authentication.getAuthorities().stream()
+                .anyMatch(authority -> STAFF_AUTHORITIES.contains(authority.getAuthority()));
+    }
+
     private AssistedPersonResource toResource(AssistedPerson entity) {
         ProfilesContextFacade.PersonProfileData profileData = null;
         if (entity.getPersonProfileId() != null) {
@@ -63,20 +74,25 @@ public class AssistedPersonsController {
     @PostMapping
     public ResponseEntity<AssistedPersonResource> createAssistedPerson(
             @RequestBody CreateAssistedPersonResource resource,
-            Principal principal) {
-        Long userId = CallerIdentity.requireUserId(principal);
-        // Only a relative registers an assisted person, and always as itself: the relative id of the body is
-        // never trusted to say whose person it is.
-        var relative = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId))
-                .orElseThrow(() -> new AssistanceAccessDeniedException("Only a relative may register an assisted person."));
-        if (resource.relativeId() != null && !resource.relativeId().equals(relative.getId())) {
+            Authentication authentication) {
+        Long userId = CallerIdentity.requireUserId(authentication);
+        // The person is always registered for the caller. An account without a relative record gets one with its
+        // first person (the command service creates it from the user id); staff accounts never do.
+        Long relativeId = relativeQueryService.handle(new GetRelativeByUserIdQuery(userId))
+                .map(Relative::getId)
+                .orElse(null);
+        // The relative id of the body is never trusted to say whose person it is: it may only repeat the caller's own.
+        if (resource.relativeId() != null && !resource.relativeId().equals(relativeId)) {
             throw new AssistanceAccessDeniedException("The relative of the request is not the caller.");
+        }
+        if (relativeId == null && hasStaffRole(authentication)) {
+            throw new AssistanceAccessDeniedException("A staff account may not become a relative.");
         }
         if (resource.householdId() != null && !accessService.canManageHousehold(resource.householdId(), userId)) {
             throw new AssistanceAccessDeniedException("The caller may not manage household " + resource.householdId() + ".");
         }
         CreateAssistedPersonCommand command = new CreateAssistedPersonCommand(
-                relative.getId(),
+                relativeId,
                 resource.emailAddress(),
                 null, null,
                 resource.phoneNumber(),
