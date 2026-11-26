@@ -207,6 +207,70 @@ else
 fi
 check "az output is silenced for the settings call" grep -q "appsettings set.*-o none" "$FAKE_DIR/calls"
 
+echo "push notifications"
+# setting_is <name> <value>: the setting reached the file given to az with exactly that value.
+setting_is() { grep -qF "{\"name\":\"$1\",\"value\":\"$2\"," "$FAKE_DIR/settings.json"; }
+no_setting() { ! grep -qF "\"name\":\"$1\"" "$FAKE_DIR/settings.json"; }
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="PUSH_PROVIDER=firebase FIREBASE_CREDENTIALS_JSON=c2VydmljZS1hY2NvdW50LXNlY3JldA== FIREBASE_CREDENTIALS_PATH=/home/secrets/firebase.json" \
+  run_deploy staging new
+check "status 0" status_is 0
+check "the push provider reaches the settings" setting_is PUSH_PROVIDER firebase
+check "the Firebase key reaches the settings" setting_is FIREBASE_CREDENTIALS_JSON c2VydmljZS1hY2NvdW50LXNlY3JldA==
+check "the Firebase key path reaches the settings" setting_is FIREBASE_CREDENTIALS_PATH /home/secrets/firebase.json
+check "the Firebase key is not printed" lacks_text c2VydmljZS1hY2NvdW50LXNlY3JldA
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+run_deploy staging new
+check "unset push variables are not copied" bash -c "! grep -qE '\"name\":\"(PUSH_PROVIDER|FIREBASE_CREDENTIALS_JSON|FIREBASE_CREDENTIALS_PATH)\"' '$FAKE_DIR/settings.json'"
+check "and nothing is warned about push" lacks_text "credenciales de Firebase"
+
+# refused_untouched <description>: the deployment stopped before any call to Azure.
+refused_untouched() {
+  check "$1: status 1" status_is 1
+  check "$1: no Azure call was made" test ! -s "$FAKE_DIR/calls"
+}
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="PUSH_PROVIDER=firebase" run_deploy staging new
+refused_untouched "firebase without a key or a path"
+check "the message names both variables" contains_text "PUSH_PROVIDER=firebase exige FIREBASE_CREDENTIALS_JSON (recomendada) o FIREBASE_CREDENTIALS_PATH"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+# Split on newlines only, so that the blank value reaches the script as it is.
+IFS=$'\n' EXTRA_ENV=$'PUSH_PROVIDER=firebase\nFIREBASE_CREDENTIALS_JSON=   ' run_deploy staging new
+refused_untouched "firebase with a blank key"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="PUSH_PROVIDER=fcm FIREBASE_CREDENTIALS_JSON=c2VydmljZS1hY2NvdW50LXNlY3JldA==" run_deploy staging new
+refused_untouched "an unknown push provider"
+check "the message says which values work" contains_text "PUSH_PROVIDER='fcm' no es valido (usa log o firebase)"
+check "the Firebase key is not printed when refusing" lacks_text c2VydmljZS1hY2NvdW50LXNlY3JldA
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+IFS=$'\n' EXTRA_ENV=$'PUSH_PROVIDER=firebase \nFIREBASE_CREDENTIALS_JSON=c2VjcmV0' run_deploy staging new
+refused_untouched "a provider with a trailing space (the application does not trim it)"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="PUSH_PROVIDER=Firebase FIREBASE_CREDENTIALS_JSON=c2VydmljZS1hY2NvdW50LXNlY3JldA==" run_deploy staging new
+check "the provider is accepted in any case, as the application does" status_is 0
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="PUSH_PROVIDER=firebase FIREBASE_CREDENTIALS_PATH=/home/secrets/firebase.json" run_deploy staging new
+check "firebase with only the path: status 0" status_is 0
+check "and warns that the file must be in the container" contains_text "si el archivo no esta en esa ruta dentro del contenedor"
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="PUSH_PROVIDER=log" run_deploy staging new
+check "log needs no key: status 0" status_is 0
+check "log reaches the settings, which is how push is switched off" setting_is PUSH_PROVIDER log
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="FIREBASE_CREDENTIALS_JSON=c2VydmljZS1hY2NvdW50LXNlY3JldA==" run_deploy staging new
+check "a key without a provider: status 0" status_is 0
+check "and warns that push is not switched on" contains_text "este despliegue no activa el envio"
+
 echo "unhealthy deployment with a previous image"
 new_case acrtest.azurecr.io/alivia-api:old old new
 echo new >"$FAKE_DIR/broken"

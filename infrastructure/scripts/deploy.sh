@@ -6,7 +6,7 @@
 #
 # What it does (docs/operations/azure-deployment.md, section 8):
 #   1. validates the arguments, that every required variable is set (it lists NAMES, never values) and that the email
-#      configuration can work;
+#      and push notification configurations can work;
 #   2. checks that the image exists in the registry and remembers the one that runs now;
 #   2b. starts the PostgreSQL server when it is stopped and waits until it is Ready (only when AZURE_POSTGRES_SERVER_NAME
 #      is set): a stopped server makes the application fail to start and the health check wait for the whole timeout;
@@ -58,7 +58,7 @@ readonly REQUIRED_APP_VARS=(
 # Have a default in the application; they are copied only when set.
 readonly OPTIONAL_APP_VARS=(
   IAM_EMAIL_PROVIDER IAM_EMAIL_FROM IAM_EMAIL_FROM_NAME RESEND_API_KEY
-  PUSH_PROVIDER FIREBASE_CREDENTIALS_JSON
+  PUSH_PROVIDER FIREBASE_CREDENTIALS_JSON FIREBASE_CREDENTIALS_PATH
   IAM_ACCOUNT_ACTIVATION_LINK_BASE_URL IAM_ACCOUNT_ACTIVATION_EXPIRATION_HOURS
   IAM_EMAIL_VERIFICATION_EXPIRATION_HOURS IAM_EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS
   IAM_DEFAULT_PHOTO_URL HCM_DEFAULT_BUSINESS_ID
@@ -207,6 +207,37 @@ check_email_configuration() {
   esac
 }
 
+is_not_blank() {
+  local name="$1"
+  [[ "${!name:-}" =~ [^[:space:]] ]]
+}
+
+# Push notifications: the application does not start with a provider other than log or firebase, or with firebase and no
+# service account. The rollback would bring back the previous image but not the settings, so that image would read the same
+# ones. Those cases are refused here, before anything is changed. The application compares the provider ignoring case but
+# does not trim it. Whether the key itself is valid, or the file exists in the container, cannot be checked from here.
+check_push_configuration() {
+  local provider="${PUSH_PROVIDER:-}"
+
+  case "$provider" in
+    [Ff][Ii][Rr][Ee][Bb][Aa][Ss][Ee])
+      if ! is_not_blank FIREBASE_CREDENTIALS_JSON; then
+        is_not_blank FIREBASE_CREDENTIALS_PATH \
+          || die "PUSH_PROVIDER=firebase exige FIREBASE_CREDENTIALS_JSON (recomendada) o FIREBASE_CREDENTIALS_PATH"
+        warn "FIREBASE_CREDENTIALS_PATH: la imagen no incluye ninguna clave; si el archivo no esta en esa ruta dentro del contenedor, la aplicacion no arrancara"
+      fi
+      ;;
+    "" | [Ll][Oo][Gg])
+      if [[ -z "$provider" ]] && { is_set FIREBASE_CREDENTIALS_JSON || is_set FIREBASE_CREDENTIALS_PATH; }; then
+        warn "hay credenciales de Firebase pero PUSH_PROVIDER no esta definida: este despliegue no activa el envio (por defecto es 'log')"
+      fi
+      ;;
+    *)
+      die "PUSH_PROVIDER='$provider' no es valido (usa log o firebase)"
+      ;;
+  esac
+}
+
 check_variables() {
   local missing=() name
   for name in "${RESOURCE_VARS[@]}" "${REQUIRED_APP_VARS[@]}"; do
@@ -234,6 +265,7 @@ check_variables() {
   done
 
   check_email_configuration
+  check_push_configuration
 }
 
 # In GitHub Actions the values of secrets are already masked, but a variable that holds a derived value (for example a
