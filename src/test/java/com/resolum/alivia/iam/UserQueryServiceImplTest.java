@@ -1,5 +1,7 @@
 package com.resolum.alivia.iam;
 
+import com.resolum.alivia.iam.application.internal.outboundservices.acl.ExternalHcmService;
+import com.resolum.alivia.iam.application.internal.outboundservices.acl.ExternalProfilesService;
 import com.resolum.alivia.iam.application.internal.queryservices.UserQueryServiceImpl;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotActiveException;
 import com.resolum.alivia.iam.domain.model.aggregates.User;
@@ -21,7 +23,8 @@ import static org.mockito.Mockito.when;
 class UserQueryServiceImplTest {
 
     private final UserRepository userRepository = mock(UserRepository.class);
-    private final UserQueryServiceImpl service = new UserQueryServiceImpl(userRepository);
+    private final UserQueryServiceImpl service = new UserQueryServiceImpl(userRepository,
+            mock(ExternalHcmService.class), mock(ExternalProfilesService.class));
 
     @Test
     void findsUserByAccountId() {

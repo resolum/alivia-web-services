@@ -2,7 +2,9 @@ package com.resolum.alivia.iam.application.acl;
 
 import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
 import com.resolum.alivia.iam.domain.model.aggregates.User;
+import com.resolum.alivia.iam.domain.model.commands.AssignAccessRoleCommand;
 import com.resolum.alivia.iam.domain.model.commands.InviteCompanyUserCommand;
+import com.resolum.alivia.iam.domain.model.commands.RevokeAccessRoleCommand;
 import com.resolum.alivia.iam.domain.model.commands.IssueEdgeCredentialCommand;
 import com.resolum.alivia.iam.domain.model.commands.RevokeEdgeCredentialCommand;
 import com.resolum.alivia.iam.domain.model.queries.GetEdgeCredentialByEdgeIdQuery;
@@ -123,8 +125,7 @@ public class IamContextFacadeImpl implements IamContextFacade {
         }
         return userRepository.findAllByIds(userIds).stream()
                 .filter(user -> user.getProfileId() != null)
-                .filter(user -> user.getAccessRole() == AccessRole.CAREGIVER
-                        || user.getAccessRole() == AccessRole.ASSISTED_PERSON)
+                .filter(user -> user.hasRole(AccessRole.CAREGIVER) || user.hasRole(AccessRole.ASSISTED_PERSON))
                 .collect(Collectors.toMap(User::getId, User::getProfileId));
     }
 
@@ -139,7 +140,7 @@ public class IamContextFacadeImpl implements IamContextFacade {
         }
         return userRepository.findAllByIds(userIds).stream()
                 .filter(user -> user.getProfileId() != null)
-                .filter(user -> user.getAccessRole() == AccessRole.TECHNICIAN)
+                .filter(user -> user.hasRole(AccessRole.TECHNICIAN))
                 .collect(Collectors.toMap(User::getId, User::getProfileId));
     }
 
@@ -222,6 +223,13 @@ public class IamContextFacadeImpl implements IamContextFacade {
     /**
      * {@inheritDoc}
      */
+    @Override
+    @Transactional
+    public void replaceAccessRole(Long userId, String previous, String next) {
+        userCommandService.handle(new RevokeAccessRoleCommand(userId, parseRole(previous)));
+        userCommandService.handle(new AssignAccessRoleCommand(userId, parseRole(next)));
+    }
+
     @Override
     @Transactional
     public Long registerAssistedPerson(String email, String password, String firstName, String lastName,

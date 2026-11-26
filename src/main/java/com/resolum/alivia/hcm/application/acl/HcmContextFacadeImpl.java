@@ -19,6 +19,8 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /** Reads technicians, contracts and work schedules of the default business for other contexts. */
 @Service
@@ -74,6 +76,16 @@ public class HcmContextFacadeImpl implements HcmContextFacade {
     public Optional<Long> fetchUserIdOfTechnician(Long employeeId) {
         if (employeeId == null) return Optional.empty();
         return employees.findById(employeeId).map(Employee::getUserId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Set<Long> fetchUserIdsOfBusiness(Long requestedBusinessId) {
+        var business = requestedBusinessId != null ? requestedBusinessId : businessId;
+        return employees.findAll().stream()
+                .filter(employee -> employee.belongsTo(business))
+                .map(Employee::getUserId)
+                .collect(Collectors.toSet());
     }
 
     private static Optional<WorkSchedule> scheduleOf(Employee employee, List<WorkSchedule> activeSchedules) {

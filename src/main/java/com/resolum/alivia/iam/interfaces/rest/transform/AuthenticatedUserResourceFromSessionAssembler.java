@@ -1,9 +1,9 @@
 package com.resolum.alivia.iam.interfaces.rest.transform;
 
+import com.resolum.alivia.iam.domain.services.RoleParser;
 import com.resolum.alivia.iam.domain.model.valueobjects.AuthSession;
 import com.resolum.alivia.iam.interfaces.rest.resources.AuthenticatedUserResource;
 
-import java.util.List;
 
 /**
  * Assembles {@link AuthenticatedUserResource} instances from {@link AuthSession} values.
@@ -21,6 +21,7 @@ public final class AuthenticatedUserResourceFromSessionAssembler {
      */
     public static AuthenticatedUserResource toResourceFromSession(AuthSession session) {
         var user = session.user();
+        var primaryRole = user.getAccessRole();
         return new AuthenticatedUserResource(
                 session.accessToken(),
                 session.refreshToken(),
@@ -28,7 +29,9 @@ public final class AuthenticatedUserResourceFromSessionAssembler {
                 session.expiresIn(),
                 new AuthenticatedUserResource.AccountResource(
                         user.getAccountId(), user.getEmail().email(),
-                        user.getAccessRole().name(), user.getStatus().name(), user.getProfileId()),
-                List.of("ROLE_" + user.getAccessRole().name()));
+                        primaryRole == null ? null : primaryRole.name(),
+                        user.getRoles().stream().map(RoleParser::toApiName).sorted().toList(),
+                        user.getStatus().name(), user.getProfileId()),
+                user.getRoles().stream().map(role -> "ROLE_" + role.name()).sorted().toList());
     }
 }

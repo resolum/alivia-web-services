@@ -7,7 +7,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
-import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Adapts the {@link User} aggregate to Spring Security's {@link UserDetails}.
@@ -49,13 +49,14 @@ public class UserDetailsImpl implements UserDetails {
     }
 
     /**
-     * Returns the access role as the only authority.
+     * Returns one authority per role; the set holds each one once.
      *
      * @return the granted authorities
      */
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority("ROLE_" + user.getAccessRole().name()));
+        return user.getRoles().stream().map(role -> new SimpleGrantedAuthority("ROLE_" + role.name()))
+                .collect(Collectors.toSet());
     }
 
     /**

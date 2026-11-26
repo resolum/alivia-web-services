@@ -6,18 +6,27 @@ import com.resolum.alivia.iam.domain.model.valueobjects.AccessRole;
 import com.resolum.alivia.iam.domain.model.valueobjects.EmailVerificationToken;
 import com.resolum.alivia.iam.domain.model.valueobjects.PasswordHash;
 import com.resolum.alivia.iam.domain.model.valueobjects.UserStatus;
+import com.resolum.alivia.iam.domain.services.RoleCompatibilityPolicy;
 import com.resolum.alivia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
 import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
+import com.resolum.alivia.iam.domain.exceptions.RolesIncompatibleException;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -55,9 +64,11 @@ public class User extends AuditableAbstractAggregateRoot<User> {
     @Column(name = "password_hash", nullable = false, length = 100)
     private String password;
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"))
     @Enumerated(EnumType.STRING)
-    @Column(name = "access_role", nullable = false, length = 32)
-    private AccessRole accessRole;
+    @Column(name = "role", nullable = false, length = 32)
+    private Set<AccessRole> roles = new HashSet<>();
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
@@ -129,7 +140,7 @@ public class User extends AuditableAbstractAggregateRoot<User> {
         this.accountId = UUID.randomUUID().toString();
         this.email = email.email();
         this.password = password.value();
-        this.accessRole = accessRole;
+        this.roles.add(accessRole);
         this.termsAcceptedAt = termsAcceptedAt;
         this.status = UserStatus.PENDING_VERIFICATION;
         this.emailVerified = Boolean.FALSE;
@@ -383,12 +394,44 @@ public class User extends AuditableAbstractAggregateRoot<User> {
     }
 
     /**
-     * Returns the access role.
+     * Returns the primary role: the first of {@link #getRoles()} in {@link AccessRole} order. The front
+     * picks the portal with it.
      *
-     * @return the access role
+     * @return the primary role, or {@code null} when every role was revoked
      */
     public AccessRole getAccessRole() {
-        return accessRole;
+        return roles.isEmpty() ? null : Collections.min(roles);
+    }
+
+    /**
+     * Returns every role of the user, each one once.
+     */
+    public Set<AccessRole> getRoles() {
+        return Collections.unmodifiableSet(roles);
+    }
+
+    public boolean hasRole(AccessRole role) {
+        return roles.contains(role);
+    }
+
+    /**
+     * Grants a role. Granting a role the user already has changes nothing.
+     *
+     * @throws RolesIncompatibleException if the role cannot be combined with one the user has
+     */
+    public void assignAccessRole(AccessRole role) {
+        if (role == null) throw new IllegalArgumentException("Access role is required.");
+        for (var held : roles) {
+            if (!RoleCompatibilityPolicy.areCompatible(role, held)) throw new RolesIncompatibleException(role, held);
+        }
+        roles.add(role);
+    }
+
+    /**
+     * Revokes a role; the other roles stay. Revoking a role the user does not have changes nothing.
+     */
+    public void revokeAccessRole(AccessRole role) {
+        roles.remove(role);
     }
 
     /**
