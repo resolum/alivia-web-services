@@ -154,7 +154,7 @@ class AssistedPersonsControllerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = { "ROLE_ADMINISTRATOR", "ROLE_TECHNICIAN" })
+    @ValueSource(strings = { "ROLE_ADMINISTRATOR", "ROLE_TECHNICIAN", "ROLE_SUBSCRIPTION_MANAGER", "ROLE_CLEANING" })
     void createNeverTurnsAStaffAccountIntoARelative(String role) {
         when(access.canManageHousehold(3L, 8L)).thenReturn(true);
 

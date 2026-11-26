@@ -38,7 +38,8 @@ import java.util.Set;
 public class AssistedPersonsController {
 
     /** The staff roles that are never turned into a relative by registering an assisted person. */
-    private static final Set<String> STAFF_AUTHORITIES = Set.of("ROLE_ADMINISTRATOR", "ROLE_TECHNICIAN");
+    private static final Set<String> STAFF_AUTHORITIES = Set.of(
+            "ROLE_ADMINISTRATOR", "ROLE_TECHNICIAN", "ROLE_SUBSCRIPTION_MANAGER", "ROLE_CLEANING");
 
     private final AssistedPersonCommandService commandService;
     private final AssistedPersonQueryService queryService;
