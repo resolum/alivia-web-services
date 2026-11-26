@@ -256,6 +256,7 @@ class AuthenticationControllerTest {
         void loginReturnsTokensUserAndPermissions() throws Exception {
                 var user = user(7L, "maria.lopez@example.com", UserStatus.ACTIVE);
                 when(user.getAccessRole()).thenReturn(AccessRole.CAREGIVER);
+                when(user.getRoles()).thenReturn(java.util.Set.of(AccessRole.CAREGIVER));
                 when(commandService.handle(any(SignInCommand.class)))
                                 .thenReturn(new AuthSession(user, "access-token", "refresh-token", 900L));
 
@@ -270,6 +271,7 @@ class AuthenticationControllerTest {
                                 .andExpect(jsonPath("$.user.id").value("acc-7"))
                                 .andExpect(jsonPath("$.user.email").value("maria.lopez@example.com"))
                                 .andExpect(jsonPath("$.user.role").value("CAREGIVER"))
+                                .andExpect(jsonPath("$.user.roles[0]").value("CAREGIVER"))
                                 .andExpect(jsonPath("$.user.status").value("ACTIVE"))
                                 .andExpect(jsonPath("$.permissions[0]").value("ROLE_CAREGIVER"));
         }

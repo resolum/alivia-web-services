@@ -32,7 +32,16 @@ public class ExternalIamService {
                 toIamRole(role), staffProfileId);
     }
 
+    /** Moves the employee's account from the IAM role of {@code previous} to the one of {@code next}. */
+    public void changeEmployeeRole(Long userId, EmployeeRole previous, EmployeeRole next) {
+        iamContextFacade.replaceAccessRole(userId, toIamRole(previous), toIamRole(next));
+    }
+
     private static String toIamRole(EmployeeRole role) {
-        return role == EmployeeRole.SUBSCRIPTION_MANAGER ? "SUBSCRIPTION_MANAGER" : "TECHNICIAN";
+        return switch (role) {
+            case TECH -> "TECHNICIAN";
+            case SUBSCRIPTION_MANAGER -> "SUBSCRIPTION_MANAGER";
+            case CLEANING -> "CLEANING";
+        };
     }
 }

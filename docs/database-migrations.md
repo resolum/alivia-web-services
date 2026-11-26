@@ -34,6 +34,7 @@ Flyway es el dueño del esquema. Las migraciones viven en
 | `V16` | `edge_sync_states`: qué versión de su tabla confirmó cada edge y cuándo se le vio por última vez. | AP-68 |
 | `V17` | `edge_credentials`: cuándo se emitió el secreto vigente y quién lo emitió y lo revocó (con el motivo). Las filas existentes toman `updated_at` como fecha de emisión (una estimación) y no tienen emisor; `issued_at` pasa a ser obligatoria. Probada con un `V15` con credenciales actualizado por Flyway (`EdgeCredentialMigrationOnPostgresTest`). | AP-68 |
 | `V18` | `assisted_person_care_profiles`: el perfil de cuidado de la persona asistida (módulo `nursing`). La entidad llegó a `develop` y `main` sin migración: solo funcionaba donde `ddl-auto=update` crea tablas, y con `validate` (producción) la aplicación no arrancaba. Las pruebas contra PostgreSQL real lo detectan. | nursing |
+| `V27` | `user_roles`: un usuario puede tener varios roles (US-17). Copia `users.access_role` a la tabla nueva, corrige a `CLEANING` las cuentas de empleados de limpieza que se invitaron como `TECHNICIAN` y elimina `access_role`. Añade los roles `CLEANING` y `RELATIVE`. | US-17 |
 
 `V1` no es un marcador: contiene el DDL completo que Hibernate genera para las
 entidades JPA actuales. Se capturó con el procedimiento de la sección

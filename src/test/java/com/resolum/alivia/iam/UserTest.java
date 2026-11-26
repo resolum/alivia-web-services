@@ -2,17 +2,20 @@ package com.resolum.alivia.iam;
 
 import com.resolum.alivia.iam.domain.exceptions.AccountNotActiveException;
 import com.resolum.alivia.iam.domain.exceptions.AccountNotPendingVerificationException;
+import com.resolum.alivia.iam.domain.exceptions.RolesIncompatibleException;
 import com.resolum.alivia.iam.domain.model.aggregates.User;
 import com.resolum.alivia.iam.domain.model.valueobjects.AccessRole;
 import com.resolum.alivia.iam.domain.model.valueobjects.EmailVerificationToken;
 import com.resolum.alivia.iam.domain.model.valueobjects.PasswordHash;
 import com.resolum.alivia.iam.domain.model.valueobjects.UserStatus;
+import com.resolum.alivia.iam.domain.services.RoleParser;
 import com.resolum.alivia.shared.domain.model.valueobjects.EmailAddress;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -38,6 +41,42 @@ class UserTest {
         assertEquals(Integer.valueOf(0), user.getFailedAccessAttempts());
         assertEquals(NOW, user.getTermsAcceptedAt());
         assertNull(user.getPendingEmailVerificationToken());
+    }
+
+    @Test
+    void rolesAccumulateOnceAndRevokeKeepsTheOthers() {
+        var user = new User(new EmailAddress("ana@alivia.pe"), new PasswordHash("bcrypt-hash"),
+                AccessRole.TECHNICIAN, NOW);
+
+        user.assignAccessRole(AccessRole.ADMINISTRATOR);
+        user.assignAccessRole(AccessRole.ADMINISTRATOR);
+        assertEquals(Set.of(AccessRole.TECHNICIAN, AccessRole.ADMINISTRATOR), user.getRoles());
+        assertEquals(AccessRole.ADMINISTRATOR, user.getAccessRole());
+
+        user.revokeAccessRole(AccessRole.ADMINISTRATOR);
+        assertEquals(Set.of(AccessRole.TECHNICIAN), user.getRoles());
+    }
+
+    @Test
+    void incompatibleRolesAreRejected() {
+        var technician = new User(new EmailAddress("ana@alivia.pe"), new PasswordHash("bcrypt-hash"),
+                AccessRole.TECHNICIAN, NOW);
+        assertThrows(RolesIncompatibleException.class,
+                () -> technician.assignAccessRole(AccessRole.SUBSCRIPTION_MANAGER));
+        assertThrows(RolesIncompatibleException.class, () -> technician.assignAccessRole(AccessRole.RELATIVE));
+
+        var relative = newUser();
+        assertThrows(RolesIncompatibleException.class, () -> relative.assignAccessRole(AccessRole.CLEANING));
+        relative.assignAccessRole(AccessRole.RELATIVE);
+        assertEquals(Set.of(AccessRole.CAREGIVER, AccessRole.RELATIVE), relative.getRoles());
+    }
+
+    @Test
+    void frontRoleNamesMapToAssignableRolesOnly() {
+        assertEquals(AccessRole.ADMINISTRATOR, RoleParser.parseAssignable("ADMIN").orElseThrow());
+        assertEquals(AccessRole.TECHNICIAN, RoleParser.parseAssignable("TECH").orElseThrow());
+        assertTrue(RoleParser.parseAssignable("ASSISTED_PERSON").isEmpty());
+        assertTrue(RoleParser.parseAssignable("ADMINISTRATOR").isEmpty());
     }
 
     @Test

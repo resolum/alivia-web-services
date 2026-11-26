@@ -1,5 +1,6 @@
 package com.resolum.alivia.iam.infrastructure.tokens.jwt.services;
 
+import com.resolum.alivia.iam.domain.services.RoleParser;
 import com.resolum.alivia.iam.domain.model.aggregates.User;
 import com.resolum.alivia.iam.domain.model.valueobjects.EmailVerificationToken;
 import com.resolum.alivia.iam.infrastructure.tokens.jwt.BearerTokenService;
@@ -18,7 +19,6 @@ import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.Date;
 import java.util.HexFormat;
-import java.util.List;
 import javax.crypto.SecretKey;
 
 /**
@@ -151,12 +151,15 @@ public class TokenServiceImpl implements BearerTokenService {
     @Override
     public String generateAccessToken(User user) {
         var issuedAt = clock.instant();
+        var primaryRole = user.getAccessRole();
         return Jwts.builder()
                 .subject(String.valueOf(user.getId()))
                 .claim("email", user.getEmail().email())
-                .claim("role", user.getAccessRole().name())
-                // PENDING(contract): no capability matrix per role is defined yet, so the role is the only authority.
-                .claim("permissions", List.of("ROLE_" + user.getAccessRole().name()))
+                // "role" is the primary role, kept for the portal choice; "roles" are all of them in front names.
+                .claim("role", primaryRole == null ? null : primaryRole.name())
+                .claim("roles", user.getRoles().stream().map(RoleParser::toApiName).sorted().toList())
+                // PENDING(contract): no capability matrix per role is defined yet, so the roles are the only authorities.
+                .claim("permissions", user.getRoles().stream().map(role -> "ROLE_" + role.name()).sorted().toList())
                 .issuedAt(Date.from(issuedAt))
                 .expiration(Date.from(issuedAt.plusSeconds(accessTokenExpirationSeconds)))
                 .signWith(signingKey)

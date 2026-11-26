@@ -50,6 +50,7 @@ import com.resolum.alivia.iam.domain.exceptions.InvalidCredentialsException;
 import com.resolum.alivia.iam.domain.exceptions.InvalidRefreshTokenException;
 import com.resolum.alivia.iam.domain.exceptions.InvalidVerificationTokenException;
 import com.resolum.alivia.iam.domain.exceptions.RegistrationUnavailableException;
+import com.resolum.alivia.iam.domain.exceptions.RolesIncompatibleException;
 import com.resolum.alivia.iam.domain.exceptions.SignUpValidationException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationResendTooSoonException;
 import com.resolum.alivia.iam.domain.exceptions.VerificationTokenExpiredException;
@@ -97,6 +98,7 @@ import com.resolum.alivia.profiles.domain.exceptions.PersonProfileNotFoundExcept
 import com.resolum.alivia.profiles.domain.exceptions.RucAlreadyExistsException;
 import com.resolum.alivia.profiles.domain.exceptions.StaffProfileNotFoundException;
 import com.resolum.alivia.shared.infrastructure.web.CorrelationIdFilter;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.http.HttpHeaders;
@@ -107,6 +109,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.FieldError;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -114,6 +117,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -670,8 +674,18 @@ public class GlobalExceptionHandler {
                 "Registration is temporarily unavailable.", List.of());
     }
 
+    @ExceptionHandler(RolesIncompatibleException.class)
+    public ProblemDetail handleRolesIncompatible(RolesIncompatibleException exception) {
+        return problem(HttpStatus.CONFLICT, "roles_incompatible", exception.getMessage(), List.of());
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
-    public ProblemDetail handleAccessDenied() {
+    public ProblemDetail handleAccessDenied(HttpServletRequest request) {
+        // The front tells the user the attempt was recorded: this line is that record.
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        log.warn("Access denied: user={} method={} path={} at={}",
+                authentication == null ? "anonymous" : authentication.getName(),
+                request.getMethod(), request.getRequestURI(), Instant.now());
         return problem(HttpStatus.FORBIDDEN, "access_denied",
                 "The authenticated user is not allowed to perform this action.", List.of());
     }

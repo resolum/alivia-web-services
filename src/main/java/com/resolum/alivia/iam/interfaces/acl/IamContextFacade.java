@@ -158,6 +158,16 @@ public interface IamContextFacade {
      */
     Long inviteCompanyUser(String email, String fullName, String roleLabel, String role, Long profileId);
 
+    /**
+     * Replaces one role of an account with another; its other roles stay. Fails with
+     * {@code RolesIncompatibleException} when the new role clashes with one that stays.
+     *
+     * @param userId   the account id
+     * @param previous the role name to revoke (for example TECHNICIAN)
+     * @param next     the role name to grant
+     */
+    void replaceAccessRole(Long userId, String previous, String next);
+
     Long registerAssistedPerson(String email, String password, String firstName, String lastName, String phoneNumber,
             Long familiarId,
             String dni, LocalDate birthDate);

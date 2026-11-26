@@ -55,6 +55,9 @@ public record AuthenticatedUserResource(
             @Schema(description = "Rol de acceso", example = "CAREGIVER")
             String role,
 
+            @Schema(description = "Todos los roles, con los nombres del front", example = "[\"ADMIN\", \"TECH\"]")
+            List<String> roles,
+
             @Schema(description = "Estado de la cuenta", example = "ACTIVE")
             String status,
 
