@@ -126,17 +126,21 @@ Opcionales que **sí conviene definir** (sin ellas la aplicación usa un valor p
 | `IAM_EMAIL_FROM_NAME` | variable | Nombre visible del remitente (por defecto `Alivia`) |
 | `IAM_ACCOUNT_ACTIVATION_LINK_BASE_URL` | variable | `<url del frontend>/activate-account`. Su valor por defecto es `http://localhost:4200/activate-account` |
 | `PUSH_PROVIDER` | variable | `firebase` para enviar las notificaciones push con Firebase Cloud Messaging. Sin definir es `log`: las notificaciones se guardan en el centro de notificaciones pero solo se escriben en el log |
-| `FIREBASE_CREDENTIALS_JSON` | **secreto** | Contenido de la clave JSON de la cuenta de servicio del proyecto de Firebase (Configuración del proyecto → Cuentas de servicio → Generar nueva clave privada), **en una sola línea** (`jq -c . clave.json`) o codificado en Base64 (`base64 -i clave.json`). La aplicación no arranca con `PUSH_PROVIDER=firebase` si no puede leerla |
-| `FIREBASE_CREDENTIALS_PATH` | variable | Alternativa a la anterior: ruta de la clave JSON **dentro del contenedor**. La imagen no incluye ninguna clave y Terraform no monta almacenamiento, así que solo sirve si el archivo se puso en esa ruta por otro medio. Si `FIREBASE_CREDENTIALS_JSON` tiene valor, la ruta se ignora. En App Service se recomienda `FIREBASE_CREDENTIALS_JSON` |
+| `FIREBASE_CREDENTIALS_JSON` | **secreto** | El archivo de la clave de la cuenta de servicio del proyecto de Firebase (Configuración del proyecto → Cuentas de servicio → Generar nueva clave privada), codificado en Base64 (`base64 -i clave.json`). La aplicación no arranca con `PUSH_PROVIDER=firebase` si no puede leerlo |
+| `FIREBASE_CREDENTIALS_PATH` | **secreto** | En el despliegue es **lo mismo** que la anterior (el archivo en Base64), no una ruta. Basta con definir una de las dos |
+
+La aplicación solo lee la clave de `FIREBASE_CREDENTIALS_JSON` y trata `FIREBASE_CREDENTIALS_PATH` como la ruta de un
+archivo (así se usa en local, ver `docs/local-environment.md`). Por eso, cuando solo está definida
+`FIREBASE_CREDENTIALS_PATH`, `deploy.sh` envía su valor también como `FIREBASE_CREDENTIALS_JSON`. Si están las dos y
+difieren, manda `FIREBASE_CREDENTIALS_JSON`.
 
 `deploy.sh` comprueba estas variables **antes de cambiar nada** y se detiene si `PUSH_PROVIDER` no es `log` ni
-`firebase`, o si es `firebase` y no hay ni `FIREBASE_CREDENTIALS_JSON` ni `FIREBASE_CREDENTIALS_PATH` definidas en el
-environment de GitHub (aunque la Web App ya tuviera una). No comprueba que la clave sea válida ni que el archivo exista.
-Defínelas en cada environment (`staging` y `production`) antes de activar el envío.
+`firebase`, o si es `firebase` y no hay ninguno de los dos secretos en el environment de GitHub (aunque la Web App ya
+tuviera uno). No comprueba que la clave sea válida. Defínelos en cada environment (`staging` y `production`) antes de
+activar el envío.
 
 `deploy.sh` solo añade o cambia ajustes: borrar una de estas variables en GitHub **no** la quita del App Service. Para
-apagar las notificaciones push hay que definir `PUSH_PROVIDER=log`; para pasar de la clave a la ruta, quitar además
-`FIREBASE_CREDENTIALS_JSON` de los ajustes de la Web App.
+apagar las notificaciones push hay que definir `PUSH_PROVIDER=log`.
 
 Los demás opcionales (`HCM_DEFAULT_BUSINESS_ID`, `IAM_DEFAULT_PHOTO_URL`, tiempos de los tokens, `JAVA_TOOL_OPTIONS`,
 etc.) están en `OPTIONAL_APP_VARS` de `deploy.sh`; se definen solo si hay que cambiar el valor por defecto.

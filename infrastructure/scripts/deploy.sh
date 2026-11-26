@@ -77,7 +77,7 @@ readonly SECRET_VARS=(
   DB_PASSWORD MONGODB_URI IAM_JWT_SECRET
   STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET
   CLOUDINARY_API_KEY CLOUDINARY_API_SECRET
-  IAM_SUPER_ADMIN_PASSWORD RESEND_API_KEY FIREBASE_CREDENTIALS_JSON
+  IAM_SUPER_ADMIN_PASSWORD RESEND_API_KEY FIREBASE_CREDENTIALS_JSON FIREBASE_CREDENTIALS_PATH
 )
 
 # Owned by this script (Terraform does not define them). MongoDB is part of /actuator/health again: Tracking now reads and
@@ -212,20 +212,27 @@ is_not_blank() {
   [[ "${!name:-}" =~ [^[:space:]] ]]
 }
 
+# In a deployment FIREBASE_CREDENTIALS_JSON and FIREBASE_CREDENTIALS_PATH are two names for the same secret: the service
+# account key file encoded in Base64. The application is different: it reads only the first one as the key and takes the
+# second one for the path of a file (and an error opening it would write the "path" to the log). So when only the second
+# one is given, its value is also sent as the first one, which the application prefers. With both, the first one wins.
+unify_firebase_credentials() {
+  if ! is_not_blank FIREBASE_CREDENTIALS_JSON && is_not_blank FIREBASE_CREDENTIALS_PATH; then
+    FIREBASE_CREDENTIALS_JSON="$FIREBASE_CREDENTIALS_PATH"
+  fi
+}
+
 # Push notifications: the application does not start with a provider other than log or firebase, or with firebase and no
 # service account. The rollback would bring back the previous image but not the settings, so that image would read the same
 # ones. Those cases are refused here, before anything is changed. The application compares the provider ignoring case but
-# does not trim it. Whether the key itself is valid, or the file exists in the container, cannot be checked from here.
+# does not trim it. Whether the key itself is valid cannot be checked from here.
 check_push_configuration() {
   local provider="${PUSH_PROVIDER:-}"
 
   case "$provider" in
     [Ff][Ii][Rr][Ee][Bb][Aa][Ss][Ee])
-      if ! is_not_blank FIREBASE_CREDENTIALS_JSON; then
-        is_not_blank FIREBASE_CREDENTIALS_PATH \
-          || die "PUSH_PROVIDER=firebase exige FIREBASE_CREDENTIALS_JSON (recomendada) o FIREBASE_CREDENTIALS_PATH"
-        warn "FIREBASE_CREDENTIALS_PATH: la imagen no incluye ninguna clave; si el archivo no esta en esa ruta dentro del contenedor, la aplicacion no arrancara"
-      fi
+      is_not_blank FIREBASE_CREDENTIALS_JSON \
+        || die "PUSH_PROVIDER=firebase exige FIREBASE_CREDENTIALS_JSON o FIREBASE_CREDENTIALS_PATH (el archivo de credenciales en Base64)"
       ;;
     "" | [Ll][Oo][Gg])
       if [[ -z "$provider" ]] && { is_set FIREBASE_CREDENTIALS_JSON || is_set FIREBASE_CREDENTIALS_PATH; }; then
@@ -265,6 +272,7 @@ check_variables() {
   done
 
   check_email_configuration
+  unify_firebase_credentials
   check_push_configuration
 }
 

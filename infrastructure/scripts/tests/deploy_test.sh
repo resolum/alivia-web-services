@@ -212,13 +212,15 @@ echo "push notifications"
 setting_is() { grep -qF "{\"name\":\"$1\",\"value\":\"$2\"," "$FAKE_DIR/settings.json"; }
 no_setting() { ! grep -qF "\"name\":\"$1\"" "$FAKE_DIR/settings.json"; }
 
+# In a deployment both names carry the same secret: the key file in Base64.
+KEY=c2VydmljZS1hY2NvdW50LXNlY3JldA==
+
 new_case acrtest.azurecr.io/alivia-api:old old new
-EXTRA_ENV="PUSH_PROVIDER=firebase FIREBASE_CREDENTIALS_JSON=c2VydmljZS1hY2NvdW50LXNlY3JldA== FIREBASE_CREDENTIALS_PATH=/home/secrets/firebase.json" \
-  run_deploy staging new
+EXTRA_ENV="PUSH_PROVIDER=firebase FIREBASE_CREDENTIALS_JSON=$KEY FIREBASE_CREDENTIALS_PATH=$KEY" run_deploy staging new
 check "status 0" status_is 0
 check "the push provider reaches the settings" setting_is PUSH_PROVIDER firebase
-check "the Firebase key reaches the settings" setting_is FIREBASE_CREDENTIALS_JSON c2VydmljZS1hY2NvdW50LXNlY3JldA==
-check "the Firebase key path reaches the settings" setting_is FIREBASE_CREDENTIALS_PATH /home/secrets/firebase.json
+check "the first name reaches the settings" setting_is FIREBASE_CREDENTIALS_JSON "$KEY"
+check "the second name reaches the settings" setting_is FIREBASE_CREDENTIALS_PATH "$KEY"
 check "the Firebase key is not printed" lacks_text c2VydmljZS1hY2NvdW50LXNlY3JldA
 
 new_case acrtest.azurecr.io/alivia-api:old old new
@@ -235,7 +237,7 @@ refused_untouched() {
 new_case acrtest.azurecr.io/alivia-api:old old new
 EXTRA_ENV="PUSH_PROVIDER=firebase" run_deploy staging new
 refused_untouched "firebase without a key or a path"
-check "the message names both variables" contains_text "PUSH_PROVIDER=firebase exige FIREBASE_CREDENTIALS_JSON (recomendada) o FIREBASE_CREDENTIALS_PATH"
+check "the message names both variables" contains_text "PUSH_PROVIDER=firebase exige FIREBASE_CREDENTIALS_JSON o FIREBASE_CREDENTIALS_PATH"
 
 new_case acrtest.azurecr.io/alivia-api:old old new
 # Split on newlines only, so that the blank value reaches the script as it is.
@@ -257,9 +259,29 @@ EXTRA_ENV="PUSH_PROVIDER=Firebase FIREBASE_CREDENTIALS_JSON=c2VydmljZS1hY2NvdW50
 check "the provider is accepted in any case, as the application does" status_is 0
 
 new_case acrtest.azurecr.io/alivia-api:old old new
-EXTRA_ENV="PUSH_PROVIDER=firebase FIREBASE_CREDENTIALS_PATH=/home/secrets/firebase.json" run_deploy staging new
-check "firebase with only the path: status 0" status_is 0
-check "and warns that the file must be in the container" contains_text "si el archivo no esta en esa ruta dentro del contenedor"
+EXTRA_ENV="PUSH_PROVIDER=firebase FIREBASE_CREDENTIALS_PATH=$KEY" run_deploy staging new
+check "only the second name: status 0" status_is 0
+check "its value is also sent as the first one, the only one the application reads as a key" setting_is FIREBASE_CREDENTIALS_JSON "$KEY"
+check "and the second one is sent too" setting_is FIREBASE_CREDENTIALS_PATH "$KEY"
+check "the key is not printed" lacks_text c2VydmljZS1hY2NvdW50LXNlY3JldA
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+IFS=$'\n' EXTRA_ENV=$'PUSH_PROVIDER=firebase\nFIREBASE_CREDENTIALS_JSON=   \nFIREBASE_CREDENTIALS_PATH=c2VjcmV0' run_deploy staging new
+check "a blank first name is replaced by the second one" setting_is FIREBASE_CREDENTIALS_JSON c2VjcmV0
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="PUSH_PROVIDER=firebase FIREBASE_CREDENTIALS_JSON=$KEY" run_deploy staging new
+check "only the first name: status 0" status_is 0
+check "the second name is not invented" no_setting FIREBASE_CREDENTIALS_PATH
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="PUSH_PROVIDER=firebase FIREBASE_CREDENTIALS_JSON=Zmlyc3Q= FIREBASE_CREDENTIALS_PATH=c2Vjb25k" run_deploy staging new
+check "when they differ the first one wins" setting_is FIREBASE_CREDENTIALS_JSON Zmlyc3Q=
+
+new_case acrtest.azurecr.io/alivia-api:old old new
+EXTRA_ENV="GITHUB_ACTIONS=true FIREBASE_CREDENTIALS_JSON=Zmlyc3Q= FIREBASE_CREDENTIALS_PATH=c2Vjb25k" run_deploy staging new
+check "in GitHub Actions the first name is masked" contains_text "::add-mask::Zmlyc3Q="
+check "in GitHub Actions the second name is masked" contains_text "::add-mask::c2Vjb25k"
 
 new_case acrtest.azurecr.io/alivia-api:old old new
 EXTRA_ENV="PUSH_PROVIDER=log" run_deploy staging new
