@@ -94,6 +94,7 @@ public class WebSecurityConfiguration {
                         .requestMatchers(HttpMethod.POST, "/api/v1/invitations/*/accept", "/api/v1/caregiver-invitations/*/accept").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/invitations/*/reject", "/api/v1/caregiver-invitations/*/reject").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/stripe").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/edge/provision").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                         .requestMatchers("/error").permitAll()

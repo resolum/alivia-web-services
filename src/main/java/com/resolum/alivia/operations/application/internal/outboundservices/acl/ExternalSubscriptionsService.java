@@ -18,6 +18,10 @@ public class ExternalSubscriptionsService {
         return subscriptionsContextFacade.isConfigurationDraftPreauthorized(draftId);
     }
 
+    public Optional<SubscriptionsContextFacade.InstallationContext> fetchInstallationContext(String draftId) {
+        return subscriptionsContextFacade.fetchInstallationContext(draftId);
+    }
+
     /**
      * Contracting draft of the household's active subscription when {@code userId} holds it; empty when the
      * household has no active subscription, it belongs to another account or it was not linked to a draft.

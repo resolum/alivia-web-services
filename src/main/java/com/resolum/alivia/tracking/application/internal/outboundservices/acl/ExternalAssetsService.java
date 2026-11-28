@@ -5,6 +5,7 @@ import com.resolum.alivia.tracking.domain.model.valueobjects.ReportingContext;
 import org.springframework.stereotype.Service;
 
 import java.util.HashSet;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -67,6 +68,20 @@ public class ExternalAssetsService {
         return assetsContextFacade.fetchDevicesOfHousehold(householdId).stream()
                 .map(device -> new HomeDevice(device.deviceId(), device.alias(), device.type(), device.roomKey()))
                 .toList();
+    }
+
+    /**
+     * @param kind {@code MICROPHONE} (the voice edge) or {@code ACTUATOR}
+     */
+    public record HomeEdge(Long edgeId, String kind) {
+    }
+
+    /** The edges assigned right now to the active installation of the household, with their kind; empty when none. */
+    public List<HomeEdge> fetchAssignedEdges(Long householdId) {
+        if (householdId == null) return List.of();
+        return assetsContextFacade.fetchEdgesOfHousehold(householdId).stream()
+                .map(edge -> new HomeEdge(edge.edgeId(), edge.edgeKind()))
+                .sorted(Comparator.comparing(HomeEdge::edgeId)).toList();
     }
 
     /** The edges assigned right now to the active installation of the household; empty when it has none. */

@@ -5,6 +5,7 @@ import com.resolum.alivia.assets.domain.model.queries.GetDevicesOfHouseholdQuery
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgesOfHouseholdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetHouseholdOfDeviceQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetInstallationEdgesQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeScopeByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeTableVersionByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetTableVersionByInstallationIdQuery;
@@ -13,8 +14,10 @@ import com.resolum.alivia.assets.domain.model.valueobjects.EdgeAccessTable;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeScopeView;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeTableVersion;
 import com.resolum.alivia.assets.domain.model.valueobjects.EdgeType;
+import com.resolum.alivia.assets.domain.model.valueobjects.InstallationEdges;
 import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryQueryService;
 import com.resolum.alivia.assets.infrastructure.persistence.jpa.repositories.HouseholdDeviceRegistryRepository;
+import com.resolum.alivia.shared.domain.model.valueobjects.InstallationId;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -107,5 +110,13 @@ public class HouseholdDeviceRegistryQueryServiceImpl implements HouseholdDeviceR
     @Transactional(readOnly = true)
     public Optional<Long> handle(GetTableVersionByInstallationIdQuery query) {
         return registryRepository.findActiveTableVersionByInstallationId(query.installationId());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<InstallationEdges> handle(GetInstallationEdgesQuery query) {
+        if (query == null || query.installationId() == null) return Optional.empty();
+        return registryRepository.findByInstallationId(new InstallationId(query.installationId()))
+                .map(registry -> InstallationEdges.of(registry, null));
     }
 }

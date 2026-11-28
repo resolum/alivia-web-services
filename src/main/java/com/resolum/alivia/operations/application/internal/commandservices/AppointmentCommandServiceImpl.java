@@ -3,6 +3,7 @@ package com.resolum.alivia.operations.application.internal.commandservices;
 import com.resolum.alivia.shared.domain.model.valueobjects.TimeRange;
 import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalHcmService;
 import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalSubscriptionsService;
+import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalInstallationAssetsService;
 import com.resolum.alivia.operations.application.internal.queryservices.AppointmentQueryServiceImpl;
 import com.resolum.alivia.operations.domain.exceptions.AppointmentAlreadyExists;
 import com.resolum.alivia.operations.domain.exceptions.AppointmentSlotTaken;
@@ -79,16 +80,19 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
     private final IncidentPersistenceRepository incidents;
     private final ExternalHcmService hcm;
     private final ExternalSubscriptionsService subscriptions;
+    private final ExternalInstallationAssetsService installationAssets;
     private final Clock clock;
 
     public AppointmentCommandServiceImpl(AppointmentRepository appointments, EvaluationSlotHoldRepository holds,
                                          IncidentPersistenceRepository incidents, ExternalHcmService hcm,
-                                         ExternalSubscriptionsService subscriptions, Clock clock) {
+                                         ExternalSubscriptionsService subscriptions,
+                                         ExternalInstallationAssetsService installationAssets, Clock clock) {
         this.appointments = appointments;
         this.holds = holds;
         this.incidents = incidents;
         this.hcm = hcm;
         this.subscriptions = subscriptions;
+        this.installationAssets = installationAssets;
         this.clock = clock;
     }
 
@@ -430,7 +434,11 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
     @Transactional
     public Appointment handle(RegisterInstalledDeviceCommand command) {
         var order = appointments.findById(command.orderId()).orElseThrow(() -> new TechnicalOrderNotFound(command.orderId()));
-        order.registerDevice(new InstalledDevice(command.alias(), command.macAddress(), command.type()));
+        var device = new InstalledDevice(command.alias(), command.macAddress(), command.type());
+        // The order rules go first (scheduled installation, MAC not repeated) and then the inventory; any failure
+        // rolls both back.
+        order.registerDevice(device);
+        installationAssets.validateAndAssign(order, device, command.room());
         return appointments.saveAndFlush(order);
     }
 
@@ -438,7 +446,10 @@ public class AppointmentCommandServiceImpl implements AppointmentCommandService 
     @Transactional
     public Appointment handle(RemoveInstalledDeviceCommand command) {
         var order = appointments.findById(command.orderId()).orElseThrow(() -> new TechnicalOrderNotFound(command.orderId()));
+        var mac = InstalledDevice.normalizeMac(command.macAddress());
+        var removed = order.getInstalledDevices().stream().filter(device -> device.macAddress().equals(mac)).findFirst();
         order.removeDevice(command.macAddress());
+        removed.ifPresent(device -> installationAssets.release(order, device));
         return appointments.saveAndFlush(order);
     }
 

@@ -1,5 +1,6 @@
 package com.resolum.alivia.operations;
 
+import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalInstallationAssetsService;
 import com.resolum.alivia.hcm.application.acl.HcmContextFacadeImpl;
 import com.resolum.alivia.hcm.application.internal.outboundservices.acl.ExternalProfilesService;
 import com.resolum.alivia.hcm.domain.model.aggregates.Employee;
@@ -239,7 +240,7 @@ class TechnicianFieldOrdersTest {
         when(late.saveAndFlush(any(Appointment.class))).thenAnswer(invocation -> invocation.getArgument(0));
         var lateNight = new AppointmentCommandServiceImpl(late, mock(EvaluationSlotHoldRepository.class),
                 mock(IncidentPersistenceRepository.class), mock(ExternalHcmService.class), mock(ExternalSubscriptionsService.class),
-                Clock.fixed(Instant.parse("2026-11-04T04:59:30Z"), ZoneOffset.UTC));
+                mock(ExternalInstallationAssetsService.class), Clock.fixed(Instant.parse("2026-11-04T04:59:30Z"), ZoneOffset.UTC));
         var installation = lateNight.handle(new OpenInstallationCommand("draft")).orElseThrow();
         assertEquals(LocalTime.of(23, 58), installation.getStartTime());
         assertEquals(LocalTime.of(23, 59), installation.getEndTime());
@@ -441,7 +442,7 @@ class TechnicianFieldOrdersTest {
                                                           ExternalSubscriptionsService subscriptions,
                                                           IncidentPersistenceRepository incidents) {
         return new AppointmentCommandServiceImpl(appointments, mock(EvaluationSlotHoldRepository.class), incidents,
-                mock(ExternalHcmService.class), subscriptions, Clock.fixed(NOW, ZoneOffset.UTC));
+                mock(ExternalHcmService.class), subscriptions, mock(ExternalInstallationAssetsService.class), Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private static Employee employee(Long id, Long userId, EmployeeRole role) {

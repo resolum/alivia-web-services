@@ -1,5 +1,8 @@
 package com.resolum.alivia.tracking.infrastructure.adapters;
 
+import com.resolum.alivia.tracking.domain.model.events.DeviceEventRecordedEvent;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import com.resolum.alivia.tracking.domain.model.aggregates.DeviceEvent;
 import com.resolum.alivia.tracking.domain.model.valueobjects.CommandFact;
 import com.resolum.alivia.tracking.domain.model.valueobjects.EventInsertion;
@@ -31,15 +34,32 @@ public class DeviceEventRepositoryImpl implements DeviceEventRepository {
     private static final int MAX_PAGE_SIZE = 200;
 
     private final MongoTemplate mongo;
+    private final ApplicationEventPublisher publisher;
 
     public DeviceEventRepositoryImpl(MongoTemplate mongo) {
+        this(mongo, event -> { });
+    }
+
+    @Autowired
+    public DeviceEventRepositoryImpl(MongoTemplate mongo, ApplicationEventPublisher publisher) {
         this.mongo = mongo;
+        this.publisher = publisher;
+    }
+
+    /** Tells the ones who follow the home live; a failure there never undoes what was kept. */
+    private void published(DeviceEvent event) {
+        try {
+            publisher.publishEvent(new DeviceEventRecordedEvent(event));
+        } catch (RuntimeException ignored) {
+            // the event is kept; the live view catches up with the next read of the history
+        }
     }
 
     @Override
     public EventInsertion insert(DeviceEvent event) {
         try {
             mongo.insert(DeviceEventDocument.from(event));
+            published(event);
             return EventInsertion.INSERTED;
         } catch (DuplicateKeyException duplicate) {
             // The only unique index is (edge, event id): this edge already reported this event.
@@ -63,6 +83,9 @@ public class DeviceEventRepositoryImpl implements DeviceEventRepository {
                 if (error.getCode() != DUPLICATE_KEY) throw failure;
                 result.set(error.getIndex(), EventInsertion.DUPLICATE);
             }
+        }
+        for (int i = 0; i < batch.size(); i++) {
+            if (result.get(i) == EventInsertion.INSERTED) published(batch.get(i));
         }
         return result;
     }

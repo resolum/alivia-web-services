@@ -79,6 +79,10 @@ import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotFound;
 import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderNotScheduled;
 import com.resolum.alivia.operations.domain.exceptions.TechnicalOrderAccessDenied;
 import com.resolum.alivia.operations.domain.exceptions.InstalledDeviceAlreadyRegistered;
+import com.resolum.alivia.operations.domain.exceptions.InstallationAssetNotFound;
+import com.resolum.alivia.operations.domain.exceptions.InstallationAssetTypeMismatch;
+import com.resolum.alivia.operations.domain.exceptions.InstallationContextMissing;
+import com.resolum.alivia.operations.domain.exceptions.RequiredInstallationEdgeMissing;
 import com.resolum.alivia.operations.domain.exceptions.TechnicianNotEligible;
 import com.resolum.alivia.operations.interfaces.rest.transform.TechnicalOrderResourceFromEntityAssembler;
 import com.resolum.alivia.subscriptions.domain.exceptions.PreauthorizationUnavailable;
@@ -416,6 +420,26 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleInvalidArgument(IllegalArgumentException exception) {
         return problem(HttpStatus.BAD_REQUEST, "invalid_argument",
                 exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InstallationAssetNotFound.class)
+    public ProblemDetail handleInstallationAssetNotFound(InstallationAssetNotFound exception) {
+        return problem(HttpStatus.NOT_FOUND, "installation_asset_not_found", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InstallationAssetTypeMismatch.class)
+    public ProblemDetail handleInstallationAssetTypeMismatch(InstallationAssetTypeMismatch exception) {
+        return problem(HttpStatus.CONFLICT, "installation_asset_type_mismatch", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(InstallationContextMissing.class)
+    public ProblemDetail handleInstallationContextMissing(InstallationContextMissing exception) {
+        return problem(HttpStatus.CONFLICT, "installation_context_missing", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(RequiredInstallationEdgeMissing.class)
+    public ProblemDetail handleRequiredInstallationEdgeMissing(RequiredInstallationEdgeMissing exception) {
+        return problem(HttpStatus.UNPROCESSABLE_ENTITY, "required_installation_edge_missing", exception.getMessage(), List.of());
     }
 
     @ExceptionHandler(PlanNotFound.class)

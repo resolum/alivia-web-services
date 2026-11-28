@@ -202,13 +202,14 @@ public class TechnicalOrdersController {
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'TECHNICIAN')")
     @Operation(summary = "Registrar un dispositivo instalado en el hogar",
-            description = "Alias, dirección MAC (00:1A:2B:3C:4D:5E) y tipo. Una MAC repetida en la orden responde 409.")
+            description = "Alias, dirección MAC (00:1A:2B:3C:4D:5E), tipo y habitación. La MAC debe estar en el inventario del negocio, "
+                    + "disponible y ser del tipo elegido; el edge de su tipo va primero. Una MAC repetida en la orden responde 409.")
     public TechnicalOrderResource registerDevice(@PathVariable Long orderId,
                                                  @Valid @RequestBody RegisterInstalledDeviceResource resource,
                                                  Authentication authentication) {
         requireAttendedBy(orderId, authentication);
         var order = commandService.handle(new RegisterInstalledDeviceCommand(orderId, resource.alias(),
-                resource.macAddress(), resource.type()));
+                resource.macAddress(), resource.type(), resource.room()));
         return toResource(order);
     }
 

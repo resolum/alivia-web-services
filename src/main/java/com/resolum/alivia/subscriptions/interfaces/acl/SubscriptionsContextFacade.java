@@ -6,6 +6,12 @@ import java.util.Optional;
 /** Anti-corruption layer of Subscriptions for the contexts that continue the guided contracting flow. */
 public interface SubscriptionsContextFacade {
 
+    record InstallationContext(Long assistedPersonId, Long businessId) {
+    }
+
+    /** Business and assisted person linked to the contracted request. */
+    Optional<InstallationContext> fetchInstallationContext(String draftId);
+
     /**
      * True when the configuration draft exists and its card holds a preauthorization, which is the
      * condition to book the technical evaluation.

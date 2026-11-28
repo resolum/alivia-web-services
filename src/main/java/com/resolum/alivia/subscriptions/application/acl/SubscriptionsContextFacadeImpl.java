@@ -26,6 +26,14 @@ import java.util.Map;
 
 @Service
 public class SubscriptionsContextFacadeImpl implements SubscriptionsContextFacade {
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<InstallationContext> fetchInstallationContext(String draftId) {
+        if (draftId == null || draftId.isBlank()) return Optional.empty();
+        return subscriptions.findFirstByDraftId(draftId.strip())
+                .filter(subscription -> subscription.getAssistedPersonId() != null && subscription.getBusinessId() != null)
+                .map(subscription -> new InstallationContext(subscription.getAssistedPersonId(), subscription.getBusinessId()));
+    }
     private final ConfigurationDraftRepository drafts;
     private final SubscriptionRepository subscriptions;
     private final PaymentAuthorizationGateway authorizations;

@@ -77,12 +77,13 @@ public class AssistedPersonCommandServiceImpl implements AssistedPersonCommandSe
             effectiveEmail = "asistido." + effectiveDni + "." + UUID.randomUUID().toString().substring(0, 4) + "@alivia.local";
         }
 
-        byte[] effectivePhotoData = (command.photoData() != null && command.photoData().length > 0)
-                ? command.photoData()
-                : new byte[]{1};
-        String effectivePhotoFileName = (command.photoFileName() != null && !command.photoFileName().isBlank())
+        // Without a photo, Profiles gives the person the default photo (create) or keeps the current one (update):
+        // no placeholder bytes are uploaded to the storage service, which rejects them as an invalid image.
+        boolean hasPhoto = command.photoData() != null && command.photoData().length > 0;
+        byte[] effectivePhotoData = hasPhoto ? command.photoData() : null;
+        String effectivePhotoFileName = hasPhoto && command.photoFileName() != null && !command.photoFileName().isBlank()
                 ? command.photoFileName()
-                : "default.jpg";
+                : hasPhoto ? "photo.jpg" : null;
 
         String effectivePhoneNumber = command.phoneNumber();
         if (effectivePhoneNumber == null || effectivePhoneNumber.isBlank()) {
@@ -150,12 +151,13 @@ public class AssistedPersonCommandServiceImpl implements AssistedPersonCommandSe
                 emergencyContact
         );
 
-        byte[] effectivePhotoData = (command.photoData() != null && command.photoData().length > 0)
-                ? command.photoData()
-                : new byte[]{1};
-        String effectivePhotoFileName = (command.photoFileName() != null && !command.photoFileName().isBlank())
+        // Without a photo, Profiles gives the person the default photo (create) or keeps the current one (update):
+        // no placeholder bytes are uploaded to the storage service, which rejects them as an invalid image.
+        boolean hasPhoto = command.photoData() != null && command.photoData().length > 0;
+        byte[] effectivePhotoData = hasPhoto ? command.photoData() : null;
+        String effectivePhotoFileName = hasPhoto && command.photoFileName() != null && !command.photoFileName().isBlank()
                 ? command.photoFileName()
-                : "default.jpg";
+                : hasPhoto ? "photo.jpg" : null;
 
         String effectivePhoneNumber = command.phoneNumber();
         if (effectivePhoneNumber == null || effectivePhoneNumber.isBlank()) {

@@ -1,5 +1,7 @@
 package com.resolum.alivia.assets.domain.services;
 
+import com.resolum.alivia.assets.domain.model.valueobjects.InstallationEdges;
+import com.resolum.alivia.assets.domain.model.queries.GetInstallationEdgesQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetDevicesOfHouseholdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeAccessTableByEdgeIdQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgesOfHouseholdQuery;
@@ -16,6 +18,8 @@ import java.util.List;
 import java.util.Optional;
 
 public interface HouseholdDeviceRegistryQueryService {
+    /** Edges placed in an installation; empty when the installation is not registered. */
+    Optional<InstallationEdges> handle(GetInstallationEdgesQuery query);
 
     /**
      * The table of devices of the installation where the edge is assigned, as an edge service asks for it; empty when

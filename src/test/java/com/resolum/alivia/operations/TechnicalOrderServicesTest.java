@@ -1,5 +1,6 @@
 package com.resolum.alivia.operations;
 
+import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalInstallationAssetsService;
 import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.EvaluationSlotHoldRepository;
 import com.resolum.alivia.operations.application.internal.commandservices.AppointmentCommandServiceImpl;
 import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalHcmService;
@@ -60,7 +61,7 @@ class TechnicalOrderServicesTest {
         hcm = mock(ExternalHcmService.class);
         subscriptions = mock(ExternalSubscriptionsService.class);
         when(subscriptions.capturePaymentOf(anyString())).thenReturn(true);
-        commands = new AppointmentCommandServiceImpl(appointments, mock(EvaluationSlotHoldRepository.class), mock(IncidentPersistenceRepository.class), hcm, subscriptions, CLOCK);
+        commands = new AppointmentCommandServiceImpl(appointments, mock(EvaluationSlotHoldRepository.class), mock(IncidentPersistenceRepository.class), hcm, subscriptions, mock(ExternalInstallationAssetsService.class), CLOCK);
         queries = new AppointmentQueryServiceImpl(appointments, mock(EvaluationSlotHoldRepository.class), hcm, CLOCK);
         when(hcm.fetchTechniciansWorkingOn(any())).thenReturn(List.of());
         when(hcm.fetchTechniciansWorkingOn(TOMORROW)).thenReturn(List.of(ANA, LUIS));

@@ -13,9 +13,10 @@ import java.util.List;
  * @param offlineSince         since when the first silent edge stopped reporting; absent while online
  * @param lastUpdatedAt        the latest thing known about the home; absent when nothing was ever reported
  * @param mayHavePendingEvents whether events may be waiting in an edge that has not synchronized them
+ * @param edges                the edges assigned to the home and whether each one is heard
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record HomeStatusResource(Long personId, Long householdId, String edgeLink, Instant offlineSince,
                                  Instant lastUpdatedAt, boolean mayHavePendingEvents,
-                                 List<HomeDeviceStatusResource> devices) {
+                                 List<HomeDeviceStatusResource> devices, List<HomeEdgeStatusResource> edges) {
 }

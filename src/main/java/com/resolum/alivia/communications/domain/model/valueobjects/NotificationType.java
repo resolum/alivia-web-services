@@ -14,7 +14,9 @@ public enum NotificationType {
     ASSIGNMENT_CREATED,
     ORDER_RESCHEDULED,
     CARE_ACTIVITY_REMINDER,
-    HELP_REQUESTED;
+    HELP_REQUESTED,
+    /** A voice command was carried out (or could not be) in the home. */
+    DEVICE_ACTION;
 
     /** Types delivered as urgent alerts: high priority on the phone, on its alerts channel. */
     public boolean isUrgent() {
