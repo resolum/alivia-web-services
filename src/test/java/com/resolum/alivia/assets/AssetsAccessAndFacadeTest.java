@@ -253,6 +253,27 @@ class AssetsAccessAndFacadeTest {
     }
 
     @Test
+    void theFacadeDescribesDevicesAndEdgesAsInventoryAssets() {
+        var devices = mock(DeviceQueryService.class);
+        var edges = mock(EdgeQueryService.class);
+        var facade = new AssetsContextFacadeImpl(devices, mock(DeviceCommandService.class),
+                mock(EdgeCommandService.class), edges, mock(HouseholdDeviceRegistryCommandService.class),
+                mock(DeviceAssignmentCommandService.class), mock(HouseholdDeviceRegistryQueryService.class));
+        var device = new Device("AA:BB:CC:DD:EE:FF", "Luz", "LIGHT", 1L);
+        ReflectionTestUtils.setField(device, "id", 7L);
+        var edge = new Edge(1L, "AA:BB:CC:DD:EE:00", "ACTUATOR_EDGE");
+        ReflectionTestUtils.setField(edge, "id", 3L);
+        when(devices.handle(any(GetDeviceByMacAddressQuery.class))).thenAnswer(invocation ->
+                ((GetDeviceByMacAddressQuery) invocation.getArgument(0)).macAddress().endsWith("FF") ? Optional.of(device) : Optional.empty());
+        when(edges.handle(any(GetEdgeByMacAddressQuery.class))).thenAnswer(invocation ->
+                ((GetEdgeByMacAddressQuery) invocation.getArgument(0)).macAddress().endsWith("00") ? Optional.of(edge) : Optional.empty());
+
+        assertFalse(facade.fetchInventoryAssetByMacAddress("AA:BB:CC:DD:EE:FF").orElseThrow().edge());
+        assertTrue(facade.fetchInventoryAssetByMacAddress("AA:BB:CC:DD:EE:00").orElseThrow().edge());
+        assertTrue(facade.fetchInventoryAssetByMacAddress("AA:BB:CC:DD:EE:99").isEmpty());
+    }
+
+    @Test
     void theBusinessServiceOnlyConfirmsBusinessesThatExist() {
         var businesses = mock(BusinessContextFacade.class);
         when(businesses.existsBusinessById(1L)).thenReturn(true);
