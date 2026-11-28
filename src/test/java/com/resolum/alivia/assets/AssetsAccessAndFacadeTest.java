@@ -12,6 +12,7 @@ import com.resolum.alivia.assets.domain.services.DeviceAssignmentCommandService;
 import com.resolum.alivia.assets.domain.model.commands.RegisterDeviceCommand;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceByMacAddressQuery;
 import com.resolum.alivia.assets.domain.model.queries.GetEdgeByMacAddressQuery;
+import com.resolum.alivia.assets.domain.model.queries.GetInstallationEdgesQuery;
 import com.resolum.alivia.assets.domain.services.DeviceCommandService;
 import com.resolum.alivia.assets.domain.services.HouseholdDeviceRegistryCommandService;
 import com.resolum.alivia.assets.domain.services.DeviceQueryService;
@@ -273,6 +274,30 @@ class AssetsAccessAndFacadeTest {
         assertEquals(11L, facade.registerInstallation(3L, 5L, 1L));
 
         verify(registryService).handle(new RegisterInstallationCommand(3L, 5L, 1L));
+    }
+
+    @Test
+    void theFacadeEnsuresAndManagesTheEdgesOfAnInstallation() {
+        var commands = mock(HouseholdDeviceRegistryCommandService.class);
+        var queries = mock(HouseholdDeviceRegistryQueryService.class);
+        var facade = new AssetsContextFacadeImpl(mock(DeviceQueryService.class), mock(DeviceCommandService.class),
+                mock(EdgeCommandService.class), mock(EdgeQueryService.class), commands,
+                mock(DeviceAssignmentCommandService.class), queries);
+        when(queries.handle(new GetInstallationEdgesQuery(3L)))
+                .thenReturn(Optional.of(new InstallationEdges(3L, 7L, null, null)));
+        when(queries.handle(new GetInstallationEdgesQuery(4L))).thenReturn(Optional.empty());
+        when(commands.handle(new RegisterInstallationCommand(4L, 5L, 1L))).thenReturn(4L);
+
+        assertEquals(3L, facade.ensureInstallation(3L, 5L, 1L));
+        assertEquals(4L, facade.ensureInstallation(4L, 5L, 1L));
+        assertTrue(facade.installationHasEdgeType(3L, "MICROPHONE_EDGE"));
+        assertFalse(facade.installationHasEdgeType(3L, "ACTUATOR_EDGE"));
+        assertFalse(facade.installationHasEdgeType(4L, "MICROPHONE_EDGE"));
+
+        facade.placeEdge(3L, 8L);
+        facade.removeEdge(3L, 8L);
+        verify(commands).handle(new PlaceEdgeInInstallationCommand(3L, 8L));
+        verify(commands).handle(new RemoveEdgeFromInstallationCommand(3L, 8L));
     }
 
     @Test
