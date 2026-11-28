@@ -31,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -99,7 +100,7 @@ class AssistedPersonCommandServiceImplTest {
         service.handle(create(null, 9L, " ", null, " ", null, null, null, null, null));
 
         verify(relatives).save(any(Relative.class));
-        verify(profiles).createPersonProfile(startsWith("asistido."), eq(new byte[]{1}), eq("default.jpg"),
+        verify(profiles).createPersonProfile(startsWith("asistido."), isNull(), isNull(),
                 eq("51999999999"), eq("Ana"), eq("Diaz"), anyString(), eq(BIRTH));
         ArgumentCaptor<AssistedPerson> saved = ArgumentCaptor.forClass(AssistedPerson.class);
         verify(assistedPersons).save(saved.capture());
@@ -115,7 +116,7 @@ class AssistedPersonCommandServiceImplTest {
         service.handle(create(null, 9L, null, new byte[0], null, " ", "12345678", "Luis", "51922222222", false));
 
         verify(relatives, never()).save(any());
-        verify(profiles).createPersonProfile(startsWith("asistido.12345678."), any(), eq("default.jpg"),
+        verify(profiles).createPersonProfile(startsWith("asistido.12345678."), isNull(), isNull(),
                 eq("51922222222"), any(), any(), eq("12345678"), any());
     }
 
@@ -178,11 +179,11 @@ class AssistedPersonCommandServiceImplTest {
 
         service.handle(new UpdateAssistedPersonCommand(50L, null, null, null, null, "Ana", "Diaz", BIRTH,
                 null, null, null, "Luis", "51922222222"));
-        verify(profiles).updatePersonProfile(7L, new byte[]{1}, "default.jpg", "51922222222", "Ana", "Diaz", BIRTH);
+        verify(profiles).updatePersonProfile(7L, null, null, "51922222222", "Ana", "Diaz", BIRTH);
 
         service.handle(new UpdateAssistedPersonCommand(50L, null, new byte[0], " ", " ", "Ana", "Diaz", BIRTH,
                 null, null, null, null, " "));
-        verify(profiles).updatePersonProfile(7L, new byte[]{1}, "default.jpg", "51999999999", "Ana", "Diaz", BIRTH);
+        verify(profiles).updatePersonProfile(7L, null, null, "51999999999", "Ana", "Diaz", BIRTH);
 
         service.handle(new UpdateAssistedPersonCommand(50L, null, null, null, null, "Ana", "Diaz", BIRTH));
     }

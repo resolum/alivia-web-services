@@ -63,7 +63,7 @@ public class EdgeAuthorizationRequestFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !EDGE_PATHS.matches(request);
+        return "/api/v1/edge/provision".equals(request.getRequestURI()) || !EDGE_PATHS.matches(request);
     }
 
     @Override

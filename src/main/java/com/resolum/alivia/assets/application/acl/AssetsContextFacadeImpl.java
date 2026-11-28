@@ -4,6 +4,10 @@ import com.resolum.alivia.assets.domain.model.aggregates.Device;
 import com.resolum.alivia.assets.domain.model.aggregates.Edge;
 import com.resolum.alivia.assets.domain.model.commands.AssignDeviceToInstallationCommand;
 import com.resolum.alivia.assets.domain.model.commands.RegisterInstallationCommand;
+import com.resolum.alivia.assets.domain.model.commands.PlaceEdgeInInstallationCommand;
+import com.resolum.alivia.assets.domain.model.commands.RemoveEdgeFromInstallationCommand;
+import com.resolum.alivia.assets.domain.model.queries.GetInstallationEdgesQuery;
+import com.resolum.alivia.assets.domain.model.valueobjects.InstallationEdges;
 import com.resolum.alivia.assets.domain.model.commands.UnassignDeviceCommand;
 import com.resolum.alivia.assets.domain.model.valueobjects.CallerAuthority;
 import com.resolum.alivia.assets.domain.model.queries.GetDeviceByMacAddressQuery;
@@ -53,6 +57,19 @@ public class AssetsContextFacadeImpl implements AssetsContextFacade {
 
 
     @Override
+    public Optional<InventoryAsset> fetchInventoryAssetByMacAddress(String macAddress) {
+        var device = deviceQueryService.handle(new GetDeviceByMacAddressQuery(macAddress));
+        if (device.isPresent()) {
+            var value = device.get();
+            return Optional.of(new InventoryAsset(value.getId(), value.getBusinessId().businessId(),
+                    value.getMacAddress().macAddress(), value.getDeviceType().name(), value.getAssetStatus().name(), false));
+        }
+        return edgeQueryService.handle(new GetEdgeByMacAddressQuery(macAddress))
+                .map(value -> new InventoryAsset(value.getId(), value.getBusinessId().businessId(),
+                        value.getMacAddress().macAddress(), value.getEdgeType().name(), value.getAssetStatus().name(), true));
+    }
+
+    @Override
     public Optional<Long> fetchDeviceByMacAddress(String macAddress) {
         return deviceQueryService.handle(new GetDeviceByMacAddressQuery(macAddress)).map(Device::getId);
     }
@@ -66,6 +83,30 @@ public class AssetsContextFacadeImpl implements AssetsContextFacade {
     @Override
     public Long registerInstallation(Long installationId, Long householdId, Long businessId) {
         return householdDeviceRegistryCommandService.handle(new RegisterInstallationCommand(installationId, householdId, businessId));
+    }
+
+    @Override
+    public Long ensureInstallation(Long installationId, Long householdId, Long businessId) {
+        return householdDeviceRegistryQueryService.handle(new GetInstallationEdgesQuery(installationId))
+                .map(InstallationEdges::installationId)
+                .orElseGet(() -> registerInstallation(installationId, householdId, businessId));
+    }
+
+    @Override
+    public void placeEdge(Long installationId, Long edgeId) {
+        householdDeviceRegistryCommandService.handle(new PlaceEdgeInInstallationCommand(installationId, edgeId));
+    }
+
+    @Override
+    public void removeEdge(Long installationId, Long edgeId) {
+        householdDeviceRegistryCommandService.handle(new RemoveEdgeFromInstallationCommand(installationId, edgeId));
+    }
+
+    @Override
+    public boolean installationHasEdgeType(Long installationId, String edgeType) {
+        return householdDeviceRegistryQueryService.handle(new GetInstallationEdgesQuery(installationId))
+                .map(edges -> "MICROPHONE_EDGE".equals(edgeType) ? edges.microphoneEdgeId() != null : edges.actuatorEdgeId() != null)
+                .orElse(false);
     }
 
     @Override

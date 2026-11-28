@@ -16,7 +16,8 @@ public final class RecentEventsResourceAssembler {
                 view.items().stream().map(RecentEventsResourceAssembler::toResource).toList());
     }
 
-    private static RecentEventResource toResource(DeviceEvent event) {
+    /** One event as the history and the live channel show it. */
+    public static RecentEventResource toResource(DeviceEvent event) {
         var attributes = event.attributes() == null || event.attributes().isEmpty() ? null : event.attributes().values();
         return new RecentEventResource(event.eventId(), event.type().name(), event.severity().name(),
                 event.result() == null ? null : event.result().name(), event.origin().name(), event.deviceId(),

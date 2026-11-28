@@ -15,9 +15,15 @@ import java.util.List;
  * @param devices              the devices placed in the home, by id
  */
 public record HomeStatusView(Long householdId, HomeLink link, Instant offlineSince, Instant lastUpdatedAt,
-                             boolean mayHavePendingEvents, List<DeviceStatusView> devices) {
+                             boolean mayHavePendingEvents, List<DeviceStatusView> devices, List<EdgeStatusView> edges) {
 
     public HomeStatusView {
         devices = devices == null ? List.of() : List.copyOf(devices);
+        edges = edges == null ? List.of() : List.copyOf(edges);
+    }
+
+    public HomeStatusView(Long householdId, HomeLink link, Instant offlineSince, Instant lastUpdatedAt,
+                          boolean mayHavePendingEvents, List<DeviceStatusView> devices) {
+        this(householdId, link, offlineSince, lastUpdatedAt, mayHavePendingEvents, devices, List.of());
     }
 }

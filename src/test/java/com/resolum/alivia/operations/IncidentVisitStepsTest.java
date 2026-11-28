@@ -1,5 +1,6 @@
 package com.resolum.alivia.operations;
 
+import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalInstallationAssetsService;
 import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.EvaluationSlotHoldRepository;
 import com.resolum.alivia.operations.application.internal.commandservices.AppointmentCommandServiceImpl;
 import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalHcmService;
@@ -75,7 +76,7 @@ class IncidentVisitStepsTest {
         incidents = mock(IncidentPersistenceRepository.class);
         var hcm = mock(ExternalHcmService.class);
         commands = new AppointmentCommandServiceImpl(appointments, mock(EvaluationSlotHoldRepository.class), incidents, hcm,
-                mock(ExternalSubscriptionsService.class), CLOCK);
+                mock(ExternalSubscriptionsService.class), mock(ExternalInstallationAssetsService.class), CLOCK);
         when(hcm.fetchTechniciansWorkingOn(any())).thenReturn(List.of(ANA, BRUNO));
         when(appointments.findByScheduledDateAndStatus(any(), eq(AppointmentStatus.SCHEDULED))).thenReturn(List.of());
         when(appointments.saveAndFlush(any(Appointment.class))).thenAnswer(invocation -> {

@@ -4,6 +4,7 @@ import com.resolum.alivia.operations.domain.model.valueobjects.InstalledDeviceTy
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /** Device the technician registers at the home. */
@@ -13,5 +14,7 @@ public record RegisterInstalledDeviceResource(
         @Schema(description = "Dirección MAC en pares hexadecimales", example = "00:1A:2B:3C:4D:5E")
         @NotBlank String macAddress,
         @Schema(description = "Tipo de dispositivo", example = "MICROPHONE")
-        @NotNull InstalledDeviceType type) {
+        @NotNull InstalledDeviceType type,
+        @Schema(description = "Habitación donde queda el dispositivo (obligatoria salvo para los edges)", example = "habitacion-1")
+        @Size(max = 60) @Pattern(regexp = "^[a-z0-9_-]+$", message = "La habitación usa minúsculas, números, - o _") String room) {
 }

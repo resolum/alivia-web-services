@@ -4,9 +4,11 @@ import com.resolum.alivia.tracking.application.internal.outboundservices.acl.Ext
 import com.resolum.alivia.tracking.application.internal.outboundservices.acl.ExternalAssetsService.HomeDevice;
 import com.resolum.alivia.tracking.domain.exceptions.TrackingStorageUnavailable;
 import com.resolum.alivia.tracking.domain.model.aggregates.DeviceState;
+import com.resolum.alivia.tracking.domain.model.aggregates.EdgeStatus;
 import com.resolum.alivia.tracking.domain.model.queries.GetHomeStatusByAssistedPersonQuery;
 import com.resolum.alivia.tracking.domain.model.valueobjects.ConnectionStatus;
 import com.resolum.alivia.tracking.domain.model.valueobjects.DeviceStatusView;
+import com.resolum.alivia.tracking.domain.model.valueobjects.EdgeStatusView;
 import com.resolum.alivia.tracking.domain.model.valueobjects.HomeLinkSummary;
 import com.resolum.alivia.tracking.domain.model.valueobjects.HomeStatusView;
 import com.resolum.alivia.tracking.domain.repositories.DeviceStateRepository;
@@ -69,15 +71,22 @@ public class HomeStatusQueryServiceImpl implements HomeStatusQueryService {
 
         // An edge that is no longer assigned to the home does not count: the state of its devices stays as the last known
         // one, marked stale because nobody updates it, and its silence is not the silence of the home.
-        var assigned = assets.fetchAssignedEdgeIds(householdId);
+        var assignedEdges = assets.fetchAssignedEdges(householdId);
+        var assigned = assignedEdges.stream().map(ExternalAssetsService.HomeEdge::edgeId).collect(Collectors.toUnmodifiableSet());
         var home = HomeLinkSummary.of(edges, assigned);
         var views = devices.stream()
                 .map(device -> view(device, stateOf.get(device.deviceId()), home.silentEdgeIds(), assigned)).toList();
         var lastUpdatedAt = Stream.concat(Stream.ofNullable(home.lastReportAt()),
                         stateOf.values().stream().filter(state -> assigned.contains(state.edgeId())).map(DeviceState::updatedAt))
                 .filter(Objects::nonNull).max(Comparator.naturalOrder()).orElse(null);
+        var statusOf = edges.stream().collect(Collectors.toMap(EdgeStatus::edgeId, edge -> edge, (first, second) -> first));
+        var edgeViews = assignedEdges.stream().map(edge -> {
+            var status = statusOf.get(edge.edgeId());
+            return status == null ? new EdgeStatusView(edge.edgeId(), edge.kind(), "UNKNOWN", null, null)
+                    : new EdgeStatusView(edge.edgeId(), edge.kind(), status.link().name(), status.lastReportAt(), status.offlineSince());
+        }).toList();
         return new HomeStatusView(householdId, home.link(), home.offlineSince(), lastUpdatedAt,
-                home.mayHavePendingEvents(), views);
+                home.mayHavePendingEvents(), views, edgeViews);
     }
 
     private static DeviceStatusView view(HomeDevice device, DeviceState state, Set<Long> silentEdges, Set<Long> assigned) {

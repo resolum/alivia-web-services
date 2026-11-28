@@ -3,6 +3,7 @@ package com.resolum.alivia.tracking.interfaces.rest.transform;
 import com.resolum.alivia.tracking.domain.model.valueobjects.DeviceStatusView;
 import com.resolum.alivia.tracking.domain.model.valueobjects.HomeStatusView;
 import com.resolum.alivia.tracking.interfaces.rest.resources.HomeDeviceStatusResource;
+import com.resolum.alivia.tracking.interfaces.rest.resources.HomeEdgeStatusResource;
 import com.resolum.alivia.tracking.interfaces.rest.resources.HomeStatusResource;
 
 /** From the state of a home to what the API shows. */
@@ -14,7 +15,9 @@ public final class HomeStatusResourceAssembler {
     public static HomeStatusResource toResource(Long personId, HomeStatusView view) {
         return new HomeStatusResource(personId, view.householdId(), view.link().name(), view.offlineSince(),
                 view.lastUpdatedAt(), view.mayHavePendingEvents(),
-                view.devices().stream().map(HomeStatusResourceAssembler::toResource).toList());
+                view.devices().stream().map(HomeStatusResourceAssembler::toResource).toList(),
+                view.edges().stream().map(edge -> new HomeEdgeStatusResource(edge.edgeId(), edge.kind(), edge.link(),
+                        edge.lastReportAt(), edge.offlineSince())).toList());
     }
 
     private static HomeDeviceStatusResource toResource(DeviceStatusView device) {

@@ -1,5 +1,6 @@
 package com.resolum.alivia.operations;
 
+import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalInstallationAssetsService;
 import com.resolum.alivia.operations.application.internal.commandservices.AppointmentCommandServiceImpl;
 import com.resolum.alivia.operations.application.internal.commandservices.EvaluationSlotHoldCommandServiceImpl;
 import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalHcmService;
@@ -63,7 +64,7 @@ class EvaluationSlotHoldTest {
         holdService = new EvaluationSlotHoldCommandServiceImpl(holds, appointments, hcm, CLOCK);
         queries = new AppointmentQueryServiceImpl(appointments, holds, hcm, CLOCK);
         commands = new AppointmentCommandServiceImpl(appointments, holds, mock(IncidentPersistenceRepository.class), hcm,
-                subscriptions, CLOCK);
+                subscriptions, mock(ExternalInstallationAssetsService.class), CLOCK);
         when(hcm.fetchTechniciansWorkingOn(any())).thenReturn(List.of());
         when(hcm.fetchTechniciansWorkingOn(TOMORROW)).thenReturn(List.of(ANA, LUIS));
         when(appointments.findByScheduledDateAndStatus(any(), eq(AppointmentStatus.SCHEDULED))).thenReturn(List.of());

@@ -5,6 +5,12 @@ import java.util.Optional;
 
 public interface AssetsContextFacade {
 
+    record InventoryAsset(Long id, Long businessId, String macAddress, String type, String status, boolean edge) {
+    }
+
+    /** Inventory asset with this MAC, regardless of whether it is a device or Edge. */
+    Optional<InventoryAsset> fetchInventoryAssetByMacAddress(String macAddress);
+
     /** Id of the device with that MAC address (any spelling), or empty when none is registered. */
     Optional<Long> fetchDeviceByMacAddress(String macAddress);
 
@@ -19,6 +25,17 @@ public interface AssetsContextFacade {
      * @return the id of the registry
      */
     Long registerInstallation(Long installationId, Long householdId, Long businessId);
+
+    /** Opens the registry only when it does not exist yet. */
+    Long ensureInstallation(Long installationId, Long householdId, Long businessId);
+
+    /** Puts an edge in the installation; it takes the place of its type. */
+    void placeEdge(Long installationId, Long edgeId);
+    /** Takes an edge out of the installation; it goes back to the inventory and loses its credential. */
+    void removeEdge(Long installationId, Long edgeId);
+    /** Whether the installation has an edge of that type ({@code MICROPHONE_EDGE} or {@code ACTUATOR_EDGE}). */
+
+    boolean installationHasEdgeType(Long installationId, String edgeType);
 
     /**
      * Places an available device in a room of the household of an installation, on behalf of another context that

@@ -1,5 +1,6 @@
 package com.resolum.alivia.operations;
 
+import com.resolum.alivia.operations.application.internal.outboundservices.acl.ExternalInstallationAssetsService;
 import com.resolum.alivia.operations.infrastructure.persistence.jpa.repositories.EvaluationSlotHoldRepository;
 import com.resolum.alivia.operations.application.acl.OperationsContextFacadeImpl;
 import com.resolum.alivia.operations.application.internal.commandservices.AppointmentCommandServiceImpl;
@@ -75,7 +76,7 @@ class EvaluationResultTest {
     void recordsTheResultThroughTheTechnicalOrders() throws Exception {
         var appointments = mock(AppointmentRepository.class);
         var commands = new AppointmentCommandServiceImpl(appointments, mock(EvaluationSlotHoldRepository.class), mock(IncidentPersistenceRepository.class),
-                mock(ExternalHcmService.class), mock(ExternalSubscriptionsService.class), Clock.fixed(NOW, ZoneOffset.UTC));
+                mock(ExternalHcmService.class), mock(ExternalSubscriptionsService.class), mock(ExternalInstallationAssetsService.class), Clock.fixed(NOW, ZoneOffset.UTC));
         var evaluation = order(ServiceType.EVALUATION, 10, 12);
         when(appointments.findById(4L)).thenReturn(Optional.of(evaluation));
         when(appointments.saveAndFlush(any(Appointment.class))).thenAnswer(invocation -> invocation.getArgument(0));

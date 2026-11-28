@@ -97,6 +97,18 @@ class HomeStatusQueryServiceTest {
     }
 
     @Test
+    void listsTheEdgesOfTheHomeWithWhetherEachOneIsHeard() {
+        when(edges.findAllByHouseholdId(HOME)).thenReturn(List.of(edge(3L, T, EdgeLink.ONLINE, 0, null)));
+
+        var view = ask();
+
+        assertThat(view.edges()).extracting(e -> e.edgeId() + ":" + e.kind() + ":" + e.link())
+                .containsExactly("2:MICROPHONE:UNKNOWN", "3:ACTUATOR:ONLINE");
+        assertThat(view.edges().get(0).lastReportAt()).isNull();
+        assertThat(view.edges().get(1).lastReportAt()).isEqualTo(T);
+    }
+
+    @Test
     void aDeviceOfAnEdgeThatIsHeardShowsItsStateAndIsNotStale() {
         when(states.findAllByDeviceIds(anyCollection())).thenReturn(List.of(
                 state(11L, 3L, HOME, ConnectionStatus.CONNECTED, OperationalStatus.DEGRADED, "on", 15, T)));

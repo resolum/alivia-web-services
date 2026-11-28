@@ -33,7 +33,9 @@
       "lastCommunicationAt": "2026-11-24T14:57:00Z",
       "observedAt": "2026-11-24T14:57:00Z",
       "lastUpdatedAt": "2026-11-24T14:57:01Z",
-      "faults": ["LOW_SIGNAL"],
+      "faults": [
+        "LOW_SIGNAL"
+      ],
       "stale": true
     },
     {
@@ -57,6 +59,21 @@
       "lastUpdatedAt": "2026-11-24T15:04:50Z",
       "faults": [],
       "stale": false
+    }
+  ],
+  "edges": [
+    {
+      "edgeId": 2,
+      "kind": "MICROPHONE",
+      "link": "ONLINE",
+      "lastReportAt": "2026-11-24T15:04:50Z"
+    },
+    {
+      "edgeId": 3,
+      "kind": "ACTUATOR",
+      "link": "OFFLINE",
+      "lastReportAt": "2026-11-24T14:58:30Z",
+      "offlineSince": "2026-11-24T15:01:00Z"
     }
   ]
 }
