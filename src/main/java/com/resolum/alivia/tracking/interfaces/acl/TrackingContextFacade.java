@@ -64,4 +64,35 @@ public interface TrackingContextFacade {
     /** The commands of one device. */
     record DeviceAutonomy(Long deviceId, AutonomyCounts counts) {
     }
+
+    /**
+     * Alerts (events whose severity is not {@code INFORMATIVE}) of every household in the period, by severity name. A
+     * severity without alerts is absent.
+     *
+     * @throws RuntimeException when the events cannot be read
+     */
+    java.util.Map<String, Long> countAlertsBySeverity(Instant from, Instant to);
+
+    /**
+     * The last known state of every device that ever reported, by connection status name ({@code CONNECTED},
+     * {@code DISCONNECTED}). Devices that never reported are not counted.
+     *
+     * @throws RuntimeException when the states cannot be read
+     */
+    java.util.Map<String, Long> countDevicesByConnectionStatus();
+
+    /**
+     * The alerts of a household in the period, oldest first, at most 200. Authorization is not decided here.
+     *
+     * @throws RuntimeException when the events cannot be read
+     */
+    List<HomeAlert> fetchAlertsOfHousehold(Long householdId, Instant from, Instant to);
+
+    /**
+     * @param type     the event type, for example {@code HELP_REQUESTED}
+     * @param severity {@code PREVENTIVE}, {@code IMPORTANT} or {@code CRITICAL}
+     * @param deviceId the device, or {@code null} when the alert is about none
+     */
+    record HomeAlert(String type, String severity, Long deviceId, Instant occurredAt) {
+    }
 }
