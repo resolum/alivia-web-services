@@ -17,6 +17,7 @@ import com.resolum.alivia.assistance.domain.exceptions.DayNotClosedYetException;
 import com.resolum.alivia.assistance.domain.exceptions.DniAlreadyExistsException;
 import com.resolum.alivia.assistance.domain.exceptions.EmailAddressAlreadyExistsException;
 import com.resolum.alivia.assistance.domain.exceptions.InvalidScheduleException;
+import com.resolum.alivia.assistance.domain.exceptions.InvalidSummaryRangeException;
 import com.resolum.alivia.assistance.domain.exceptions.InvitationAlreadyExistsException;
 import com.resolum.alivia.assistance.domain.exceptions.InvitationExpiredException;
 import com.resolum.alivia.assistance.domain.exceptions.InvitationNotForUserException;
@@ -112,6 +113,7 @@ public class AssistanceExceptionHandler {
     // 400 Bad Request
     @ExceptionHandler({
             InvalidScheduleException.class,
+            InvalidSummaryRangeException.class,
             DayNotClosedYetException.class,
             OccurrenceNotScheduledException.class,
             OccurrenceNotStartedException.class,

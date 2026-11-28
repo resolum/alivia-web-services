@@ -57,4 +57,27 @@ public interface SubscriptionsContextFacade {
      * context can tell whether a device fits the plan. Empty when the household has no active subscription.
      */
     Optional<ContractedActuators> fetchContractedActuatorsOfHousehold(String householdId);
+
+    /**
+     * A contracting request whose payment the family authorized: a hiring. It is a sale once the amount was captured.
+     *
+     * @param billingCycle  {@code MONTHLY} or {@code ANNUAL}
+     * @param amount        the monthly amount of the configuration, priced with the plan as it is now
+     * @param contractedAt  when the payment was authorized
+     * @param paid          whether the amount was captured ({@code SUCCEEDED})
+     */
+    record Sale(String draftId, Long planId, String planCode, String planName, String billingCycle,
+                java.math.BigDecimal amount, String currency, java.time.Instant contractedAt, boolean paid) {
+    }
+
+    /**
+     * The requests whose payment was authorized in the period ({@code from} included, {@code to} excluded) and was not
+     * released or rejected since, oldest first.
+     *
+     * @param planId only the requests of this plan; {@code null} for every plan
+     */
+    java.util.List<Sale> fetchSales(java.time.Instant from, java.time.Instant to, Long planId);
+
+    /** How many subscriptions there are in each status ({@code ACTIVE}, {@code PAST_DUE}...); absent when none. */
+    Map<String, Long> countSubscriptionsByStatus();
 }

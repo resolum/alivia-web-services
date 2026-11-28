@@ -8,10 +8,18 @@ import com.resolum.alivia.subscriptions.infrastructure.persistence.jpa.repositor
 import com.resolum.alivia.subscriptions.interfaces.acl.SubscriptionsContextFacade;
 import com.resolum.alivia.subscriptions.application.outboundservices.PaymentAuthorizationGateway;
 import com.resolum.alivia.subscriptions.domain.model.valueobjects.StripePaymentIntentId;
+import com.resolum.alivia.subscriptions.domain.model.aggregates.Plan;
+import com.resolum.alivia.subscriptions.domain.model.valueobjects.PlanCode;
+import com.resolum.alivia.subscriptions.infrastructure.persistence.jpa.repositories.PlanRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.Instant;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.Map;
@@ -21,14 +29,64 @@ public class SubscriptionsContextFacadeImpl implements SubscriptionsContextFacad
     private final ConfigurationDraftRepository drafts;
     private final SubscriptionRepository subscriptions;
     private final PaymentAuthorizationGateway authorizations;
+    /** A hiring is a request whose payment was authorized and is still held, being captured or captured. */
+    private static final List<PaymentStatus> HIRED = List.of(PaymentStatus.PREAUTHORIZED,
+            PaymentStatus.AWAITING_CONFIRMATION, PaymentStatus.SUCCEEDED);
+
     private final Clock clock;
+    private final PlanRepository plans;
 
     public SubscriptionsContextFacadeImpl(ConfigurationDraftRepository drafts, SubscriptionRepository subscriptions,
                                           PaymentAuthorizationGateway authorizations, Clock clock) {
+        this(drafts, subscriptions, authorizations, clock, null);
+    }
+
+    @Autowired
+    public SubscriptionsContextFacadeImpl(ConfigurationDraftRepository drafts, SubscriptionRepository subscriptions,
+                                          PaymentAuthorizationGateway authorizations, Clock clock,
+                                          PlanRepository plans) {
         this.drafts = drafts;
         this.subscriptions = subscriptions;
         this.authorizations = authorizations;
         this.clock = clock;
+        this.plans = plans;
+    }
+
+    /**
+     * Read from the configuration drafts: the contracting flow charges there, and no {@code Payment} row is written
+     * for it.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<Sale> fetchSales(Instant from, Instant to, Long planId) {
+        if (from == null || to == null || from.isAfter(to)) {
+            throw new IllegalArgumentException("The period needs a start that is not after its end.");
+        }
+        Map<PlanCode, Plan> planByCode = plans.findAll().stream()
+                .collect(Collectors.toMap(Plan::getCode, plan -> plan, (first, second) -> first));
+        return drafts.findByPaymentStatusInAndPreauthorizedAtGreaterThanEqualAndPreauthorizedAtLessThan(HIRED, from, to)
+                .stream()
+                .filter(draft -> planByCode.containsKey(draft.getPlanCode()))
+                .filter(draft -> planId == null || planId.equals(planByCode.get(draft.getPlanCode()).getId()))
+                .sorted(Comparator.comparing(ConfigurationDraft::getPreauthorizedAt))
+                .map(draft -> {
+                    var plan = planByCode.get(draft.getPlanCode());
+                    // shortcut: the draft does not keep the authorized amount, so it is priced again with the plan as
+                    // it is now; store the amount on the draft if prices start to change.
+                    var quote = plan.quoteMonthly(draft.getRooms().size(), draft.actuatorQuantities().toSelection());
+                    return new Sale(draft.getId(), plan.getId(), plan.getCode().name(), plan.getName(),
+                            draft.getBillingCycle(), quote.totalMonthlyAmount(), quote.currency(),
+                            draft.getPreauthorizedAt(), draft.getPaymentStatus() == PaymentStatus.SUCCEEDED);
+                })
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Long> countSubscriptionsByStatus() {
+        var counts = new LinkedHashMap<String, Long>();
+        for (var row : subscriptions.countByStatus()) counts.put(row[0].toString(), (Long) row[1]);
+        return counts;
     }
 
     /**
